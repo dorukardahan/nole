@@ -1,12 +1,12 @@
 package brave
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -71,7 +71,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 
 	u := fmt.Sprintf("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d",
-		urlEncode(req.Query), maxInt(req.Limit, 1))
+		url.QueryEscape(req.Query), maxInt(req.Limit, 1))
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -134,25 +134,6 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 		Available:    true,
 		Capabilities: p.Capabilities(),
 	}
-}
-
-func urlEncode(s string) string {
-	// Simple URL encoding for query parameter
-	b := bytes.NewBuffer(nil)
-	for _, c := range s {
-		if c == ' ' {
-			b.WriteString("%20")
-		} else if c == '"' {
-			b.WriteString("%22")
-		} else if c == '#' {
-			b.WriteString("%23")
-		} else if c == '&' {
-			b.WriteString("%26")
-		} else {
-			b.WriteRune(c)
-		}
-	}
-	return b.String()
 }
 
 func maxInt(a, b int) int {

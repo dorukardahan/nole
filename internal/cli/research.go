@@ -51,12 +51,12 @@ Uses free-tier routing. No paid requests.`,
 
 // ResearchReport is the full output of a research pipeline run.
 type ResearchReport struct {
-	Question  string              `json:"question"`
-	Summary   string              `json:"summary"`
-	Sources   []ResearchSource    `json:"sources"`
-	Extracts  []ResearchExtract   `json:"extracts"`
-	Providers []string            `json:"providers_used"`
-	Steps     int                 `json:"steps"`
+	Question  string            `json:"question"`
+	Summary   string            `json:"summary"`
+	Sources   []ResearchSource  `json:"sources"`
+	Extracts  []ResearchExtract `json:"extracts"`
+	Providers []string          `json:"providers_used"`
+	Steps     int               `json:"steps"`
 }
 
 // ResearchSource is a search result used in research.
@@ -69,10 +69,10 @@ type ResearchSource struct {
 
 // ResearchExtract is extracted content from a source.
 type ResearchExtract struct {
-	URL      string `json:"url"`
-	Provider string `json:"provider"`
-	Content  string `json:"content"`
-	Truncated bool  `json:"truncated,omitempty"`
+	URL       string `json:"url"`
+	Provider  string `json:"provider"`
+	Content   string `json:"content"`
+	Truncated bool   `json:"truncated,omitempty"`
 }
 
 func researchPipeline(ctx context.Context, svc *core.Service, question string, maxSteps int) (*ResearchReport, error) {
@@ -237,11 +237,4 @@ func printResearchReport(cmd *cobra.Command, report *ResearchReport) error {
 		report.Steps, len(report.Sources), len(report.Extracts), report.Providers)
 	fmt.Fprintln(cmd.OutOrStdout(), report.Summary)
 	return nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

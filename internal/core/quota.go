@@ -40,7 +40,13 @@ func (l *MemoryQuotaLedger) Allow(provider string) bool {
 	if entry.KeylessFree {
 		return true
 	}
-	return entry.FreeRemaining > 0
+	if entry.FreeRemaining > 0 {
+		return true
+	}
+	if entry.Unknown {
+		return true
+	}
+	return false
 }
 
 func (l *MemoryQuotaLedger) Record(provider string) error {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/dorukardahan/searchmcp/internal/core"
@@ -129,7 +130,7 @@ func (h *httpHandler) start(addr string) error {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 
-	fmt.Printf("searchmcp HTTP server ready on %s\n", addr)
+	fmt.Fprintf(os.Stderr, "searchmcp HTTP server ready on %s\n", addr)
 	return h.server.Serve(listener)
 }
 

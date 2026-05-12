@@ -225,19 +225,20 @@ def score_result(result):
 def main():
     providers = ["brave", "tavily", "jina", "firecrawl", "ddgs"]
     
-    # Load env
-    env_path = os.path.expanduser("~/.hermes/.env")
-    if os.path.exists(env_path):
+    # Load env from optional env file (--env flag or SEARCHMCP_ENV)
+    env_path = os.environ.get("SEARCHMCP_ENV", "")
+    if not env_path and len(sys.argv) > 1:
+        for i, arg in enumerate(sys.argv):
+            if arg == "--env" and i + 1 < len(sys.argv):
+                env_path = sys.argv[i + 1]
+                break
+    if env_path and os.path.exists(env_path):
         with open(env_path) as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
                     os.environ.setdefault(k.strip(), v.strip())
-    
-    # User-provided keys override
-    os.environ.setdefault("JINA_API_KEY", os.environ.get("JINA_API_KEY", ""))
-    os.environ.setdefault("FIRECRAWL_API_KEY", os.environ.get("FIRECRAWL_API_KEY", ""))
 
     all_results = {}
     errors = []

@@ -20,21 +20,31 @@ All providers are optional. Set only the keys you have. DDGS works with zero con
 
 ## Routing
 
-Task types route to the best available provider:
+Task types route to the best available provider based on benchmark testing:
 
-- **general**: brave -> tavily -> ddgs
-- **news**: brave -> tavily -> ddgs
-- **docs**: brave -> firecrawl -> jina -> ddgs
-- **research**: tavily -> brave -> jina -> firecrawl -> ddgs
-- **extract**: jina -> firecrawl
+| Task | Route |
+|------|-------|
+| general | brave -> firecrawl -> ddgs -> tavily -> jina |
+| news | brave -> ddgs -> tavily -> firecrawl -> jina |
+| docs | brave -> firecrawl -> tavily -> ddgs -> jina |
+| academic | brave -> tavily -> firecrawl -> ddgs -> jina |
+| factcheck | brave -> tavily -> ddgs -> firecrawl -> jina |
+| semantic | tavily -> firecrawl -> brave -> ddgs -> jina |
+| code | brave -> firecrawl -> ddgs -> tavily -> jina |
+| social | firecrawl -> ddgs -> brave -> tavily -> jina |
+| people | tavily -> firecrawl -> brave -> ddgs -> jina |
+| pricing | brave -> tavily -> firecrawl -> ddgs -> jina |
+| research | brave -> firecrawl -> ddgs -> tavily -> jina |
+| extract | tavily -> firecrawl -> jina |
 
 Unavailable providers (no API key) are skipped automatically.
 
 ## Install
 
 ```bash
+git clone https://github.com/dorukardahan/searchmcp.git
+cd searchmcp
 go build -o searchmcp .
-# or download from Releases (TODO)
 ```
 
 ## Quick Start
@@ -42,7 +52,9 @@ go build -o searchmcp .
 ```bash
 # 1. Set your API keys
 export BRAVE_API_KEY=...
+export TAVILY_API_KEY=...
 export JINA_API_KEY=...
+export FIRECRAWL_API_KEY=...
 
 # 2. Verify
 searchmcp doctor
@@ -53,9 +65,10 @@ searchmcp search "Go MCP SDK" --task docs --json
 # 4. Extract
 searchmcp extract "https://go.dev" --json
 
-# 5. Setup your agent
-searchmcp setup --claude
-searchmcp setup --cursor
+# 5. Research (multi-step search + extract + synthesis)
+searchmcp research "What is MCP Model Context Protocol"
+
+# 6. Setup your agent
 searchmcp setup --all
 ```
 
@@ -66,8 +79,26 @@ searchmcp doctor              # Check config and provider health
 searchmcp providers --json    # List available providers
 searchmcp search <query>      # Search with task-based routing
 searchmcp extract <url>       # Extract clean content from URL
+searchmcp research <question> # Multi-step search + extract + synthesis
 searchmcp setup --all         # Configure AI agents
 searchmcp mcp                 # Start MCP stdio server
+searchmcp serve --mcp         # Start HTTP MCP + REST API server
+```
+
+### Search Task Types
+
+```
+--task general    # Default broad web search
+--task news       # Current events and headlines
+--task docs       # Technical documentation lookup
+--task academic   # Papers and research
+--task factcheck  # Fact verification queries
+--task semantic   # Conceptual/similar-to searches
+--task code       # Code and implementation examples
+--task social     # Forum and community discussions
+--task people     # People and biography lookups
+--task pricing    # Product/service pricing queries
+--task research   # Deep multi-source research
 ```
 
 ## Agent Setup
@@ -90,9 +121,9 @@ searchmcp setup --windsurf  # ~/.codeium/windsurf/mcp_config.json
 
 ## MCP Tools
 
-When running as an MCP server, searchmcp exposes:
+When running as an MCP server (`searchmcp mcp`), exposes:
 
-- **search** -- query, task (general/news/docs/research), limit
+- **search** -- query, task, limit
 - **extract** -- url, format
 - **provider_status** -- which providers are available
 - **budget_status** -- quota usage
@@ -102,7 +133,7 @@ When running as an MCP server, searchmcp exposes:
 ```
 internal/
   core/        -- types, registry, router, service, quota, errors
-  cli/         -- cobra commands: search, extract, providers, doctor, setup, mcp
+  cli/         -- cobra commands: search, extract, research, providers, doctor, setup, mcp, serve
   mcpserver/   -- MCP stdio server using mark3labs/mcp-go
   providers/
     brave/     -- Brave Web Search API
@@ -112,6 +143,13 @@ internal/
     ddgs/      -- DuckDuckGo HTML scraping (keyless)
     mock/      -- Deterministic mock for testing
 ```
+
+## Security
+
+- API keys are read from environment variables only. Never stored or logged.
+- `$0.00 hard cap`: no paid requests are ever made. If no free route exists, returns a structured error.
+- MCP stdio mode keeps stdout clean for JSON-RPC; all logs go to stderr.
+- No telemetry, no tracking, no external data collection.
 
 ## License
 

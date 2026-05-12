@@ -58,10 +58,10 @@ func defaultService() *core.Service {
 	_ = registry.Register(ddgs.New())
 
 	ledger := core.NewMemoryQuotaLedger()
-	ledger.Set(core.QuotaEntry{Provider: "brave", FreeRemaining: 100})
-	ledger.Set(core.QuotaEntry{Provider: "tavily", FreeRemaining: 100})
-	ledger.Set(core.QuotaEntry{Provider: "jina", FreeRemaining: 100})
-	ledger.Set(core.QuotaEntry{Provider: "firecrawl", FreeRemaining: 100})
+	ledger.Set(core.QuotaEntry{Provider: "brave", Unknown: true})
+	ledger.Set(core.QuotaEntry{Provider: "tavily", Unknown: true})
+	ledger.Set(core.QuotaEntry{Provider: "jina", Unknown: true})
+	ledger.Set(core.QuotaEntry{Provider: "firecrawl", Unknown: true})
 	ledger.Set(core.QuotaEntry{Provider: "ddgs", KeylessFree: true, Unknown: true})
 
 	return core.NewService(registry, ledger, core.DefaultRouteMatrix())
@@ -79,6 +79,22 @@ func parseTask(raw string) core.TaskType {
 		return core.TaskNews
 	case "docs", "technical-docs":
 		return core.TaskDocs
+	case "academic":
+		return core.TaskAcademic
+	case "factcheck":
+		return core.TaskFactcheck
+	case "semantic":
+		return core.TaskSemantic
+	case "code":
+		return core.TaskCode
+	case "social":
+		return core.TaskSocial
+	case "people":
+		return core.TaskPeople
+	case "pricing":
+		return core.TaskPricing
+	case "extract":
+		return core.TaskExtract
 	case "research", "deep-research":
 		return core.TaskResearch
 	default:

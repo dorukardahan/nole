@@ -54,8 +54,8 @@ func newDoctorCommand() *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), "")
 			fmt.Fprintln(cmd.OutOrStdout(), "- secrets: not printed")
 			keys := []struct {
-				env   string
-				name  string
+				env  string
+				name string
 			}{
 				{"JINA_API_KEY", "jina"},
 				{"FIRECRAWL_API_KEY", "firecrawl"},
@@ -78,6 +78,8 @@ func newDoctorCommand() *cobra.Command {
 			for _, e := range budget.Entries {
 				if e.KeylessFree {
 					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s keyless-free\n", e.Provider)
+				} else if e.Unknown {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s unknown (free-tier)\n", e.Provider)
 				} else {
 					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %d remaining\n", e.Provider, e.FreeRemaining)
 				}
