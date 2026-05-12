@@ -16,5 +16,6 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newProvidersCommand())
 	cmd.AddCommand(newDoctorCommand())
 	cmd.AddCommand(newMCPCommand())
+	cmd.AddCommand(newSetupCommand())
 	return cmd
 }
