@@ -1,6 +1,6 @@
 # SearchMCP MVP Implementation Plan
 
-> **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
+> **Implementation note:** Follow TDD — write failing tests first, then implement to pass.
 
 **Goal:** Build the first MVP of `searchmcp`: a Go single-binary agent search/retrieval router with MCP stdio, CLI, task-based provider routing, and $0/free-tier fail-closed policy.
 

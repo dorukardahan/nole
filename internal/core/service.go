@@ -26,6 +26,9 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		if !ok || !HasCapability(provider.Capabilities(), CapabilitySearch) || !s.ledger.Allow(name) {
 			continue
 		}
+		if status := provider.Status(ctx); !status.Available {
+			continue
+		}
 		resp, err := provider.Search(ctx, req)
 		if err != nil {
 			lastErr = err
@@ -50,6 +53,9 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 	for _, name := range route {
 		provider, ok := s.registry.Get(name)
 		if !ok || !HasCapability(provider.Capabilities(), CapabilityExtract) || !s.ledger.Allow(name) {
+			continue
+		}
+		if status := provider.Status(ctx); !status.Available {
 			continue
 		}
 		resp, err := provider.Extract(ctx, req)

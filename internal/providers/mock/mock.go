@@ -9,10 +9,16 @@ import (
 
 type Provider struct {
 	ProviderName string
+	available    bool
 }
 
 func New(name string) Provider {
-	return Provider{ProviderName: name}
+	return Provider{ProviderName: name, available: true}
+}
+
+// NewUnavailable creates a mock provider that reports as unavailable (used as placeholder).
+func NewUnavailable(name string) Provider {
+	return Provider{ProviderName: name, available: false}
 }
 
 func (p Provider) Name() string {
@@ -48,5 +54,8 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 }
 
 func (p Provider) Status(ctx context.Context) core.ProviderStatus {
-	return core.ProviderStatus{Name: p.Name(), Available: true, Capabilities: p.Capabilities(), Reason: "mock adapter active; real API adapter pending"}
+	if p.available {
+		return core.ProviderStatus{Name: p.Name(), Available: true, Capabilities: p.Capabilities(), Reason: "mock adapter active; real API adapter pending"}
+	}
+	return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: "no API key configured; provider is placeholder only"}
 }
