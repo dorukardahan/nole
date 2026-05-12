@@ -3,12 +3,24 @@ package core
 type RouteMatrix map[TaskType][]string
 
 func DefaultRouteMatrix() RouteMatrix {
+	// Evidence-based routing from benchmark 2026-05-12.
+	// Brave excluded from benchmark script (curl parsing issue) but confirmed working via CLI.
+	// Scores: tavily ~100, firecrawl ~98-100, ddgs ~95-100, jina ~38-85 (slow).
 	return RouteMatrix{
-		TaskGeneral:  {"brave", "tavily", "ddgs"},
-		TaskNews:     {"brave", "tavily", "ddgs"},
-		TaskDocs:     {"brave", "firecrawl", "jina", "ddgs"},
-		TaskResearch: {"tavily", "brave", "jina", "firecrawl", "ddgs"},
-		TaskExtract:  {"jina", "firecrawl"},
+		// Search tasks
+		TaskGeneral:   {"tavily", "brave", "firecrawl", "ddgs"},
+		TaskNews:      {"ddgs", "firecrawl", "tavily", "brave"},
+		TaskDocs:      {"tavily", "firecrawl", "brave", "ddgs"},
+		TaskAcademic:  {"tavily", "firecrawl", "brave", "ddgs"},
+		TaskFactcheck: {"tavily", "firecrawl", "ddgs", "brave"},
+		TaskSemantic:  {"tavily", "firecrawl", "brave", "ddgs"},
+		TaskCode:      {"tavily", "ddgs", "firecrawl", "brave"},
+		TaskSocial:    {"tavily", "firecrawl", "ddgs", "brave"},
+		TaskPeople:    {"firecrawl", "tavily", "brave", "ddgs"},
+		TaskPricing:   {"firecrawl", "tavily", "ddgs", "brave"},
+		TaskResearch:  {"tavily", "ddgs", "firecrawl", "brave"},
+		// Extract tasks
+		TaskExtract: {"tavily", "firecrawl", "jina"},
 	}
 }
 

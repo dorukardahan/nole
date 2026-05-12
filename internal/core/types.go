@@ -5,11 +5,18 @@ import "context"
 type TaskType string
 
 const (
-	TaskGeneral  TaskType = "general"
-	TaskNews     TaskType = "news"
-	TaskDocs     TaskType = "docs"
-	TaskExtract  TaskType = "extract"
-	TaskResearch TaskType = "research"
+	TaskGeneral   TaskType = "general"
+	TaskNews      TaskType = "news"
+	TaskDocs      TaskType = "docs"
+	TaskAcademic  TaskType = "academic"
+	TaskFactcheck TaskType = "factcheck"
+	TaskSemantic  TaskType = "semantic"
+	TaskCode      TaskType = "code"
+	TaskSocial    TaskType = "social"
+	TaskPeople    TaskType = "people"
+	TaskPricing   TaskType = "pricing"
+	TaskExtract   TaskType = "extract"
+	TaskResearch  TaskType = "research"
 )
 
 type Capability string

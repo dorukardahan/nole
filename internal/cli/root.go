@@ -13,9 +13,11 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd.AddCommand(newSearchCommand())
 	cmd.AddCommand(newExtractCommand())
+	cmd.AddCommand(newResearchCommand())
 	cmd.AddCommand(newProvidersCommand())
 	cmd.AddCommand(newDoctorCommand())
 	cmd.AddCommand(newMCPCommand())
+	cmd.AddCommand(newServeCommand())
 	cmd.AddCommand(newSetupCommand())
 	return cmd
 }
