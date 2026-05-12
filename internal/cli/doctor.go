@@ -60,6 +60,7 @@ func newDoctorCommand() *cobra.Command {
 				{"JINA_API_KEY", "jina"},
 				{"FIRECRAWL_API_KEY", "firecrawl"},
 				{"BRAVE_API_KEY", "brave"},
+				{"BRAVE_SEARCH_API_KEY", "brave (alt)"},
 				{"TAVILY_API_KEY", "tavily"},
 			}
 			for _, k := range keys {

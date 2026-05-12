@@ -34,6 +34,9 @@ func New(opts ...Option) Provider {
 	if p.apiKey == "" {
 		p.apiKey = os.Getenv("BRAVE_API_KEY")
 	}
+	if p.apiKey == "" {
+		p.apiKey = os.Getenv("BRAVE_SEARCH_API_KEY")
+	}
 	return p
 }
 

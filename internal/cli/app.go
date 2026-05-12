@@ -21,6 +21,9 @@ func defaultService() *core.Service {
 	jinaKey := os.Getenv("JINA_API_KEY")
 	firecrawlKey := os.Getenv("FIRECRAWL_API_KEY")
 	braveKey := os.Getenv("BRAVE_API_KEY")
+	if braveKey == "" {
+		braveKey = os.Getenv("BRAVE_SEARCH_API_KEY")
+	}
 	tavilyKey := os.Getenv("TAVILY_API_KEY")
 
 	// Jina — real adapter (search + extract)
