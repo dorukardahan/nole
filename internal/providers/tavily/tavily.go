@@ -1,36 +1,219 @@
 package tavily
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"time"
 
 	"github.com/dorukardahan/searchmcp/internal/core"
 )
 
-type Provider struct {}
+type Provider struct {
+	apiKey     string
+	httpClient *http.Client
+}
 
-func New() Provider { return Provider{} }
+type Option func(*Provider)
+
+func WithAPIKey(key string) Option {
+	return func(p *Provider) { p.apiKey = key }
+}
+
+func New(opts ...Option) Provider {
+	p := Provider{
+		httpClient: &http.Client{Timeout: 30 * time.Second},
+	}
+	for _, opt := range opts {
+		opt(&p)
+	}
+	if p.apiKey == "" {
+		p.apiKey = os.Getenv("TAVILY_API_KEY")
+	}
+	return p
+}
 
 func (p Provider) Name() string { return "tavily" }
 
 func (p Provider) Capabilities() []core.Capability {
-	return []core.Capability{core.CapabilitySearch, core.CapabilityStatus}
+	return []core.Capability{core.CapabilitySearch, core.CapabilityExtract, core.CapabilityStatus}
+}
+
+// --- Tavily Search API response types ---
+
+type tavilySearchRequest struct {
+	Query        string `json:"query"`
+	MaxResults   int    `json:"max_results"`
+	SearchDepth  string `json:"search_depth"`
+	IncludeAnswer bool  `json:"include_answer"`
+	APIKey       string `json:"api_key"`
+}
+
+type tavilySearchResponse struct {
+	Query   string             `json:"query"`
+	Results []tavilyResult     `json:"results"`
+	Answer  string             `json:"answer,omitempty"`
+}
+
+type tavilyResult struct {
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Content string `json:"content"`
+	Score   float64 `json:"score"`
 }
 
 func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.SearchResponse, error) {
-	if !core.HasCapability(p.Capabilities(), core.CapabilitySearch) {
-		return core.SearchResponse{}, fmt.Errorf("provider %s does not support search", p.Name())
+	if p.apiKey == "" {
+		return core.SearchResponse{}, fmt.Errorf("tavily: TAVILY_API_KEY not set")
 	}
-	return core.SearchResponse{}, fmt.Errorf("provider %s search is not implemented yet", p.Name())
+
+	// Use "advanced" depth for research task, "basic" otherwise
+	depth := "basic"
+	if req.Task == core.TaskResearch {
+		depth = "advanced"
+	}
+
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 5
+	}
+
+	body := tavilySearchRequest{
+		Query:         req.Query,
+		MaxResults:    limit,
+		SearchDepth:   depth,
+		IncludeAnswer: false,
+		APIKey:        p.apiKey,
+	}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return core.SearchResponse{}, fmt.Errorf("tavily: marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.tavily.com/search", bytes.NewReader(jsonBody))
+	if err != nil {
+		return core.SearchResponse{}, fmt.Errorf("tavily: create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return core.SearchResponse{}, fmt.Errorf("tavily: search request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return core.SearchResponse{}, fmt.Errorf("tavily: search returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var tresp tavilySearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tresp); err != nil {
+		return core.SearchResponse{}, fmt.Errorf("tavily: decode response: %w", err)
+	}
+
+	results := make([]core.SearchResult, 0, len(tresp.Results))
+	for _, r := range tresp.Results {
+		snippet := r.Content
+		if len(snippet) > 300 {
+			snippet = snippet[:300] + "..."
+		}
+		results = append(results, core.SearchResult{
+			Title:    r.Title,
+			URL:      r.URL,
+			Snippet:  snippet,
+			Provider: "tavily",
+		})
+	}
+
+	return core.SearchResponse{
+		Query:    req.Query,
+		Task:     req.Task,
+		Provider: "tavily",
+		Results:  results,
+	}, nil
+}
+
+// --- Tavily Extract API ---
+
+type tavilyExtractRequest struct {
+	URLs   []string `json:"urls"`
+	APIKey string   `json:"api_key"`
+}
+
+type tavilyExtractResponse struct {
+	Results []tavilyExtractResult `json:"results"`
+}
+
+type tavilyExtractResult struct {
+	URL     string `json:"url"`
+	RawContent string `json:"raw_content"`
 }
 
 func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
-	if !core.HasCapability(p.Capabilities(), core.CapabilityExtract) {
-		return core.ExtractResponse{}, fmt.Errorf("provider %s does not support extract", p.Name())
+	if p.apiKey == "" {
+		return core.ExtractResponse{}, fmt.Errorf("tavily: TAVILY_API_KEY not set")
 	}
-	return core.ExtractResponse{}, fmt.Errorf("provider %s extract is not implemented yet", p.Name())
+
+	body := tavilyExtractRequest{
+		URLs:   []string{req.URL},
+		APIKey: p.apiKey,
+	}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return core.ExtractResponse{}, fmt.Errorf("tavily: marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.tavily.com/extract", bytes.NewReader(jsonBody))
+	if err != nil {
+		return core.ExtractResponse{}, fmt.Errorf("tavily: create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return core.ExtractResponse{}, fmt.Errorf("tavily: extract request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return core.ExtractResponse{}, fmt.Errorf("tavily: extract returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var tresp tavilyExtractResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tresp); err != nil {
+		return core.ExtractResponse{}, fmt.Errorf("tavily: decode response: %w", err)
+	}
+
+	content := ""
+	if len(tresp.Results) > 0 {
+		content = tresp.Results[0].RawContent
+	}
+
+	return core.ExtractResponse{
+		URL:      req.URL,
+		Provider: "tavily",
+		Content:  content,
+	}, nil
 }
 
 func (p Provider) Status(ctx context.Context) core.ProviderStatus {
-	return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: "adapter scaffolded; implementation pending"}
+	if p.apiKey == "" {
+		return core.ProviderStatus{
+			Name:         p.Name(),
+			Available:    false,
+			Capabilities: p.Capabilities(),
+			Reason:       "TAVILY_API_KEY not set",
+		}
+	}
+	return core.ProviderStatus{
+		Name:         p.Name(),
+		Available:    true,
+		Capabilities: p.Capabilities(),
+	}
 }

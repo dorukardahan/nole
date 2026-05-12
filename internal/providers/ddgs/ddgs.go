@@ -3,13 +3,25 @@ package ddgs
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
+	"time"
 
 	"github.com/dorukardahan/searchmcp/internal/core"
 )
 
-type Provider struct {}
+type Provider struct {
+	httpClient *http.Client
+}
 
-func New() Provider { return Provider{} }
+func New() Provider {
+	return Provider{
+		httpClient: &http.Client{Timeout: 20 * time.Second},
+	}
+}
 
 func (p Provider) Name() string { return "ddgs" }
 
@@ -17,20 +29,109 @@ func (p Provider) Capabilities() []core.Capability {
 	return []core.Capability{core.CapabilitySearch, core.CapabilityStatus}
 }
 
+var (
+	reResultLink   = regexp.MustCompile(`class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>`)
+	reResultSnippet = regexp.MustCompile(`class="result__snippet"[^>]*>(.*?)</a>`)
+	reStripTags     = regexp.MustCompile(`<[^>]+>`)
+	reHTMLEntity    = regexp.MustCompile(`&amp;`)
+)
+
 func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.SearchResponse, error) {
-	if !core.HasCapability(p.Capabilities(), core.CapabilitySearch) {
-		return core.SearchResponse{}, fmt.Errorf("provider %s does not support search", p.Name())
+	form := url.Values{}
+	form.Set("q", req.Query)
+	form.Set("b", "Web Search")
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://html.duckduckgo.com/html/", strings.NewReader(form.Encode()))
+	if err != nil {
+		return core.SearchResponse{}, fmt.Errorf("ddgs: create request: %w", err)
 	}
-	return core.SearchResponse{}, fmt.Errorf("provider %s search is not implemented yet", p.Name())
+	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	httpReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+
+	resp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return core.SearchResponse{}, fmt.Errorf("ddgs: search request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return core.SearchResponse{}, fmt.Errorf("ddgs: search returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return core.SearchResponse{}, fmt.Errorf("ddgs: read response: %w", err)
+	}
+	html := string(bodyBytes)
+
+	// Extract result links (skip ad links containing duckduckgo.com/y.js)
+	linkMatches := reResultLink.FindAllStringSubmatch(html, -1)
+	snippetMatches := reResultSnippet.FindAllStringSubmatch(html, -1)
+
+	results := make([]core.SearchResult, 0)
+	snippetIdx := 0
+
+	for _, match := range linkMatches {
+		href := match[1]
+		title := cleanHTML(match[2])
+
+		// Skip ad redirects
+		if strings.Contains(href, "duckduckgo.com/y.js") || strings.Contains(href, "bing.com/aclick") {
+			continue
+		}
+
+		snippet := ""
+		if snippetIdx < len(snippetMatches) {
+			snippet = cleanHTML(snippetMatches[snippetIdx][1])
+			snippetIdx++
+		}
+		if len(snippet) > 300 {
+			snippet = snippet[:300] + "..."
+		}
+
+		results = append(results, core.SearchResult{
+			Title:    title,
+			URL:      href,
+			Snippet:  snippet,
+			Provider: "ddgs",
+		})
+
+		if req.Limit > 0 && len(results) >= req.Limit {
+			break
+		}
+	}
+
+	return core.SearchResponse{
+		Query:    req.Query,
+		Task:     req.Task,
+		Provider: "ddgs",
+		Results:  results,
+	}, nil
 }
 
 func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
-	if !core.HasCapability(p.Capabilities(), core.CapabilityExtract) {
-		return core.ExtractResponse{}, fmt.Errorf("provider %s does not support extract", p.Name())
-	}
-	return core.ExtractResponse{}, fmt.Errorf("provider %s extract is not implemented yet", p.Name())
+	return core.ExtractResponse{}, fmt.Errorf("ddgs: extract not supported; use jina or firecrawl")
 }
 
 func (p Provider) Status(ctx context.Context) core.ProviderStatus {
-	return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: "adapter scaffolded; implementation pending"}
+	return core.ProviderStatus{
+		Name:         p.Name(),
+		Available:    true,
+		Capabilities: p.Capabilities(),
+	}
+}
+
+func cleanHTML(s string) string {
+	s = reStripTags.ReplaceAllString(s, "")
+	s = reHTMLEntity.ReplaceAllString(s, "&")
+	s = strings.TrimSpace(s)
+	// Decode common HTML entities
+	s = strings.ReplaceAll(s, "&#39;", "'")
+	s = strings.ReplaceAll(s, "&quot;", "\"")
+	s = strings.ReplaceAll(s, "&lt;", "<")
+	s = strings.ReplaceAll(s, "&gt;", ">")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "  ", " ")
+	return strings.TrimSpace(s)
 }
