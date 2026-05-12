@@ -2,44 +2,44 @@ package core
 
 import "testing"
 
-func TestRouterGeneralPrefersTavilyThenBraveThenFirecrawl(t *testing.T) {
+func TestRouterGeneralPrefersBraveThenFirecrawl(t *testing.T) {
 	registry := NewRegistry()
-	_ = registry.Register(fakeProvider{name: "tavily"})
 	_ = registry.Register(fakeProvider{name: "brave"})
 	_ = registry.Register(fakeProvider{name: "firecrawl"})
+	_ = registry.Register(fakeProvider{name: "tavily"})
 	_ = registry.Register(fakeProvider{name: "ddgs"})
 	ledger := NewMemoryQuotaLedger()
-	ledger.Set(QuotaEntry{Provider: "tavily", FreeRemaining: 1})
 	ledger.Set(QuotaEntry{Provider: "brave", FreeRemaining: 1})
 	ledger.Set(QuotaEntry{Provider: "firecrawl", FreeRemaining: 1})
+	ledger.Set(QuotaEntry{Provider: "tavily", FreeRemaining: 1})
 	ledger.Set(QuotaEntry{Provider: "ddgs", KeylessFree: true, Unknown: true})
 	router := NewRouter(registry, ledger, DefaultRouteMatrix())
 	provider, route, err := router.Select(TaskGeneral, CapabilitySearch)
 	if err != nil {
 		t.Fatalf("select failed: %v", err)
 	}
-	if provider.Name() != "tavily" {
-		t.Fatalf("expected tavily, got %q", provider.Name())
+	if provider.Name() != "brave" {
+		t.Fatalf("expected brave, got %q", provider.Name())
 	}
-	if len(route) == 0 || route[0] != "tavily" {
-		t.Fatalf("expected route to start with tavily, got %#v", route)
+	if len(route) == 0 || route[0] != "brave" {
+		t.Fatalf("expected route to start with brave, got %#v", route)
 	}
 }
 
 func TestRouterFallsBackWhenQuotaExhausted(t *testing.T) {
 	registry := NewRegistry()
-	_ = registry.Register(fakeProvider{name: "tavily"})
 	_ = registry.Register(fakeProvider{name: "brave"})
+	_ = registry.Register(fakeProvider{name: "firecrawl"})
 	ledger := NewMemoryQuotaLedger()
-	ledger.Set(QuotaEntry{Provider: "tavily", FreeRemaining: 0})
-	ledger.Set(QuotaEntry{Provider: "brave", FreeRemaining: 1})
+	ledger.Set(QuotaEntry{Provider: "brave", FreeRemaining: 0})
+	ledger.Set(QuotaEntry{Provider: "firecrawl", FreeRemaining: 1})
 	router := NewRouter(registry, ledger, DefaultRouteMatrix())
 	provider, _, err := router.Select(TaskGeneral, CapabilitySearch)
 	if err != nil {
 		t.Fatalf("select failed: %v", err)
 	}
-	if provider.Name() != "brave" {
-		t.Fatalf("expected brave fallback, got %q", provider.Name())
+	if provider.Name() != "firecrawl" {
+		t.Fatalf("expected firecrawl fallback, got %q", provider.Name())
 	}
 }
 
@@ -74,12 +74,14 @@ func TestRouterExtractPrefersTavilyThenFirecrawl(t *testing.T) {
 	}
 }
 
-func TestRouterNewsPrefersDDGS(t *testing.T) {
+func TestRouterNewsPrefersBrave(t *testing.T) {
 	registry := NewRegistry()
+	_ = registry.Register(fakeProvider{name: "brave"})
 	_ = registry.Register(fakeProvider{name: "ddgs"})
 	_ = registry.Register(fakeProvider{name: "firecrawl"})
 	_ = registry.Register(fakeProvider{name: "tavily"})
 	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "brave", FreeRemaining: 1})
 	ledger.Set(QuotaEntry{Provider: "ddgs", KeylessFree: true, Unknown: true})
 	ledger.Set(QuotaEntry{Provider: "firecrawl", FreeRemaining: 1})
 	ledger.Set(QuotaEntry{Provider: "tavily", FreeRemaining: 1})
@@ -88,7 +90,7 @@ func TestRouterNewsPrefersDDGS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("select failed: %v", err)
 	}
-	if provider.Name() != "ddgs" {
-		t.Fatalf("expected ddgs for news, got %q", provider.Name())
+	if provider.Name() != "brave" {
+		t.Fatalf("expected brave for news, got %q", provider.Name())
 	}
 }

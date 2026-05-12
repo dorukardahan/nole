@@ -106,14 +106,20 @@ def run_brave(query, env, timeout):
     key = env.get("BRAVE_SEARCH_API_KEY") or env.get("BRAVE_API_KEY")
     if not key:
         return {"error": "no key"}
+    import urllib.parse
+    encoded_query = urllib.parse.quote(query)
     cmd = [
         "curl", "-s", "--max-time", str(timeout),
-        f"https://api.search.brave.com/res/v1/web/search?q={query}&count=5",
+        f"https://api.search.brave.com/res/v1/web/search?q={encoded_query}&count=5",
         "-H", f"X-Subscription-Token: {key}",
         "-H", "Accept: application/json",
     ]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout+5)
+    if not out.stdout.strip():
+        raise ValueError(f"empty brave response: stderr={out.stderr[:120]}")
     d = json.loads(out.stdout)
+    if "error" in d:
+        raise ValueError(f"brave api error: {d['error']}")
     results = d.get("web", {}).get("results", [])
     return {
         "result_count": len(results),
