@@ -9,9 +9,12 @@ import (
 
 var lookupIP = net.LookupIP
 
-// ValidateURL checks that a URL is safe to fetch (no SSRF targets).
-// Blocks non-http(s) schemes, obvious local hostnames, loopback, private IPs,
-// link-local addresses, unspecified addresses, and cloud metadata IPs.
+// ValidateURL performs a local, best-effort URL preflight before Nólë asks a
+// provider to fetch a URL. It blocks non-http(s) schemes, obvious local
+// hostnames, loopback, private IPs, link-local addresses, multicast,
+// unspecified addresses, and cloud metadata IPs. This is not a complete SSRF
+// sandbox: remote providers resolve and fetch URLs from their own networks, so
+// split-horizon DNS or DNS rebinding can still differ from this local check.
 func ValidateURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -62,6 +65,9 @@ func validateIP(ip net.IP) error {
 	}
 	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return fmt.Errorf("link-local address %s is not allowed", ip)
+	}
+	if ip.IsMulticast() {
+		return fmt.Errorf("multicast address %s is not allowed", ip)
 	}
 	if ip.IsUnspecified() {
 		return fmt.Errorf("unspecified address %s is not allowed", ip)

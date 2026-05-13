@@ -122,6 +122,13 @@ func TestValidateIPRejectsUnspecified(t *testing.T) {
 	}
 }
 
+func TestValidateURLBlocksMulticastIP(t *testing.T) {
+	err := ValidateURL("http://239.1.2.3/stream")
+	if err == nil {
+		t.Fatal("expected multicast IP to be blocked")
+	}
+}
+
 func TestIsBlockedHost(t *testing.T) {
 	tests := []struct {
 		host    string

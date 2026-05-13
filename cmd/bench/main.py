@@ -4,7 +4,7 @@ nole provider benchmark runner.
 Tests all configured providers across 12 task categories.
 Outputs JSON results for routing matrix generation.
 """
-import json, time, sys, os, subprocess, statistics
+import json, time, sys, os, subprocess, statistics, urllib.request
 
 # Category -> list of test queries
 CATEGORIES = {
@@ -132,12 +132,15 @@ def run_tavily(query, env, timeout):
     key = env.get("TAVILY_API_KEY")
     if not key:
         return {"error": "no key"}
-    body = json.dumps({"query": query, "max_results": 5, "api_key": key, "search_depth": "basic"})
-    cmd = ["curl", "-s", "--max-time", str(timeout), "-X", "POST",
-           "https://api.tavily.com/search",
-           "-H", "Content-Type: application/json", "-d", body]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout+5)
-    d = json.loads(out.stdout)
+    body = json.dumps({"query": query, "max_results": 5, "api_key": key, "search_depth": "basic"}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.tavily.com/search",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        d = json.loads(resp.read().decode("utf-8"))
     results = d.get("results", [])
     return {
         "result_count": len(results),
