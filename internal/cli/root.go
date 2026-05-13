@@ -6,8 +6,8 @@ import (
 
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "searchmcp",
-		Short:         "BYOK free-tier search/retrieval router for AI agents",
+		Use:           "nole",
+		Short:         "Nólë: BYOK free-tier search/retrieval router for AI agents",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

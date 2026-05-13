@@ -10,8 +10,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/dorukardahan/searchmcp/internal/core"
-	"github.com/dorukardahan/searchmcp/internal/mcpserver"
+	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/mcpserver"
 	mcpgo "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -130,7 +130,7 @@ func (h *httpHandler) start(addr string) error {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 
-	fmt.Fprintf(os.Stderr, "searchmcp HTTP server ready on %s\n", addr)
+	fmt.Fprintf(os.Stderr, "nole HTTP server ready on %s\n", addr)
 	return h.server.Serve(listener)
 }
 

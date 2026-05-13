@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-searchmcp provider benchmark runner.
+nole provider benchmark runner.
 Tests all configured providers across 12 task categories.
 Outputs JSON results for routing matrix generation.
 """
@@ -59,7 +59,7 @@ CATEGORIES = {
 }
 
 def run_search(provider, query, timeout=15):
-    """Run a search via the searchmcp CLI or direct API."""
+    """Run a search via the nole CLI or direct API."""
     env = os.environ.copy()
     result = {
         "provider": provider,
@@ -73,7 +73,7 @@ def run_search(provider, query, timeout=15):
         "titles": [],
     }
 
-    # Use searchmcp CLI with forced provider
+    # Use nole CLI with forced provider
     # We'll use direct API calls per provider for more control
     start = time.time()
     try:

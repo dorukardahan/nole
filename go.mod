@@ -1,4 +1,4 @@
-module github.com/dorukardahan/searchmcp
+module github.com/dorukardahan/nole
 
 go 1.23.0
 

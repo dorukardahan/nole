@@ -18,7 +18,7 @@ func newServeCommand() *cobra.Command {
   --listen Bind address (default: 127.0.0.1:8765)
 
 This is an advanced surface for team/shared/remote usage.
-For local agent usage, prefer 'searchmcp mcp' (stdio).`,
+For local agent usage, prefer 'nole mcp' (stdio).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !mcp {
 				return fmt.Errorf("specify --mcp to enable MCP HTTP endpoint. REST API coming soon.")
@@ -30,7 +30,7 @@ For local agent usage, prefer 'searchmcp mcp' (stdio).`,
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "searchmcp serve: listening on %s\n", listen)
+			fmt.Fprintf(cmd.OutOrStdout(), "nole serve: listening on %s\n", listen)
 			fmt.Fprintf(cmd.OutOrStdout(), "  MCP endpoint: http://%s/mcp\n", listen)
 			fmt.Fprintf(cmd.OutOrStdout(), "  Health: http://%s/health\n", listen)
 			return handler.start(listen)

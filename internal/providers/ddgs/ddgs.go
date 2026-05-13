@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dorukardahan/searchmcp/internal/core"
+	"github.com/dorukardahan/nole/internal/core"
 )
 
 type Provider struct {

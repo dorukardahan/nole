@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/dorukardahan/searchmcp/internal/mcpserver"
+	"github.com/dorukardahan/nole/internal/mcpserver"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )

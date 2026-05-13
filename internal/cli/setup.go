@@ -19,7 +19,7 @@ func newSetupCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Configure AI agents to use searchmcp as MCP server",
+		Short: "Configure AI agents to use nole as MCP server",
 		Long:  "Writes MCP server configuration files for supported AI coding agents.\nSupports: --claude, --cursor, --codex, --opencode, --windsurf, or --all",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
@@ -31,7 +31,7 @@ func newSetupCommand() *cobra.Command {
 
 			binary, err := os.Executable()
 			if err != nil {
-				binary = "searchmcp"
+				binary = "nole"
 			}
 
 			// Resolve to absolute path
@@ -135,7 +135,7 @@ func writeWindsurfConfig(binary string) error {
 func writeMCPJSONConfig(path, binary string) error {
 	config := mcpConfig{
 		McpServers: map[string]mcpServerEntry{
-			"searchmcp": {
+			"nole": {
 				Command: binary,
 				Args:    []string{"mcp"},
 			},
@@ -155,7 +155,7 @@ func writeCodexConfig(binary string) error {
 	}
 
 	content := fmt.Sprintf(
-		"# searchmcp MCP server\n[mcp_servers.searchmcp]\ncommand = %q\nargs = [\"mcp\"]\n",
+		"# nole MCP server\n[mcp_servers.nole]\ncommand = %q\nargs = [\"mcp\"]\n",
 		binary,
 	)
 	return os.WriteFile(path, []byte(content), 0644)
@@ -172,7 +172,7 @@ func writeOpenCodeConfig(binary string) error {
 
 	config := openCodeConfig{
 		MCP: map[string]mcpServerEntry{
-			"searchmcp": {
+			"nole": {
 				Command: binary,
 				Args:    []string{"mcp"},
 			},

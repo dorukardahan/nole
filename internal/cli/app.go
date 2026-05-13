@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dorukardahan/searchmcp/internal/core"
-	"github.com/dorukardahan/searchmcp/internal/providers/brave"
-	"github.com/dorukardahan/searchmcp/internal/providers/ddgs"
-	"github.com/dorukardahan/searchmcp/internal/providers/firecrawl"
-	"github.com/dorukardahan/searchmcp/internal/providers/jina"
-	"github.com/dorukardahan/searchmcp/internal/providers/mock"
-	"github.com/dorukardahan/searchmcp/internal/providers/tavily"
+	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/brave"
+	"github.com/dorukardahan/nole/internal/providers/ddgs"
+	"github.com/dorukardahan/nole/internal/providers/firecrawl"
+	"github.com/dorukardahan/nole/internal/providers/jina"
+	"github.com/dorukardahan/nole/internal/providers/mock"
+	"github.com/dorukardahan/nole/internal/providers/tavily"
 )
 
 func defaultService() *core.Service {

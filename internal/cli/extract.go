@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dorukardahan/searchmcp/internal/core"
+	"github.com/dorukardahan/nole/internal/core"
 	"github.com/spf13/cobra"
 )
 

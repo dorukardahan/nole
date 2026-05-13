@@ -1,10 +1,10 @@
-# searchmcp
+# Nólë
 
-BYOK free-tier search/retrieval router for AI agents. Single Go binary, MCP stdio + CLI.
+Nólë (Quenya for "Deep Knowledge / Research") is an MCP server that orchestrates diverse search tools to perform deep, task-oriented internet research. It ships as a BYOK free-tier search/retrieval router for AI agents: single Go binary, MCP stdio + CLI.
 
 ## Why?
 
-AI coding agents (Claude Code, Cursor, Codex CLI, OpenCode, Windsurf) need web search and content extraction. Existing options are either paid-only, TypeScript-only, or use blind sequential fallback. searchmcp does **task-based routing** across free-tier providers with a $0 hard cap.
+AI coding agents (Claude Code, Cursor, Codex CLI, OpenCode, Windsurf) need web search and content extraction. Existing options are either paid-only, TypeScript-only, or use blind sequential fallback. Nólë does **task-based routing** across free-tier providers with a $0 hard cap.
 
 ## Providers
 
@@ -42,9 +42,9 @@ Unavailable providers (no API key) are skipped automatically.
 ## Install
 
 ```bash
-git clone https://github.com/dorukardahan/searchmcp.git
-cd searchmcp
-go build -o searchmcp .
+git clone https://github.com/dorukardahan/nole.git
+cd nole
+go build -o nole .
 ```
 
 ## Quick Start
@@ -57,32 +57,32 @@ export JINA_API_KEY=...
 export FIRECRAWL_API_KEY=...
 
 # 2. Verify
-searchmcp doctor
+nole doctor
 
 # 3. Search
-searchmcp search "Go MCP SDK" --task docs --json
+nole search "Go MCP SDK" --task docs --json
 
 # 4. Extract
-searchmcp extract "https://go.dev" --json
+nole extract "https://go.dev" --json
 
 # 5. Research (multi-step search + extract + synthesis)
-searchmcp research "What is MCP Model Context Protocol"
+nole research "What is MCP Model Context Protocol"
 
 # 6. Setup your agent
-searchmcp setup --all
+nole setup --all
 ```
 
 ## Commands
 
 ```
-searchmcp doctor              # Check config and provider health
-searchmcp providers --json    # List available providers
-searchmcp search <query>      # Search with task-based routing
-searchmcp extract <url>       # Extract clean content from URL
-searchmcp research <question> # Multi-step search + extract + synthesis
-searchmcp setup --all         # Configure AI agents
-searchmcp mcp                 # Start MCP stdio server
-searchmcp serve --mcp         # Start HTTP MCP + REST API server
+nole doctor              # Check config and provider health
+nole providers --json    # List available providers
+nole search <query>      # Search with task-based routing
+nole extract <url>       # Extract clean content from URL
+nole research <question> # Multi-step search + extract + synthesis
+nole setup --all         # Configure AI agents
+nole mcp                 # Start MCP stdio server
+nole serve --mcp         # Start HTTP MCP + REST API server
 ```
 
 ### Search Task Types
@@ -106,22 +106,22 @@ searchmcp serve --mcp         # Start HTTP MCP + REST API server
 One command configures all supported agents:
 
 ```bash
-searchmcp setup --all
+nole setup --all
 ```
 
 Or individually:
 
 ```bash
-searchmcp setup --claude    # ~/.claude/mcp.json
-searchmcp setup --cursor    # ~/.cursor/mcp.json
-searchmcp setup --codex     # ~/.codex/config.toml
-searchmcp setup --opencode  # ~/opencode.json
-searchmcp setup --windsurf  # ~/.codeium/windsurf/mcp_config.json
+nole setup --claude    # ~/.claude/mcp.json
+nole setup --cursor    # ~/.cursor/mcp.json
+nole setup --codex     # ~/.codex/config.toml
+nole setup --opencode  # ~/opencode.json
+nole setup --windsurf  # ~/.codeium/windsurf/mcp_config.json
 ```
 
 ## MCP Tools
 
-When running as an MCP server (`searchmcp mcp`), exposes:
+When running as an MCP server (`nole mcp`), exposes:
 
 - **search** -- query, task, limit
 - **extract** -- url, format

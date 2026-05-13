@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/dorukardahan/searchmcp/internal/cli"
+	"github.com/dorukardahan/nole/internal/cli"
 )
 
 func main() {
