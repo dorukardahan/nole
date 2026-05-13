@@ -1,19 +1,54 @@
 package safenet
 
 import (
+	"errors"
 	"net"
 	"testing"
 )
 
+func withLookupIP(t *testing.T, fn func(string) ([]net.IP, error)) {
+	t.Helper()
+	old := lookupIP
+	lookupIP = fn
+	t.Cleanup(func() { lookupIP = old })
+}
+
 func TestValidateURLAcceptsPublicHTTPS(t *testing.T) {
+	withLookupIP(t, func(host string) ([]net.IP, error) {
+		if host != "example.com" {
+			t.Fatalf("unexpected lookup host %q", host)
+		}
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	})
 	if err := ValidateURL("https://example.com/page"); err != nil {
 		t.Fatalf("expected public URL to be allowed: %v", err)
 	}
 }
 
 func TestValidateURLAcceptsPublicHTTP(t *testing.T) {
+	withLookupIP(t, func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	})
 	if err := ValidateURL("http://example.com"); err != nil {
 		t.Fatalf("expected public HTTP URL to be allowed: %v", err)
+	}
+}
+
+func TestValidateURLBlocksHostResolvingToPrivateIP(t *testing.T) {
+	withLookupIP(t, func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("10.0.0.10")}, nil
+	})
+	if err := ValidateURL("https://internal.example"); err == nil {
+		t.Fatal("expected hostname resolving to private IP to be blocked")
+	}
+}
+
+func TestValidateURLBlocksDNSFailures(t *testing.T) {
+	withLookupIP(t, func(host string) ([]net.IP, error) {
+		return nil, errors.New("no such host")
+	})
+	if err := ValidateURL("https://does-not-resolve.example"); err == nil {
+		t.Fatal("expected DNS failure to be blocked")
 	}
 }
 
@@ -89,11 +124,12 @@ func TestValidateIPRejectsUnspecified(t *testing.T) {
 
 func TestIsBlockedHost(t *testing.T) {
 	tests := []struct {
-		host     string
-		blocked  bool
+		host    string
+		blocked bool
 	}{
 		{"localhost", true},
 		{"LOCALHOST", true},
+		{"localhost.", true},
 		{"localhost.localdomain", true},
 		{"example.com", false},
 		{"", false},
