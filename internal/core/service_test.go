@@ -65,3 +65,26 @@ func TestServiceExtractUsesExtractRoute(t *testing.T) {
 		t.Fatalf("expected tavily, got %q", resp.Provider)
 	}
 }
+
+func TestServiceExtractBlocksSSRF(t *testing.T) {
+	registry := NewRegistry()
+	_ = registry.Register(fakeProvider{name: "tavily"})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "tavily", FreeRemaining: 1})
+	service := NewService(registry, ledger, DefaultRouteMatrix())
+
+	blockedURLs := []string{
+		"http://localhost:8080/secret",
+		"http://127.0.0.1/admin",
+		"http://10.0.0.1/internal",
+		"http://192.168.1.1/router",
+		"http://169.254.169.254/metadata",
+		"file:///etc/passwd",
+	}
+	for _, u := range blockedURLs {
+		_, err := service.Extract(context.Background(), ExtractRequest{URL: u})
+		if err == nil {
+			t.Errorf("expected SSRF URL %q to be blocked", u)
+		}
+	}
+}

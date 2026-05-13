@@ -1,6 +1,11 @@
 package core
 
-import "context"
+import (
+	"context"
+	"fmt"
+
+	"github.com/dorukardahan/nole/internal/safenet"
+)
 
 type Service struct {
 	registry *Registry
@@ -48,6 +53,9 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 }
 
 func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResponse, error) {
+	if err := safenet.ValidateURL(req.URL); err != nil {
+		return ExtractResponse{}, fmt.Errorf("url validation: %w", err)
+	}
 	route := s.router.matrix[TaskExtract]
 	var lastErr error
 	for _, name := range route {
