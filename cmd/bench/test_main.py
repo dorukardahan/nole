@@ -24,33 +24,105 @@ class FakeHTTPResponse:
         return json.dumps(self.payload).encode("utf-8")
 
 
-class TavilyBenchmarkSecretHandlingTest(unittest.TestCase):
-    def test_tavily_api_key_is_not_passed_in_process_argv(self):
+def request_header(req, name):
+    return dict(req.header_items()).get(name)
+
+
+class BenchmarkSecretHandlingTest(unittest.TestCase):
+    def assert_provider_uses_urlopen_without_subprocess(self, call, payload):
         captured = {}
 
         def fake_urlopen(req, timeout):
             captured["request"] = req
             captured["timeout"] = timeout
-            return FakeHTTPResponse({
-                "results": [
-                    {"title": "Nólë", "url": "https://example.com", "content": "deep research"}
-                ]
-            })
+            return FakeHTTPResponse(payload)
 
         with mock.patch.object(bench_main.subprocess, "run") as run_mock, \
              mock.patch.object(bench_main.urllib.request, "urlopen", side_effect=fake_urlopen):
-            result = bench_main.run_tavily(
-                "nole research",
-                {"TAVILY_API_KEY": "tavily-secret-value"},
-                timeout=3,
-            )
+            result = call()
 
         run_mock.assert_not_called()
         self.assertEqual(result["result_count"], 1)
         self.assertEqual(captured["timeout"], 3)
-        self.assertEqual(captured["request"].full_url, "https://api.tavily.com/search")
-        self.assertEqual(captured["request"].method, "POST")
-        self.assertIn(b"tavily-secret-value", captured["request"].data)
+        return captured["request"]
+
+    def test_tavily_api_key_is_not_passed_in_process_argv(self):
+        req = self.assert_provider_uses_urlopen_without_subprocess(
+            lambda: bench_main.run_tavily(
+                "nole research",
+                {"TAVILY_API_KEY": "tavily-secret-value"},
+                timeout=3,
+            ),
+            {
+                "results": [
+                    {"title": "Nólë", "url": "https://example.com", "content": "deep research"}
+                ]
+            },
+        )
+
+        self.assertEqual(req.full_url, "https://api.tavily.com/search")
+        self.assertEqual(req.method, "POST")
+        self.assertIn(b"tavily-secret-value", req.data)
+
+    def test_brave_api_key_is_not_passed_in_process_argv(self):
+        req = self.assert_provider_uses_urlopen_without_subprocess(
+            lambda: bench_main.run_brave(
+                "nole research",
+                {"BRAVE_SEARCH_API_KEY": "brave-secret-value"},
+                timeout=3,
+            ),
+            {
+                "web": {
+                    "results": [
+                        {"title": "Nólë", "url": "https://example.com", "description": "deep research"}
+                    ]
+                }
+            },
+        )
+
+        self.assertEqual(req.full_url, "https://api.search.brave.com/res/v1/web/search?q=nole%20research&count=5")
+        self.assertEqual(req.method, "GET")
+        self.assertEqual(request_header(req, "X-subscription-token"), "brave-secret-value")
+
+    def test_jina_api_key_is_not_passed_in_process_argv(self):
+        req = self.assert_provider_uses_urlopen_without_subprocess(
+            lambda: bench_main.run_jina_search(
+                "nole research",
+                {"JINA_API_KEY": "jina-secret-value"},
+                timeout=3,
+            ),
+            {
+                "data": [
+                    {"title": "Nólë", "url": "https://example.com", "description": "deep research"}
+                ]
+            },
+        )
+
+        self.assertEqual(req.full_url, "https://s.jina.ai/")
+        self.assertEqual(req.method, "POST")
+        self.assertEqual(request_header(req, "Authorization"), "Bearer jina-secret-value")
+        self.assertNotIn(b"jina-secret-value", req.data or b"")
+
+    def test_firecrawl_api_key_is_not_passed_in_process_argv(self):
+        req = self.assert_provider_uses_urlopen_without_subprocess(
+            lambda: bench_main.run_firecrawl_search(
+                "nole research",
+                {"FIRECRAWL_API_KEY": "firecrawl-secret-value"},
+                timeout=3,
+            ),
+            {
+                "data": {
+                    "web": [
+                        {"title": "Nólë", "url": "https://example.com", "description": "deep research"}
+                    ]
+                }
+            },
+        )
+
+        self.assertEqual(req.full_url, "https://api.firecrawl.dev/v2/search")
+        self.assertEqual(req.method, "POST")
+        self.assertEqual(request_header(req, "Authorization"), "Bearer firecrawl-secret-value")
+        self.assertNotIn(b"firecrawl-secret-value", req.data or b"")
 
 
 if __name__ == "__main__":

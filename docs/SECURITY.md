@@ -8,4 +8,4 @@ This is a risk-reduction layer, not a complete SSRF sandbox. Extraction provider
 
 ## Benchmark credentials
 
-Benchmark helpers must not put real API keys in process arguments. Prefer Python stdlib HTTP requests or stdin-based request bodies over `curl -d <body-with-secret>` so process listings and shell telemetry do not expose provider keys.
+Benchmark helpers must not put real API keys in process arguments. Provider benchmark calls use Python stdlib HTTP requests so keys are added in-process to request headers or bodies instead of `curl` argv, reducing exposure through process listings and shell telemetry. This does not change provider-side network behavior or provider-side credential handling; keep benchmark keys least-privileged and local.
