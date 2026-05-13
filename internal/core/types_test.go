@@ -35,6 +35,36 @@ func TestTaskConstants(t *testing.T) {
 	}
 }
 
+func TestTaskTypesReturnsAll(t *testing.T) {
+	types := TaskTypes()
+	if len(types) != 12 {
+		t.Fatalf("expected 12 task types, got %d", len(types))
+	}
+	seen := map[TaskType]bool{}
+	for _, tt := range types {
+		if seen[tt] {
+			t.Fatalf("duplicate task type %q", tt)
+		}
+		seen[tt] = true
+	}
+}
+
+func TestTaskDescriptionKnownTypes(t *testing.T) {
+	for _, tt := range TaskTypes() {
+		desc := TaskDescription(tt)
+		if desc == "" || desc == "unknown task type" {
+			t.Errorf("expected meaningful description for %q, got %q", tt, desc)
+		}
+	}
+}
+
+func TestTaskDescriptionUnknownType(t *testing.T) {
+	desc := TaskDescription(TaskType("nonexistent"))
+	if desc != "unknown task type" {
+		t.Errorf("expected unknown task type, got %q", desc)
+	}
+}
+
 func TestProviderInterface(t *testing.T) {
 	var p Provider = fakeProvider{name: "fake"}
 	if p.Name() != "fake" {

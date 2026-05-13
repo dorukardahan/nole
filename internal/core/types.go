@@ -88,3 +88,44 @@ func HasCapability(caps []Capability, want Capability) bool {
 	}
 	return false
 }
+
+// TaskTypes returns all defined task types in canonical order.
+func TaskTypes() []TaskType {
+	return []TaskType{
+		TaskGeneral, TaskNews, TaskDocs, TaskAcademic, TaskFactcheck,
+		TaskSemantic, TaskCode, TaskSocial, TaskPeople, TaskPricing,
+		TaskExtract, TaskResearch,
+	}
+}
+
+// TaskDescription returns a one-line description for a task type.
+func TaskDescription(t TaskType) string {
+	switch t {
+	case TaskGeneral:
+		return "broad web search"
+	case TaskNews:
+		return "current events and headlines"
+	case TaskDocs:
+		return "technical documentation lookup"
+	case TaskAcademic:
+		return "papers and scholarly research"
+	case TaskFactcheck:
+		return "fact verification queries"
+	case TaskSemantic:
+		return "conceptual and similarity searches"
+	case TaskCode:
+		return "code and implementation examples"
+	case TaskSocial:
+		return "forum and community discussions"
+	case TaskPeople:
+		return "people and biography lookups"
+	case TaskPricing:
+		return "product and service pricing"
+	case TaskExtract:
+		return "URL content extraction"
+	case TaskResearch:
+		return "deep multi-source research"
+	default:
+		return "unknown task type"
+	}
+}

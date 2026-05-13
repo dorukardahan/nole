@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/dorukardahan/nole/internal/core"
 	"github.com/spf13/cobra"
 )
 
@@ -28,8 +30,19 @@ func newSearchCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&taskRaw, "task", "general", "task type: general, news, docs, research")
+	cmd.Flags().StringVar(&taskRaw, "task", "general", taskHelpText())
 	cmd.Flags().IntVar(&limit, "limit", 5, "maximum results")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output JSON")
 	return cmd
+}
+
+func taskHelpText() string {
+	parts := make([]string, 0, len(core.TaskTypes()))
+	for _, t := range core.TaskTypes() {
+		if t == core.TaskExtract {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s)", string(t), core.TaskDescription(t)))
+	}
+	return "task type: " + strings.Join(parts, ", ")
 }

@@ -3,6 +3,8 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -10,11 +12,12 @@ import (
 )
 
 func RegisterTools(s *server.MCPServer, svc *core.Service) {
+	taskDesc := buildTaskDescription()
 	searchTool := mcp.NewTool(
 		"search",
 		mcp.WithDescription("Search the web using free-tier task-based routing"),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Search query")),
-		mcp.WithString("task", mcp.Description("Task type: general, news, docs, research")),
+		mcp.WithString("task", mcp.Description(taskDesc)),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results")),
 	)
 	s.AddTool(searchTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -75,4 +78,16 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		}
 		return mcp.NewToolResultText(string(b)), nil
 	})
+}
+
+// buildTaskDescription generates the task parameter description from the canonical task list.
+func buildTaskDescription() string {
+	parts := make([]string, 0, len(core.TaskTypes()))
+	for _, t := range core.TaskTypes() {
+		if t == core.TaskExtract {
+			continue // extract is not a search task
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s)", string(t), core.TaskDescription(t)))
+	}
+	return "Task type: " + strings.Join(parts, ", ")
 }
