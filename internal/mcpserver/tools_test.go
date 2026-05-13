@@ -35,3 +35,15 @@ func TestBuildTaskDescriptionHasDescriptions(t *testing.T) {
 		t.Errorf("task description missing later tasks: %s", desc)
 	}
 }
+
+func TestToolDescriptionsSupportAgentIntentMatching(t *testing.T) {
+	if !strings.Contains(searchToolDescription, "internet research") {
+		t.Fatalf("search description should mention internet research: %s", searchToolDescription)
+	}
+	if !strings.Contains(searchToolDescription, "current information") {
+		t.Fatalf("search description should mention current information: %s", searchToolDescription)
+	}
+	if !strings.Contains(extractToolDescription, "web page") {
+		t.Fatalf("extract description should mention web page use: %s", extractToolDescription)
+	}
+}

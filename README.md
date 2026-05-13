@@ -4,7 +4,7 @@ Nólë (Quenya for "Deep Knowledge / Research") is an MCP server that orchestrat
 
 ## Why?
 
-AI coding agents (Claude Code, Cursor, Codex CLI, OpenCode, Windsurf) need web search and content extraction. Existing options are either paid-only, TypeScript-only, or use blind sequential fallback. Nólë does **task-based routing** across free-tier providers with a $0 hard cap.
+AI coding agents (Claude Code, Cursor, Codex CLI, OpenCode, Windsurf, Hermes, OpenClaw, Kimi CLI, and other MCP clients) need web search and content extraction. Existing options are either paid-only, TypeScript-only, or use blind sequential fallback. Nólë does **task-based routing** across free-tier providers with a $0 hard cap.
 
 ## Providers
 
@@ -103,7 +103,7 @@ nole serve --mcp         # Start HTTP MCP + REST API server
 
 ## Agent Setup
 
-One command configures all supported agents:
+One command configures the MCP clients that Nólë can currently write safely:
 
 ```bash
 nole setup --all
@@ -119,12 +119,33 @@ nole setup --opencode  # ~/opencode.json
 nole setup --windsurf  # ~/.codeium/windsurf/mcp_config.json
 ```
 
+For Hermes, OpenClaw, Kimi CLI, or any generic MCP client, add an MCP server named `nole` that runs the local binary with `mcp` as its argument:
+
+```json
+{
+  "mcpServers": {
+    "nole": {
+      "command": "/absolute/path/to/nole",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Client config formats vary, but the server command is always the same: `nole mcp` over stdio. Start the client from an environment that contains any provider keys you want to use, or configure those keys in the client-specific MCP env block if supported.
+
+### Will agents use Nólë automatically?
+
+Usually yes after the MCP server is installed and enabled: agents see `search` for public web/current information/docs/fact-checking/code/pricing/source discovery and `extract` for reading public web pages. The user should not need to say "use Nólë" if their client automatically exposes MCP tools and allows the model to choose tools for web research.
+
+Auto-use is still client-dependent. Some clients require MCP servers to be enabled per workspace, restarted after config changes, or approved before tool calls. If an agent is not selecting Nólë on its own, ask it to "use the search tool" once, check `nole doctor`, and verify the MCP server appears in the client's tool list.
+
 ## MCP Tools
 
 When running as an MCP server (`nole mcp`), exposes:
 
-- **search** -- query, task, limit
-- **extract** -- url, format
+- **search** -- public web/current information/docs/fact-checking/code/pricing/source discovery (`query`, optional `task`, optional `limit`)
+- **extract** -- clean readable content from a public web page URL (`url`, optional `format`)
 - **provider_status** -- which providers are available
 - **budget_status** -- quota usage
 
@@ -147,7 +168,7 @@ internal/
 ## Security
 
 - API keys are read from environment variables only. Never stored or logged.
-- `$0.00 hard cap`: no paid requests are ever made. If no free route exists, returns a structured error.
+- `$0.00 local hard cap`: Nólë only routes through configured free-tier/keyless entries and returns a structured error when no free route is locally allowed. Provider-side overage controls still depend on your BYOK account settings; configure providers to disable paid overage where available.
 - MCP stdio mode keeps stdout clean for JSON-RPC; all logs go to stderr.
 - No telemetry, no tracking, no external data collection.
 

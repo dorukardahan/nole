@@ -11,14 +11,19 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+const (
+	searchToolDescription  = "Search the public web for internet research, current information, technical docs, news, fact-checking, code examples, pricing, people/company lookups, or deep-research source discovery using free-tier task-based provider routing."
+	extractToolDescription = "Extract clean readable content from a public web page URL for summarization, citation, documentation lookup, or research context using free-tier routing with local URL safety preflight."
+)
+
 func RegisterTools(s *server.MCPServer, svc *core.Service) {
 	taskDesc := buildTaskDescription()
 	searchTool := mcp.NewTool(
 		"search",
-		mcp.WithDescription("Search the web using free-tier task-based routing"),
-		mcp.WithString("query", mcp.Required(), mcp.Description("Search query")),
+		mcp.WithDescription(searchToolDescription),
+		mcp.WithString("query", mcp.Required(), mcp.Description("Natural-language web search or internet research query")),
 		mcp.WithString("task", mcp.Description(taskDesc)),
-		mcp.WithNumber("limit", mcp.Description("Maximum number of results")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of search results to return")),
 	)
 	s.AddTool(searchTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		query, err := req.RequireString("query")
@@ -40,9 +45,9 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 
 	extractTool := mcp.NewTool(
 		"extract",
-		mcp.WithDescription("Extract clean content from a URL using free-tier routing"),
-		mcp.WithString("url", mcp.Required(), mcp.Description("URL to extract")),
-		mcp.WithString("format", mcp.Description("Output format")),
+		mcp.WithDescription(extractToolDescription),
+		mcp.WithString("url", mcp.Required(), mcp.Description("Public http(s) web page URL to read and extract")),
+		mcp.WithString("format", mcp.Description("Output format, default markdown")),
 	)
 	s.AddTool(extractTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		url, err := req.RequireString("url")
