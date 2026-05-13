@@ -225,8 +225,8 @@ def score_result(result):
 def main():
     providers = ["brave", "tavily", "jina", "firecrawl", "ddgs"]
     
-    # Load env from optional env file (--env flag or SEARCHMCP_ENV)
-    env_path = os.environ.get("SEARCHMCP_ENV", "")
+    # Load env from optional env file (--env flag or NOLE_ENV)
+    env_path = os.environ.get("NOLE_ENV", os.environ.get("SEARCHMCP_ENV", ""))
     if not env_path and len(sys.argv) > 1:
         for i, arg in enumerate(sys.argv):
             if arg == "--env" and i + 1 < len(sys.argv):
