@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -83,11 +84,12 @@ func newSetupCommand() *cobra.Command {
 				}
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "\n%d agent(s) configured. Set env vars before starting:\n", configured)
+			fmt.Fprintf(cmd.OutOrStdout(), "\n%d agent(s) configured. Set provider keys before starting:\n", configured)
 			fmt.Fprintln(cmd.OutOrStdout(), "  export JINA_API_KEY=...")
 			fmt.Fprintln(cmd.OutOrStdout(), "  export FIRECRAWL_API_KEY=...")
-			fmt.Fprintln(cmd.OutOrStdout(), "  export BRAVE_API_KEY=...")
+			fmt.Fprintln(cmd.OutOrStdout(), "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
 			fmt.Fprintln(cmd.OutOrStdout(), "  export TAVILY_API_KEY=...")
+			fmt.Fprintln(cmd.OutOrStdout(), "  Or store them in ~/.config/nole/.env; Codex setup sources that file without putting secrets in config.toml.")
 			return nil
 		},
 	}
@@ -133,13 +135,18 @@ func writeWindsurfConfig(binary string) error {
 }
 
 func writeMCPJSONConfig(path, binary string) error {
-	config := mcpConfig{
-		McpServers: map[string]mcpServerEntry{
-			"nole": {
-				Command: binary,
-				Args:    []string{"mcp"},
-			},
-		},
+	config := mcpConfig{McpServers: map[string]mcpServerEntry{}}
+	if existing, err := os.ReadFile(path); err == nil && len(existing) > 0 {
+		_ = json.Unmarshal(existing, &config)
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read existing config: %w", err)
+	}
+	if config.McpServers == nil {
+		config.McpServers = map[string]mcpServerEntry{}
+	}
+	config.McpServers["nole"] = mcpServerEntry{
+		Command: binary,
+		Args:    []string{"mcp"},
 	}
 
 	return writeJSONConfig(path, config)
@@ -154,11 +161,44 @@ func writeCodexConfig(binary string) error {
 		return fmt.Errorf("create dir: %w", err)
 	}
 
-	content := fmt.Sprintf(
-		"# nole MCP server\n[mcp_servers.nole]\ncommand = %q\nargs = [\"mcp\"]\n",
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read existing config: %w", err)
+	}
+
+	launch := fmt.Sprintf(
+		`set -a; [ -f "$HOME/.config/nole/.env" ] && . "$HOME/.config/nole/.env"; set +a; exec %q mcp`,
 		binary,
 	)
+	block := fmt.Sprintf(
+		"# nole MCP server\n[mcp_servers.nole]\ncommand = \"/bin/sh\"\nargs = [\"-lc\", %q]\n",
+		launch,
+	)
+	content := upsertCodexTomlTable(string(existing), "mcp_servers.nole", block)
 	return os.WriteFile(path, []byte(content), 0644)
+}
+
+func upsertCodexTomlTable(existing string, table string, block string) string {
+	lines := strings.Split(existing, "\n")
+	var kept []string
+	skipping := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			header := strings.Trim(trimmed, "[]")
+			skipping = header == table || strings.HasPrefix(header, table+".")
+		}
+		if !skipping {
+			kept = append(kept, line)
+		}
+	}
+
+	preserved := strings.TrimRight(strings.Join(kept, "\n"), "\n")
+	if preserved != "" {
+		preserved += "\n\n"
+	}
+	return preserved + strings.TrimRight(block, "\n") + "\n"
 }
 
 func writeOpenCodeConfig(binary string) error {
