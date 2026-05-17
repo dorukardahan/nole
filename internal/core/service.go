@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/dorukardahan/nole/internal/safenet"
 )
@@ -22,21 +23,36 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		req.Task = TaskGeneral
 	}
 	var lastErr error
-	route := s.router.matrix[req.Task]
-	if len(route) == 0 {
-		route = s.router.matrix[TaskGeneral]
-	}
+	route := s.routeFor(req.Task)
+	trace := make([]RouteAttempt, 0, len(route))
 	for _, name := range route {
 		provider, ok := s.registry.Get(name)
-		if !ok || !HasCapability(provider.Capabilities(), CapabilitySearch) || !s.ledger.Allow(name) {
+		if !ok {
+			trace = append(trace, skippedAttempt(name, "not_registered"))
+			continue
+		}
+		if !HasCapability(provider.Capabilities(), CapabilitySearch) {
+			trace = append(trace, skippedAttempt(name, "missing_search_capability"))
+			continue
+		}
+		if !s.ledger.Allow(name) {
+			trace = append(trace, skippedAttempt(name, "quota_blocked"))
 			continue
 		}
 		if status := provider.Status(ctx); !status.Available {
+			reason := status.Reason
+			if reason == "" {
+				reason = "provider_unavailable"
+			}
+			trace = append(trace, skippedAttempt(name, reason))
 			continue
 		}
+		start := time.Now()
 		resp, err := provider.Search(ctx, req)
+		latency := time.Since(start).Milliseconds()
 		if err != nil {
 			lastErr = err
+			trace = append(trace, RouteAttempt{Provider: name, Status: "failed", Reason: "provider_error", LatencyMS: latency})
 			continue
 		}
 		_ = s.ledger.Record(name)
@@ -44,42 +60,65 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		resp.Task = req.Task
 		resp.Provider = provider.Name()
 		resp.Route = append([]string(nil), route...)
+		trace = append(trace, RouteAttempt{Provider: name, Status: "success", Reason: "success", LatencyMS: latency, ResultCount: len(resp.Results)})
+		resp.RouteTrace = trace
 		return resp, nil
 	}
 	if lastErr != nil {
-		return SearchResponse{}, lastErr
+		return SearchResponse{Route: append([]string(nil), route...), RouteTrace: trace}, lastErr
 	}
-	return SearchResponse{}, NoFreeQuotaError{Task: req.Task, Provider: route}
+	return SearchResponse{Route: append([]string(nil), route...), RouteTrace: trace}, NoFreeQuotaError{Task: req.Task, Provider: route}
 }
 
 func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResponse, error) {
 	if err := safenet.ValidateURL(req.URL); err != nil {
 		return ExtractResponse{}, fmt.Errorf("url validation: %w", err)
 	}
-	route := s.router.matrix[TaskExtract]
+	route := s.routeFor(TaskExtract)
+	trace := make([]RouteAttempt, 0, len(route))
 	var lastErr error
 	for _, name := range route {
 		provider, ok := s.registry.Get(name)
-		if !ok || !HasCapability(provider.Capabilities(), CapabilityExtract) || !s.ledger.Allow(name) {
+		if !ok {
+			trace = append(trace, skippedAttempt(name, "not_registered"))
+			continue
+		}
+		if !HasCapability(provider.Capabilities(), CapabilityExtract) {
+			trace = append(trace, skippedAttempt(name, "missing_extract_capability"))
+			continue
+		}
+		if !s.ledger.Allow(name) {
+			trace = append(trace, skippedAttempt(name, "quota_blocked"))
 			continue
 		}
 		if status := provider.Status(ctx); !status.Available {
+			reason := status.Reason
+			if reason == "" {
+				reason = "provider_unavailable"
+			}
+			trace = append(trace, skippedAttempt(name, reason))
 			continue
 		}
+		start := time.Now()
 		resp, err := provider.Extract(ctx, req)
+		latency := time.Since(start).Milliseconds()
 		if err != nil {
 			lastErr = err
+			trace = append(trace, RouteAttempt{Provider: name, Status: "failed", Reason: "provider_error", LatencyMS: latency})
 			continue
 		}
 		_ = s.ledger.Record(name)
 		resp.URL = req.URL
 		resp.Provider = provider.Name()
+		resp.Route = append([]string(nil), route...)
+		trace = append(trace, RouteAttempt{Provider: name, Status: "success", Reason: "success", LatencyMS: latency, ResultCount: contentResultCount(resp.Content)})
+		resp.RouteTrace = trace
 		return resp, nil
 	}
 	if lastErr != nil {
-		return ExtractResponse{}, lastErr
+		return ExtractResponse{URL: req.URL, Route: append([]string(nil), route...), RouteTrace: trace}, lastErr
 	}
-	return ExtractResponse{}, NoFreeQuotaError{Task: TaskExtract, Provider: route}
+	return ExtractResponse{URL: req.URL, Route: append([]string(nil), route...), RouteTrace: trace}, NoFreeQuotaError{Task: TaskExtract, Provider: route}
 }
 
 func (s *Service) ProviderStatus(ctx context.Context) []ProviderStatus {
@@ -93,4 +132,23 @@ func (s *Service) ProviderStatus(ctx context.Context) []ProviderStatus {
 
 func (s *Service) BudgetStatus() BudgetStatus {
 	return BudgetStatus{HardCapCents: 0, Entries: s.ledger.Entries()}
+}
+
+func (s *Service) routeFor(task TaskType) []string {
+	route := s.router.matrix[task]
+	if len(route) == 0 {
+		route = s.router.matrix[TaskGeneral]
+	}
+	return route
+}
+
+func skippedAttempt(provider, reason string) RouteAttempt {
+	return RouteAttempt{Provider: provider, Status: "skipped", Reason: reason}
+}
+
+func contentResultCount(content string) int {
+	if content == "" {
+		return 0
+	}
+	return 1
 }

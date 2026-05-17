@@ -4,7 +4,7 @@ Nólë (Quenya for "Deep Knowledge / Research") is an MCP server that orchestrat
 
 ## Why?
 
-AI coding agents (Claude Code, Cursor, Codex CLI, OpenCode, Windsurf, Hermes, OpenClaw, Kimi CLI, and other MCP clients) need web search and content extraction. Existing options are either paid-only, TypeScript-only, or use blind sequential fallback. Nólë does **task-based routing** across free-tier providers with a $0 hard cap.
+AI coding agents (Claude Code, Cursor, Codex CLI, OpenCode, Windsurf, Hermes, OpenClaw, Kimi CLI, and other MCP clients) need web search and content extraction. Nólë is not trying to replace any single model or CLI native browser; it provides a shared, measurable BYOK/free-tier research layer that agents can use through MCP or the CLI. Existing options are often paid-only, runtime-specific, or use blind sequential fallback. Nólë does **task-based routing** across free-tier providers with a $0 hard cap.
 
 ## Providers
 
@@ -20,7 +20,7 @@ All providers are optional. Set only the keys you have. DDGS works with zero con
 
 ## Routing
 
-Task types route to the best available provider based on benchmark testing:
+Task types route to the best available provider from the current route matrix. Route changes should be evidence-backed by offline fixtures and/or explicit low-limit live benchmarks; this hardening pass keeps the existing matrix unchanged because it adds measurement infrastructure rather than new live provider evidence:
 
 | Task | Route |
 |------|-------|
@@ -37,7 +37,24 @@ Task types route to the best available provider based on benchmark testing:
 | research | brave -> firecrawl -> ddgs -> tavily -> jina |
 | extract | tavily -> firecrawl -> jina |
 
-Unavailable providers (no API key) are skipped automatically.
+Unavailable providers (no API key), quota-blocked providers, and providers without the requested capability are skipped automatically. Search and extract responses include a `route_trace` with provider, status, reason, latency, and result count so agents can explain why a provider was selected or skipped.
+
+## Benchmark / Eval
+
+Nólë includes a deterministic offline benchmark harness for routing and failure-mode evaluation. Offline mode is the default and makes no provider network calls.
+
+```bash
+nole bench
+nole bench --json
+```
+
+Optional live smoke benchmarks require an explicit flag and use a low default case limit:
+
+```bash
+nole bench --live --max-live-cases 3
+```
+
+Do not commit raw live benchmark logs. If live runs are used to justify route changes, publish only sanitized summaries such as success counts, latency ranges, result counts, citation/source quality notes, and the fixture version.
 
 ## Install
 
@@ -58,17 +75,21 @@ export FIRECRAWL_API_KEY=...
 
 # 2. Verify
 nole doctor
+nole doctor --mcp
 
-# 3. Search
+# 3. Run the offline eval harness
+nole bench --json
+
+# 4. Search
 nole search "Go MCP SDK" --task docs --json
 
-# 4. Extract
+# 5. Extract
 nole extract "https://go.dev" --json
 
-# 5. Research (multi-step search + extract + synthesis)
+# 6. Research (multi-step search + extract + synthesis)
 nole research "What is MCP Model Context Protocol"
 
-# 6. Setup your agent
+# 7. Setup your agent
 nole setup --all
 ```
 
@@ -76,7 +97,9 @@ nole setup --all
 
 ```
 nole doctor              # Check config and provider health
+nole doctor --mcp        # Also check MCP stdio startup/stdout health
 nole providers --json    # List available providers
+nole bench [--json]      # Run deterministic offline eval fixtures
 nole search <query>      # Search with task-based routing
 nole extract <url>       # Extract clean content from URL
 nole research <question> # Multi-step search + extract + synthesis
@@ -103,7 +126,7 @@ nole serve --mcp         # Start HTTP MCP + REST API server
 
 ## Agent Setup
 
-One command configures the MCP clients that Nólë can currently write safely:
+One command configures the MCP clients that Nólë can currently write safely. Existing config files are merged rather than clobbered; when a file already exists, Nólë writes a `.bak` backup before updating the `nole` server entry.
 
 ```bash
 nole setup --all
@@ -140,6 +163,13 @@ Usually yes after the MCP server is installed and enabled: agents see `search` f
 
 Auto-use is still client-dependent. Some clients require MCP servers to be enabled per workspace, restarted after config changes, or approved before tool calls. If an agent is not selecting Nólë on its own, ask it to "use the search tool" once, check `nole doctor`, and verify the MCP server appears in the client's tool list.
 
+## Observability and failure handling
+
+- Search and extract responses include `route_trace` entries with selected provider, skip/fallback reason, provider latency, and result count.
+- Transient provider responses (`429`, `502`, `503`, `504`) use bounded retry/backoff and respect `Retry-After` when present.
+- Retries are intentionally low and configurable; Nólë never retries forever.
+- MCP stdio keeps stdout reserved for JSON-RPC protocol. Run `nole doctor --mcp` to smoke-check startup stdout cleanliness.
+
 ## MCP Tools
 
 When running as an MCP server (`nole mcp`), exposes:
@@ -154,7 +184,8 @@ When running as an MCP server (`nole mcp`), exposes:
 ```
 internal/
   core/        -- types, registry, router, service, quota, errors
-  cli/         -- cobra commands: search, extract, research, providers, doctor, setup, mcp, serve
+  bench/       -- deterministic offline benchmark/eval fixtures and scoring
+  cli/         -- cobra commands: search, extract, research, providers, bench, doctor, setup, mcp, serve
   mcpserver/   -- MCP stdio server using mark3labs/mcp-go
   providers/
     brave/     -- Brave Web Search API
@@ -163,13 +194,14 @@ internal/
     firecrawl/ -- Firecrawl /v2/search + /v2/scrape
     ddgs/      -- DuckDuckGo HTML scraping (keyless)
     mock/      -- Deterministic mock for testing
+    providerhttp/ -- bounded retry/backoff helper for transient HTTP failures
 ```
 
 ## Security
 
 - API keys are read from environment variables only. Never stored or logged.
 - `$0.00 local hard cap`: Nólë only routes through configured free-tier/keyless entries and returns a structured error when no free route is locally allowed. Provider-side overage controls still depend on your BYOK account settings; configure providers to disable paid overage where available.
-- MCP stdio mode keeps stdout clean for JSON-RPC; all logs go to stderr.
+- MCP stdio mode keeps stdout clean for JSON-RPC; all logs go to stderr. `nole doctor --mcp` checks startup stdout cleanliness.
 - No telemetry, no tracking, no external data collection.
 
 ## License

@@ -3,13 +3,16 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
+	"github.com/dorukardahan/nole/internal/mcpserver"
 	"github.com/spf13/cobra"
 )
 
 func newDoctorCommand() *cobra.Command {
-	return &cobra.Command{
+	var checkMCP bool
+	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check nole configuration and provider health",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -20,7 +23,6 @@ func newDoctorCommand() *cobra.Command {
 			svc := defaultService()
 			statuses := svc.ProviderStatus(context.Background())
 
-			// Count available vs total
 			available := 0
 			for _, s := range statuses {
 				if s.Available {
@@ -29,7 +31,6 @@ func newDoctorCommand() *cobra.Command {
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "- providers: %d registered (%d available)\n", len(statuses), available)
 
-			// Show each provider status
 			fmt.Fprintln(cmd.OutOrStdout(), "")
 			for _, s := range statuses {
 				status := "unavailable"
@@ -50,7 +51,6 @@ func newDoctorCommand() *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), line)
 			}
 
-			// Check env vars
 			fmt.Fprintln(cmd.OutOrStdout(), "")
 			fmt.Fprintln(cmd.OutOrStdout(), "- secrets: not printed")
 			keys := []struct {
@@ -71,7 +71,6 @@ func newDoctorCommand() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "  %-22s %s\n", k.env, set)
 			}
 
-			// Show budget
 			budget := svc.BudgetStatus()
 			fmt.Fprintln(cmd.OutOrStdout(), "")
 			fmt.Fprintf(cmd.OutOrStdout(), "- budget: $%d.%02d hard cap\n", budget.HardCapCents/100, budget.HardCapCents%100)
@@ -85,7 +84,58 @@ func newDoctorCommand() *cobra.Command {
 				}
 			}
 
+			if checkMCP {
+				fmt.Fprintln(cmd.OutOrStdout(), "")
+				result := checkMCPStdioSmoke(cmd.Context())
+				status := "ok"
+				if !result.OK {
+					status = "failed"
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "- mcp: %s\n", status)
+				fmt.Fprintf(cmd.OutOrStdout(), "  stdout: startup-clean (%d bytes before protocol input)\n", result.StdoutBytes)
+				if result.Reason != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), "  reason: %s\n", result.Reason)
+				}
+			}
+
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&checkMCP, "mcp", false, "also check MCP stdio startup/stdout health")
+	return cmd
+}
+
+type mcpStdioSmokeResult struct {
+	OK          bool
+	StdoutBytes int
+	Reason      string
+}
+
+func checkMCPStdioSmoke(ctx context.Context) mcpStdioSmokeResult {
+	select {
+	case <-ctx.Done():
+		return mcpStdioSmokeResult{OK: false, Reason: ctx.Err().Error()}
+	default:
+	}
+
+	readEnd, writeEnd, err := os.Pipe()
+	if err != nil {
+		return mcpStdioSmokeResult{OK: false, Reason: fmt.Sprintf("stdout capture: %v", err)}
+	}
+	oldStdout := os.Stdout
+	os.Stdout = writeEnd
+	func() {
+		defer func() { os.Stdout = oldStdout }()
+		_ = mcpserver.New(defaultService())
+	}()
+	_ = writeEnd.Close()
+	captured, err := io.ReadAll(readEnd)
+	_ = readEnd.Close()
+	if err != nil {
+		return mcpStdioSmokeResult{OK: false, Reason: fmt.Sprintf("read captured stdout: %v", err)}
+	}
+	if len(captured) != 0 {
+		return mcpStdioSmokeResult{OK: false, StdoutBytes: len(captured), Reason: "MCP startup wrote non-protocol bytes to stdout"}
+	}
+	return mcpStdioSmokeResult{OK: true, StdoutBytes: 0}
 }

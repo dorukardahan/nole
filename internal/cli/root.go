@@ -14,6 +14,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newSearchCommand())
 	cmd.AddCommand(newExtractCommand())
 	cmd.AddCommand(newResearchCommand())
+	cmd.AddCommand(newBenchCommand())
 	cmd.AddCommand(newProvidersCommand())
 	cmd.AddCommand(newDoctorCommand())
 	cmd.AddCommand(newMCPCommand())

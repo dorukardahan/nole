@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 )
 
 type Provider struct {
@@ -80,7 +81,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	httpReq.Header.Set("X-Subscription-Token", p.apiKey)
 	httpReq.Header.Set("Accept", "application/json")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("brave: search request failed: %w", err)
 	}

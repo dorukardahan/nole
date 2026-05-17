@@ -47,6 +47,35 @@ func TestServiceSearchFallsBackOnProviderError(t *testing.T) {
 	if resp.Provider != "firecrawl" {
 		t.Fatalf("expected firecrawl fallback, got %q", resp.Provider)
 	}
+	if len(resp.RouteTrace) < 2 {
+		t.Fatalf("expected route trace for failed provider and fallback, got %#v", resp.RouteTrace)
+	}
+	if resp.RouteTrace[0].Provider != "brave" || resp.RouteTrace[0].Status != "failed" || resp.RouteTrace[0].Reason == "" {
+		t.Fatalf("unexpected first trace entry: %#v", resp.RouteTrace[0])
+	}
+	if resp.RouteTrace[1].Provider != "firecrawl" || resp.RouteTrace[1].Status != "success" || resp.RouteTrace[1].ResultCount == 0 {
+		t.Fatalf("unexpected fallback trace entry: %#v", resp.RouteTrace[1])
+	}
+}
+
+func TestServiceSearchTraceExplainsSkippedProviders(t *testing.T) {
+	registry := NewRegistry()
+	_ = registry.Register(fakeProvider{name: "brave"})
+	_ = registry.Register(fakeProvider{name: "firecrawl"})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "brave", FreeRemaining: 0})
+	ledger.Set(QuotaEntry{Provider: "firecrawl", FreeRemaining: 1})
+	service := NewService(registry, ledger, DefaultRouteMatrix())
+	resp, err := service.Search(context.Background(), SearchRequest{Query: "mcp", Task: TaskGeneral})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if len(resp.RouteTrace) < 2 {
+		t.Fatalf("expected skip and success trace, got %#v", resp.RouteTrace)
+	}
+	if resp.RouteTrace[0].Provider != "brave" || resp.RouteTrace[0].Status != "skipped" || resp.RouteTrace[0].Reason != "quota_blocked" {
+		t.Fatalf("unexpected skipped trace entry: %#v", resp.RouteTrace[0])
+	}
 }
 
 func TestServiceExtractUsesExtractRoute(t *testing.T) {

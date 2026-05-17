@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -133,31 +134,47 @@ func writeWindsurfConfig(binary string) error {
 }
 
 func writeMCPJSONConfig(path, binary string) error {
-	config := mcpConfig{
-		McpServers: map[string]mcpServerEntry{
-			"nole": {
-				Command: binary,
-				Args:    []string{"mcp"},
-			},
-		},
+	root, err := readJSONObject(path)
+	if err != nil {
+		return err
 	}
+	servers := map[string]mcpServerEntry{}
+	if raw, ok := root["mcpServers"]; ok && len(raw) > 0 {
+		if err := json.Unmarshal(raw, &servers); err != nil {
+			return fmt.Errorf("parse existing mcpServers: %w", err)
+		}
+	}
+	servers["nole"] = noleMCPServerEntry(binary)
+	encoded, err := json.Marshal(servers)
+	if err != nil {
+		return fmt.Errorf("marshal mcpServers: %w", err)
+	}
+	root["mcpServers"] = encoded
 
-	return writeJSONConfig(path, config)
+	return writeJSONConfig(path, root)
 }
 
 func writeCodexConfig(binary string) error {
 	// Codex CLI: ~/.codex/config.toml (TOML format)
 	home, _ := os.UserHomeDir()
 	path := filepath.Join(home, ".codex", "config.toml")
+	return writeCodexConfigPath(path, binary)
+}
 
+func writeCodexConfigPath(path, binary string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
-
-	content := fmt.Sprintf(
-		"# nole MCP server\n[mcp_servers.nole]\ncommand = %q\nargs = [\"mcp\"]\n",
-		binary,
-	)
+	existing, exists, err := readExistingFile(path)
+	if err != nil {
+		return err
+	}
+	if exists {
+		if err := writeBackup(path, existing); err != nil {
+			return err
+		}
+	}
+	content := mergeCodexMCPServer(string(existing), binary)
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
@@ -165,26 +182,40 @@ func writeOpenCodeConfig(binary string) error {
 	// OpenCode: opencode.json in current directory or home
 	home, _ := os.UserHomeDir()
 	path := filepath.Join(home, "opencode.json")
+	return writeOpenCodeConfigPath(path, binary)
+}
 
-	type openCodeConfig struct {
-		MCP map[string]mcpServerEntry `json:"mcp"`
+func writeOpenCodeConfigPath(path, binary string) error {
+	root, err := readJSONObject(path)
+	if err != nil {
+		return err
 	}
-
-	config := openCodeConfig{
-		MCP: map[string]mcpServerEntry{
-			"nole": {
-				Command: binary,
-				Args:    []string{"mcp"},
-			},
-		},
+	servers := map[string]mcpServerEntry{}
+	if raw, ok := root["mcp"]; ok && len(raw) > 0 {
+		if err := json.Unmarshal(raw, &servers); err != nil {
+			return fmt.Errorf("parse existing opencode mcp: %w", err)
+		}
 	}
+	servers["nole"] = noleMCPServerEntry(binary)
+	encoded, err := json.Marshal(servers)
+	if err != nil {
+		return fmt.Errorf("marshal opencode mcp: %w", err)
+	}
+	root["mcp"] = encoded
 
-	return writeJSONConfig(path, config)
+	return writeJSONConfig(path, root)
 }
 
 func writeJSONConfig(path string, data any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
+	}
+	if existing, exists, err := readExistingFile(path); err != nil {
+		return err
+	} else if exists {
+		if err := writeBackup(path, existing); err != nil {
+			return err
+		}
 	}
 
 	b, err := json.MarshalIndent(data, "", "  ")
@@ -193,4 +224,59 @@ func writeJSONConfig(path string, data any) error {
 	}
 
 	return os.WriteFile(path, b, 0644)
+}
+
+func noleMCPServerEntry(binary string) mcpServerEntry {
+	return mcpServerEntry{Command: binary, Args: []string{"mcp"}}
+}
+
+func readJSONObject(path string) (map[string]json.RawMessage, error) {
+	existing, exists, err := readExistingFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if !exists || len(strings.TrimSpace(string(existing))) == 0 {
+		return map[string]json.RawMessage{}, nil
+	}
+	root := map[string]json.RawMessage{}
+	if err := json.Unmarshal(existing, &root); err != nil {
+		return nil, fmt.Errorf("parse existing json config: %w", err)
+	}
+	return root, nil
+}
+
+func readExistingFile(path string) ([]byte, bool, error) {
+	b, err := os.ReadFile(path)
+	if err == nil {
+		return b, true, nil
+	}
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	return nil, false, fmt.Errorf("read existing config: %w", err)
+}
+
+func writeBackup(path string, content []byte) error {
+	if err := os.WriteFile(path+".bak", content, 0644); err != nil {
+		return fmt.Errorf("write backup: %w", err)
+	}
+	return nil
+}
+
+func mergeCodexMCPServer(existing, binary string) string {
+	block := fmt.Sprintf("[mcp_servers.nole]\ncommand = %q\nargs = [\"mcp\"]\n", binary)
+	trimmed := strings.TrimRight(existing, "\n")
+	if trimmed == "" {
+		return "# nole MCP server\n" + block
+	}
+	start := strings.Index(trimmed, "[mcp_servers.nole]")
+	if start == -1 {
+		return trimmed + "\n\n# nole MCP server\n" + block
+	}
+	end := len(trimmed)
+	remaining := trimmed[start+len("[mcp_servers.nole]"):]
+	if next := strings.Index(remaining, "\n["); next != -1 {
+		end = start + len("[mcp_servers.nole]") + next + 1
+	}
+	return strings.TrimRight(trimmed[:start], "\n") + "\n" + block + strings.TrimLeft(trimmed[end:], "\n") + "\n"
 }

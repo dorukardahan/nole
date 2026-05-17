@@ -1,0 +1,161 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/dorukardahan/nole/internal/bench"
+	"github.com/dorukardahan/nole/internal/core"
+	"github.com/spf13/cobra"
+)
+
+func newBenchCommand() *cobra.Command {
+	var jsonOut bool
+	var live bool
+	var maxLiveCases int
+	cmd := &cobra.Command{
+		Use:   "bench",
+		Short: "Run deterministic offline routing evals, or optional low-limit live smoke benchmarks",
+		Long: `Run Nólë benchmark/eval fixtures.
+
+Default mode is offline and deterministic: no provider network calls and no API keys required.
+Use --live only for an explicit low-limit smoke run against configured free-tier/keyless providers.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var report bench.Report
+			if live {
+				report = runLiveBench(cmd.Context(), maxLiveCases)
+			} else {
+				report = bench.RunOffline(bench.DefaultFixtureSet(), core.DefaultRouteMatrix())
+			}
+			if jsonOut {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(report)
+			}
+			printBenchReport(cmd, report)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "output benchmark report as JSON")
+	cmd.Flags().BoolVar(&live, "live", false, "run optional low-limit live smoke benchmark against configured providers")
+	cmd.Flags().IntVar(&maxLiveCases, "max-live-cases", 3, "maximum live fixture cases to run when --live is set")
+	return cmd
+}
+
+func printBenchReport(cmd *cobra.Command, report bench.Report) {
+	fmt.Fprintf(cmd.OutOrStdout(), "nole bench: %s fixture %s\n", report.Mode, report.FixtureVersion)
+	fmt.Fprintf(cmd.OutOrStdout(), "cases: %d passed: %d failed: %d avg_score: %.2f\n",
+		report.Summary.TotalCases, report.Summary.PassedCases, report.Summary.FailedCases, report.Summary.AverageScore)
+	for _, c := range report.Cases {
+		fmt.Fprintf(cmd.OutOrStdout(), "- %s [%s/%s] selected=%s score=%.2f route=%v\n",
+			c.ID, c.Task, c.Language, c.SelectedProvider, c.Score, c.Route)
+	}
+}
+
+func runLiveBench(ctx context.Context, maxCases int) bench.Report {
+	if maxCases <= 0 || maxCases > 10 {
+		maxCases = 3
+	}
+	set := bench.DefaultFixtureSet()
+	if maxCases < len(set.Fixtures) {
+		set.Fixtures = set.Fixtures[:maxCases]
+	}
+	svc := defaultService()
+	report := bench.Report{
+		SchemaVersion:  "1",
+		Mode:           bench.ModeLive,
+		FixtureVersion: set.Version,
+		GeneratedAt:    time.Now().UTC().Format(time.RFC3339),
+		RouteMatrix:    map[string][]string{},
+		Cases:          make([]bench.CaseResult, 0, len(set.Fixtures)),
+	}
+	var total float64
+	for _, fixture := range set.Fixtures {
+		caseResult := runLiveBenchCase(ctx, svc, fixture)
+		report.Cases = append(report.Cases, caseResult)
+		total += caseResult.Score
+		if caseResult.SelectedProvider != "" {
+			report.Summary.PassedCases++
+		} else {
+			report.Summary.FailedCases++
+		}
+	}
+	report.Summary.TotalCases = len(report.Cases)
+	if len(report.Cases) > 0 {
+		report.Summary.AverageScore = float64(int((total/float64(len(report.Cases)))*100+0.5)) / 100
+	}
+	return report
+}
+
+func runLiveBenchCase(ctx context.Context, svc *core.Service, fixture bench.Fixture) bench.CaseResult {
+	caseResult := bench.CaseResult{ID: fixture.ID, Task: fixture.Task, Kind: fixture.Kind, Language: fixture.Language, Category: fixture.Category}
+	start := time.Now()
+	if fixture.Kind == bench.KindExtract {
+		resp, err := svc.Extract(ctx, core.ExtractRequest{URL: fixture.TargetURL, Format: "markdown"})
+		latency := time.Since(start).Milliseconds()
+		caseResult.Route = resp.Route
+		caseResult.Attempts = attemptsFromTrace(resp.RouteTrace)
+		if err != nil {
+			caseResult.Attempts = append(caseResult.Attempts, bench.Attempt{Status: "failed", Reason: sanitizedBenchError(err), LatencyMS: latency})
+			return caseResult
+		}
+		caseResult.SelectedProvider = resp.Provider
+		caseResult.Score = liveScore(1, latency, resp.Content != "")
+		return caseResult
+	}
+	resp, err := svc.Search(ctx, core.SearchRequest{Query: fixture.Query, Task: fixture.Task, Limit: 5})
+	latency := time.Since(start).Milliseconds()
+	caseResult.Route = resp.Route
+	caseResult.Attempts = attemptsFromTrace(resp.RouteTrace)
+	if err != nil {
+		caseResult.Attempts = append(caseResult.Attempts, bench.Attempt{Status: "failed", Reason: sanitizedBenchError(err), LatencyMS: latency})
+		return caseResult
+	}
+	caseResult.SelectedProvider = resp.Provider
+	caseResult.Score = liveScore(len(resp.Results), latency, len(resp.Results) > 0)
+	return caseResult
+}
+
+func attemptsFromTrace(trace []core.RouteAttempt) []bench.Attempt {
+	attempts := make([]bench.Attempt, 0, len(trace))
+	for _, a := range trace {
+		attempts = append(attempts, bench.Attempt{Provider: a.Provider, Status: a.Status, Reason: a.Reason, LatencyMS: a.LatencyMS, ResultCount: a.ResultCount})
+	}
+	return attempts
+}
+
+func liveScore(resultCount int, latencyMS int64, success bool) float64 {
+	if !success {
+		return 0
+	}
+	score := 40.0
+	if resultCount >= 3 {
+		score += 30
+	} else {
+		score += float64(resultCount) * 10
+	}
+	if latencyMS <= 1000 {
+		score += 30
+	} else if latencyMS <= 3000 {
+		score += 20
+	} else if latencyMS <= 8000 {
+		score += 10
+	}
+	if score > 100 {
+		return 100
+	}
+	return score
+}
+
+func sanitizedBenchError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if len(msg) > 120 {
+		msg = msg[:120]
+	}
+	return msg
+}

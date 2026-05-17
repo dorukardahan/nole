@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 )
 
 type Provider struct {
@@ -52,8 +53,8 @@ func (p Provider) Capabilities() []core.Capability {
 // --- Firecrawl Search API response types ---
 
 type firecrawlSearchResponse struct {
-	Success bool                       `json:"success"`
-	Data    firecrawlSearchData        `json:"data"`
+	Success bool                `json:"success"`
+	Data    firecrawlSearchData `json:"data"`
 }
 
 type firecrawlSearchData struct {
@@ -88,7 +89,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: search request failed: %w", err)
 	}
@@ -132,13 +133,13 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 // --- Firecrawl Scrape API response types ---
 
 type firecrawlScrapeResponse struct {
-	Success bool                  `json:"success"`
-	Data    firecrawlScrapeData   `json:"data"`
+	Success bool                `json:"success"`
+	Data    firecrawlScrapeData `json:"data"`
 }
 
 type firecrawlScrapeData struct {
-	Markdown  string            `json:"markdown"`
-	Metadata  map[string]interface{} `json:"metadata"`
+	Markdown string                 `json:"markdown"`
+	Metadata map[string]interface{} `json:"metadata"`
 }
 
 func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
@@ -161,7 +162,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
 	if err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("firecrawl: extract request failed: %w", err)
 	}
