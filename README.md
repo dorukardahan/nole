@@ -1,148 +1,118 @@
 # Nólë
 
-Nólë (Quenya for "Deep Knowledge / Research") is an MCP server that orchestrates diverse search tools to perform deep, task-oriented internet research. It ships as a BYOK free-tier search/retrieval router for AI agents: single Go binary, MCP stdio + CLI.
+Free web search router for AI agents and coding CLI tools.
 
-## Why?
+Nólë gives Claude Code, Codex, OpenClaw, Hermes, OpenCode and other AI tools a local search/extract layer backed by multiple free or BYOK providers. It is not a hosted SaaS and it is not a replacement for your agent. Keep your existing agent, run Nólë on your own machine or VPS, and make that agent's web search better.
 
-AI coding agents (Claude Code, Cursor, Codex CLI, OpenCode, Windsurf, Hermes, OpenClaw, Kimi CLI, and other MCP clients) need web search and content extraction. Nólë is not trying to replace any single model or CLI native browser; it provides a shared, measurable BYOK/free-tier research layer that agents can use through MCP or the CLI. Existing options are often paid-only, runtime-specific, or use blind sequential fallback. Nólë does **task-based routing** across free-tier providers with a $0 hard cap.
+Core idea: use your own keys, keep control of cost, route by task fit and evidence, and return enough routing context for the agent to explain what happened without clutter.
+
+## What Nólë is
+
+Nólë is an agent web-search layer:
+
+- A free/local web search router for AI agents and coding CLI tools.
+- A BYOK provider router for search and page extraction.
+- A task and multi-intent routing substrate for docs, news, code, academic, pricing, fact-checking, social/community and research queries.
+- A benchmark/evidence-informed fallback layer for agents that need reliable internet context.
+- A small single-binary tool that can be used by humans, shell scripts, MCP clients and agent CLIs.
+
+Nólë is not primarily an MCP server. MCP is one important entrypoint; the product is the local routing layer that MCP, CLI commands and future integrations can call.
+
+Nólë is not:
+
+- A hosted search SaaS or cloud proxy.
+- An agent replacement or a research assistant that takes over the workflow.
+- A Perplexity clone.
+- A provider marketplace.
+- A promise of unlimited free search forever.
+
+## Why agents use it
+
+Agents and coding CLIs often need web search, docs lookup, URL extraction and source discovery. Nólë lets them delegate that internet layer to a local router that can:
+
+1. Select a route for the task or intent.
+2. Prefer free-tier/keyless/BYOK-safe providers by default.
+3. Fall back safely when a provider is unavailable, out of quota or returns empty results.
+4. Keep provider errors sanitized and avoid leaking secrets.
+5. Expose `route_trace` for debugging and a compact routing insight for user-facing output.
+
+Current routing is task-based. The roadmap adds LLM-free multi-intent planning so a single query can plan docs + pricing + academic + news + code routes without asking the user to choose one task.
+
+## Supported and priority agents
+
+Priority v0.1 agent targets:
+
+| Client | Status in this repo | Notes |
+| --- | --- | --- |
+| Claude Code | Setup writer present; config merge tested; live client verification pending | Uses MCP stdio config. |
+| Codex CLI | Setup writer present; TOML merge tested; live client verification pending | Codex setup can source `~/.config/nole/.env` without writing secrets into config. |
+| OpenCode | Setup writer present; config merge path tested; live client verification pending | Uses OpenCode MCP config shape. |
+| OpenClaw | Generic MCP documentation present; live verification pending | Marked unverified until tested against the real client. |
+| Hermes Agent | Generic MCP documentation present; live verification pending | Marked unverified until tested against a local Hermes config. |
+
+Also documented as secondary/generic paths: Cursor CLI, Kimi and generic MCP clients. A client is only called verified after config path, tool visibility and `doctor --mcp` behavior are checked without printing credentials.
+
+See `docs/CLIENTS/` and `docs/AGENT-INSTALL.md`.
 
 ## Providers
 
-| Provider | Search | Extract | Cost | Env Var |
-|----------|--------|---------|------|---------|
-| Brave | yes | no | Free (2k/mo) | `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` |
-| Tavily | yes | yes | Free tier | `TAVILY_API_KEY` |
-| Jina | yes | yes | Free tier | `JINA_API_KEY` |
-| Firecrawl | yes | yes | Free tier | `FIRECRAWL_API_KEY` |
-| DuckDuckGo | yes | no | Free (keyless) | none |
+Nólë currently supports these provider adapters:
 
-All providers are optional. Set only the keys you have. DDGS works with zero configuration.
+- Brave Search API: search, BYOK/free-tier capable.
+- Tavily: search + extract, BYOK/free-tier/premium-capable depending on your account.
+- Jina: search + extract, BYOK/free-tier/premium-capable depending on your account.
+- Firecrawl: search + extract, BYOK/free-tier/premium-capable depending on your account.
+- DDGS: keyless search fallback.
 
-## Routing
+Nólë reads provider credentials from environment variables. It should only report whether a key is present; it must never print key values, auth headers or raw provider payloads.
 
-Task types route to the best available provider from the current route matrix. Route changes should be evidence-backed by offline fixtures and/or explicit low-limit live benchmarks; this hardening pass keeps the existing matrix unchanged because it adds measurement infrastructure rather than new live provider evidence:
+See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 
-| Task | Route |
-|------|-------|
-| general | brave -> firecrawl -> ddgs -> tavily -> jina |
-| news | brave -> ddgs -> tavily -> firecrawl -> jina |
-| docs | brave -> firecrawl -> tavily -> ddgs -> jina |
-| academic | brave -> tavily -> firecrawl -> ddgs -> jina |
-| factcheck | brave -> tavily -> ddgs -> firecrawl -> jina |
-| semantic | tavily -> firecrawl -> brave -> ddgs -> jina |
-| code | brave -> firecrawl -> ddgs -> tavily -> jina |
-| social | firecrawl -> ddgs -> brave -> tavily -> jina |
-| people | tavily -> firecrawl -> brave -> ddgs -> jina |
-| pricing | brave -> tavily -> firecrawl -> ddgs -> jina |
-| research | brave -> firecrawl -> ddgs -> tavily -> jina |
-| extract | tavily -> firecrawl -> jina |
+## Quick start
 
-Unavailable providers (no API key), quota-blocked providers, providers without the requested capability, empty search results, and empty extracted content are skipped automatically. Search and extract responses include a `route_trace` with provider, status, structured reason (`quota_blocked`, `provider_error`, `empty_results`, `empty_content`, etc.), latency, and result count so agents can explain why a provider was selected or skipped.
+Prerequisites:
 
-## Benchmark / Eval
+- Go 1.23+ for building from source.
+- Optional provider keys for Brave, Tavily, Jina and Firecrawl.
+- No provider key is required for the deterministic benchmark or DDGS keyless fallback.
 
-Nólë includes a deterministic offline benchmark harness for routing-contract and failure-mode evaluation. Offline mode is the default and makes no provider network calls. Treat offline scores as fixture/contract evidence only, not proof that a route order is better on the live web.
-
-```bash
-nole bench
-nole bench --json
-```
-
-Optional live smoke benchmarks require an explicit flag and use a low default case limit:
-
-```bash
-nole bench --live --max-live-cases 3
-```
-
-Do not commit raw live benchmark logs. If live runs are used to justify route changes, publish only sanitized summaries such as success counts, latency ranges, result counts, citation/source quality notes, and the fixture version. Route matrix changes should include that evidence in the same change.
-
-## Install
+Build and run locally:
 
 ```bash
 git clone https://github.com/dorukardahan/nole.git
 cd nole
+go test ./...
 go build -o nole .
+./nole doctor
+./nole doctor --mcp
 ```
 
-## Quick Start
+Try the CLI:
 
 ```bash
-# 1. Set your API keys
-export BRAVE_API_KEY=...
-export TAVILY_API_KEY=...
-export JINA_API_KEY=...
-export FIRECRAWL_API_KEY=...
+./nole providers --json
+./nole bench --json
+./nole search "Go net/http Client Timeout documentation" --task docs --json
+./nole extract "https://go.dev/doc/" --json
+```
 
-# 2. Verify
+Install the binary somewhere on PATH:
+
+```bash
+mkdir -p ~/.local/bin
+cp ./nole ~/.local/bin/nole
 nole doctor
-nole doctor --mcp
-
-# 3. Run the offline eval harness
-nole bench --json
-
-# 4. Search
-nole search "Go MCP SDK" --task docs --json
-
-# 5. Extract
-nole extract "https://go.dev" --json
-
-# 6. Research (multi-step search + extract + synthesis)
-nole research "What is MCP Model Context Protocol"
-
-# 7. Setup your agent
-nole setup --all
 ```
 
-## Commands
-
-```
-nole doctor              # Check config and provider health
-nole doctor --mcp        # Also run MCP stdio initialize + tools/list smoke
-nole providers --json    # List available providers
-nole bench [--json]      # Run deterministic offline eval fixtures
-nole search <query>      # Search with task-based routing
-nole extract <url>       # Extract clean content from URL
-nole research <question> # Multi-step search + extract + synthesis
-nole setup --all         # Configure AI agents
-nole mcp                 # Start MCP stdio server
-nole serve --mcp         # Start HTTP MCP + REST API server
-```
-
-### Search Task Types
-
-```
---task general    # Default broad web search
---task news       # Current events and headlines
---task docs       # Technical documentation lookup
---task academic   # Papers and research
---task factcheck  # Fact verification queries
---task semantic   # Conceptual/similar-to searches
---task code       # Code and implementation examples
---task social     # Forum and community discussions
---task people     # People and biography lookups
---task pricing    # Product/service pricing queries
---task research   # Deep multi-source research
-```
-
-## Agent Setup
-
-One command configures the MCP clients that Nólë can currently write safely. Existing config files are merged rather than clobbered; when a file already exists, Nólë writes a `.bak` backup before updating the `nole` server entry. JSON merges preserve client-specific fields on unrelated servers, and config/backup writes preserve existing permissions or use `0600` for new sensitive files.
+Configure an agent when the setup writer is available:
 
 ```bash
-nole setup --all
+nole setup --claude
+nole setup --codex
+nole setup --opencode
 ```
 
-Or individually:
-
-```bash
-nole setup --claude    # ~/.claude/mcp.json
-nole setup --cursor    # ~/.cursor/mcp.json
-nole setup --codex     # ~/.codex/config.toml
-nole setup --opencode  # ~/opencode.json
-nole setup --windsurf  # ~/.codeium/windsurf/mcp_config.json
-```
-
-For Hermes, OpenClaw, Kimi CLI, or any generic MCP client, add an MCP server named `nole` that runs the local binary with `mcp` as its argument:
+For unverified or generic clients, use the MCP command template:
 
 ```json
 {
@@ -155,57 +125,71 @@ For Hermes, OpenClaw, Kimi CLI, or any generic MCP client, add an MCP server nam
 }
 ```
 
-Client config formats vary, but the server command is always the same: `nole mcp` over stdio. Start the client from an environment that contains any provider keys you want to use, or configure those keys in the client-specific MCP env block if supported.
+## Provider keys and cost control
 
-### Will agents use Nólë automatically?
+Default stance: free-tier/BYOK-safe. Nólë should not create hidden paid usage by default. If you add premium-capable provider accounts, Nólë should use them according to policy, route evidence and task fit rather than picking a paid provider just because a key exists.
 
-Usually yes after the MCP server is installed and enabled: agents see `search` for public web/current information/docs/fact-checking/code/pricing/source discovery and `extract` for reading public web pages. The user should not need to say "use Nólë" if their client automatically exposes MCP tools and allows the model to choose tools for web research.
+Environment variables:
 
-Auto-use is still client-dependent. Some clients require MCP servers to be enabled per workspace, restarted after config changes, or approved before tool calls. If an agent is not selecting Nólë on its own, ask it to "use the search tool" once, check `nole doctor`, and verify the MCP server appears in the client's tool list.
-
-## Observability and failure handling
-
-- Search and extract responses include `route_trace` entries with selected provider, skip/fallback reason, provider latency, and result count. Empty search results and empty extracted content are fallback reasons, not successes.
-- Transient provider responses (`429`, `502`, `503`, `504`) use bounded retry/backoff and respect `Retry-After` when present.
-- Retries are intentionally low and configurable; Nólë never retries forever.
-- MCP and CLI JSON error payloads preserve `route_trace` where practical while redacting provider error detail.
-- MCP stdio keeps stdout reserved for JSON-RPC protocol. Run `nole doctor --mcp` to smoke-check startup stdout cleanliness and an actual `initialize` + `tools/list` exchange.
-
-## MCP Tools
-
-When running as an MCP server (`nole mcp`), exposes:
-
-- **search** -- public web/current information/docs/fact-checking/code/pricing/source discovery (`query`, optional `task`, optional `limit`)
-- **extract** -- clean readable content from a public web page URL (`url`, optional `format`)
-- **provider_status** -- which providers are available
-- **budget_status** -- quota usage
-
-## Architecture
-
-```
-internal/
-  core/        -- types, registry, router, service, quota, errors
-  bench/       -- deterministic offline benchmark/eval fixtures and scoring
-  cli/         -- cobra commands: search, extract, research, providers, bench, doctor, setup, mcp, serve
-  mcpserver/   -- MCP stdio server using mark3labs/mcp-go
-  providers/
-    brave/     -- Brave Web Search API
-    tavily/    -- Tavily Search + Extract API
-    jina/      -- Jina s.jina.ai + r.jina.ai
-    firecrawl/ -- Firecrawl /v2/search + /v2/scrape
-    ddgs/      -- DuckDuckGo HTML scraping (keyless)
-    mock/      -- Deterministic mock for testing
-    providerhttp/ -- bounded retry/backoff helper for transient HTTP failures
+```bash
+export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
+export TAVILY_API_KEY="..."
+export JINA_API_KEY="..."
+export FIRECRAWL_API_KEY="..."
 ```
 
-## Security
+Do not paste real keys into chat, GitHub issues, docs, PRs or logs. If a GUI agent does not inherit your shell environment, put keys in a local-only env file such as `~/.config/nole/.env` and configure the client launcher to source it. Keep that file out of git and restrict permissions.
 
-- API keys are read from environment variables only. Never stored or logged.
-- `$0.00 local hard cap`: Nólë only routes through configured free-tier/keyless entries and returns a structured error when no free route is locally allowed. Provider-side overage controls still depend on your BYOK account settings; configure providers to disable paid overage where available.
-- MCP stdio mode keeps stdout clean for JSON-RPC; all logs go to stderr. `nole doctor --mcp` checks startup stdout cleanliness and lists the expected MCP tools without printing stderr contents.
-- Provider HTTP errors do not print raw response bodies by default because providers can echo request bodies, auth headers, URLs, or keys.
-- No Nólë-owned telemetry, tracking, or external data collection. Configured providers still receive the search/extract requests that you route to them.
+## Benchmarks and evidence
 
-## License
+Nólë has two different benchmark/evidence concepts:
 
-MIT
+- Deterministic offline harness: validates routing/fallback contracts using fixtures. It does not measure live web quality.
+- Optional live benchmark summaries: low-limit, explicit smoke/evidence runs against configured providers. They must be sanitized before sharing or committing.
+
+Use:
+
+```bash
+nole bench --json
+# Optional, explicit, low-limit live smoke only:
+nole bench --live --max-live-cases 3 --json
+```
+
+Route matrix changes should be backed by sanitized evidence. Do not commit raw provider payloads, headers, private URLs or private queries.
+
+See `docs/BENCHMARKS.md`.
+
+## Interfaces
+
+Stable/core:
+
+- CLI: `nole search`, `nole extract`, `nole providers`, `nole doctor`, `nole bench`.
+- MCP stdio: `nole mcp` for agent tools `search`, `extract`, `provider_status`, `budget_status`.
+
+Experimental:
+
+- HTTP/REST via `nole serve`. Keep REST claims conservative until it has the same hardening and compatibility coverage as CLI/MCP.
+
+## Safety rules
+
+- Keep MCP stdout protocol-clean; logs go to stderr.
+- Preserve user config files; merge unknown fields, write backups and do not widen permissions.
+- Never print or commit secrets, bearer tokens, auth headers or raw provider bodies.
+- Keep default cost behavior free-tier/BYOK-safe.
+- Mark client integrations unverified until tested against the real client.
+- Do not change provider route ordering without sanitized benchmark/evidence.
+
+## Roadmap
+
+Near-term v0.1 private-prep:
+
+1. Product framing and agent-readable install docs.
+2. CI gates for tests, vet, doctor, bench and public-safety checks.
+3. LLM-free multi-intent planner with `--task`/`--tasks` override compatibility.
+4. Compact one-line Nólë insight alongside structured `route_trace`.
+5. Cost policy model: free-first default, premium-capable support, fail-closed no-hidden-spend behavior.
+6. Honest benchmark/evidence docs and optional sanitized live summaries.
+7. TTL cache and quota/cost ledger.
+8. Priority agent verification matrix.
+
+See `docs/NEXT-STEPS.md` for the detailed execution roadmap.
