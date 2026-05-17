@@ -18,10 +18,13 @@ func newExtractCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resp, err := defaultService().Extract(context.Background(), core.ExtractRequest{URL: args[0], Format: format})
 			if err != nil {
+				if jsonOut {
+					_ = writeJSONTo(cmd.OutOrStdout(), buildCLIError("extract", err, resp.Route, resp.RouteTrace))
+				}
 				return err
 			}
 			if jsonOut {
-				return writeJSON(resp)
+				return writeJSONTo(cmd.OutOrStdout(), resp)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), resp.Content)
 			return nil

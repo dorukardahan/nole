@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 )
 
 type Provider struct {
@@ -46,23 +47,23 @@ func (p Provider) Capabilities() []core.Capability {
 // --- Tavily Search API response types ---
 
 type tavilySearchRequest struct {
-	Query        string `json:"query"`
-	MaxResults   int    `json:"max_results"`
-	SearchDepth  string `json:"search_depth"`
-	IncludeAnswer bool  `json:"include_answer"`
-	APIKey       string `json:"api_key"`
+	Query         string `json:"query"`
+	MaxResults    int    `json:"max_results"`
+	SearchDepth   string `json:"search_depth"`
+	IncludeAnswer bool   `json:"include_answer"`
+	APIKey        string `json:"api_key"`
 }
 
 type tavilySearchResponse struct {
-	Query   string             `json:"query"`
-	Results []tavilyResult     `json:"results"`
-	Answer  string             `json:"answer,omitempty"`
+	Query   string         `json:"query"`
+	Results []tavilyResult `json:"results"`
+	Answer  string         `json:"answer,omitempty"`
 }
 
 type tavilyResult struct {
-	Title   string `json:"title"`
-	URL     string `json:"url"`
-	Content string `json:"content"`
+	Title   string  `json:"title"`
+	URL     string  `json:"url"`
+	Content string  `json:"content"`
 	Score   float64 `json:"score"`
 }
 
@@ -100,7 +101,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("tavily: search request failed: %w", err)
 	}
@@ -108,7 +109,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.SearchResponse{}, fmt.Errorf("tavily: search returned %d: %s", resp.StatusCode, string(respBody))
+		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("tavily", "search", resp.StatusCode, respBody)
 	}
 
 	var tresp tavilySearchResponse
@@ -150,7 +151,7 @@ type tavilyExtractResponse struct {
 }
 
 type tavilyExtractResult struct {
-	URL     string `json:"url"`
+	URL        string `json:"url"`
 	RawContent string `json:"raw_content"`
 }
 
@@ -174,7 +175,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
 	if err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("tavily: extract request failed: %w", err)
 	}
@@ -182,7 +183,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.ExtractResponse{}, fmt.Errorf("tavily: extract returned %d: %s", resp.StatusCode, string(respBody))
+		return core.ExtractResponse{}, providerhttp.NewHTTPStatusError("tavily", "extract", resp.StatusCode, respBody)
 	}
 
 	var tresp tavilyExtractResponse

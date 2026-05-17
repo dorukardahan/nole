@@ -46,18 +46,29 @@ type SearchResult struct {
 }
 
 type SearchResponse struct {
-	Query    string         `json:"query"`
-	Task     TaskType       `json:"task"`
-	Provider string         `json:"provider"`
-	Results  []SearchResult `json:"results"`
-	Route    []string       `json:"route"`
+	Query      string         `json:"query"`
+	Task       TaskType       `json:"task"`
+	Provider   string         `json:"provider"`
+	Results    []SearchResult `json:"results"`
+	Route      []string       `json:"route"`
+	RouteTrace []RouteAttempt `json:"route_trace,omitempty"`
 }
 
 type ExtractResponse struct {
-	URL      string            `json:"url"`
-	Provider string            `json:"provider"`
-	Content  string            `json:"content"`
-	Metadata map[string]string `json:"metadata,omitempty"`
+	URL        string            `json:"url"`
+	Provider   string            `json:"provider"`
+	Content    string            `json:"content"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+	Route      []string          `json:"route,omitempty"`
+	RouteTrace []RouteAttempt    `json:"route_trace,omitempty"`
+}
+
+type RouteAttempt struct {
+	Provider    string `json:"provider"`
+	Status      string `json:"status"`
+	Reason      string `json:"reason,omitempty"`
+	LatencyMS   int64  `json:"latency_ms,omitempty"`
+	ResultCount int    `json:"result_count,omitempty"`
 }
 
 type ProviderStatus struct {

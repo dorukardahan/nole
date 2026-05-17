@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 )
 
 type Provider struct {
@@ -30,7 +31,7 @@ func (p Provider) Capabilities() []core.Capability {
 }
 
 var (
-	reResultLink   = regexp.MustCompile(`class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>`)
+	reResultLink    = regexp.MustCompile(`class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>`)
 	reResultSnippet = regexp.MustCompile(`class="result__snippet"[^>]*>(.*?)</a>`)
 	reStripTags     = regexp.MustCompile(`<[^>]+>`)
 	reHTMLEntity    = regexp.MustCompile(`&amp;`)
@@ -48,7 +49,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	httpReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("ddgs: search request failed: %w", err)
 	}
@@ -56,7 +57,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return core.SearchResponse{}, fmt.Errorf("ddgs: search returned %d: %s", resp.StatusCode, string(body))
+		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("ddgs", "search", resp.StatusCode, body)
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)

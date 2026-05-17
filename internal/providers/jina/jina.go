@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 )
 
 type Provider struct {
@@ -79,7 +80,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("jina: search request failed: %w", err)
 	}
@@ -87,7 +88,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.SearchResponse{}, fmt.Errorf("jina: search returned %d: %s", resp.StatusCode, string(respBody))
+		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("jina", "search", resp.StatusCode, respBody)
 	}
 
 	var jresp jinaSearchResponse
@@ -154,7 +155,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
 	if err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("jina: extract request failed: %w", err)
 	}
@@ -162,7 +163,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.ExtractResponse{}, fmt.Errorf("jina: extract returned %d: %s", resp.StatusCode, string(respBody))
+		return core.ExtractResponse{}, providerhttp.NewHTTPStatusError("jina", "extract", resp.StatusCode, respBody)
 	}
 
 	var jresp jinaReaderResponse

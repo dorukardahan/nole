@@ -12,10 +12,10 @@ func (f fakeProvider) Capabilities() []Capability {
 	return []Capability{CapabilitySearch, CapabilityExtract}
 }
 func (f fakeProvider) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
-	return SearchResponse{Query: req.Query, Provider: f.name}, nil
+	return SearchResponse{Query: req.Query, Provider: f.name, Results: []SearchResult{{Title: "result", URL: "https://example.com", Snippet: "snippet", Provider: f.name}}}, nil
 }
 func (f fakeProvider) Extract(ctx context.Context, req ExtractRequest) (ExtractResponse, error) {
-	return ExtractResponse{URL: req.URL, Provider: f.name}, nil
+	return ExtractResponse{URL: req.URL, Provider: f.name, Content: "content"}, nil
 }
 func (f fakeProvider) Status(ctx context.Context) ProviderStatus {
 	return ProviderStatus{Name: f.name, Available: true}

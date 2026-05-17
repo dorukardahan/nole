@@ -34,7 +34,7 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		limit := int(req.GetFloat("limit", 5))
 		resp, err := svc.Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit})
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return mcp.NewToolResultError(string(toolErrorJSON("search", err, resp.Route, resp.RouteTrace))), nil
 		}
 		b, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {
@@ -57,7 +57,7 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		format := req.GetString("format", "markdown")
 		resp, err := svc.Extract(ctx, core.ExtractRequest{URL: url, Format: format})
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return mcp.NewToolResultError(string(toolErrorJSON("extract", err, resp.Route, resp.RouteTrace))), nil
 		}
 		b, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {
