@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/safeerr"
 	"github.com/spf13/cobra"
 )
 
@@ -97,7 +98,7 @@ func researchPipeline(ctx context.Context, svc *core.Service, question string, m
 		})
 		if err != nil {
 			// Log but continue with other task types
-			fmt.Fprintf(os.Stderr, "research: search step %d (%s) failed: %v\n", i+1, task, err)
+			fmt.Fprintf(os.Stderr, "research: search step %d (%s) failed: %s\n", i+1, task, safeerr.Message(err))
 			continue
 		}
 
@@ -140,7 +141,7 @@ func researchPipeline(ctx context.Context, svc *core.Service, question string, m
 			Format: "markdown",
 		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "research: extract %s failed: %v\n", src.URL, err)
+			fmt.Fprintf(os.Stderr, "research: extract step failed: %s\n", safeerr.Message(err))
 			continue
 		}
 		providerSet[resp.Provider] = true

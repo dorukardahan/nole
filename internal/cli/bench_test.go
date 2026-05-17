@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 )
 
 func TestRootCommandIncludesBenchCommand(t *testing.T) {
@@ -72,5 +74,20 @@ func TestBenchCommandTextOutputMentionsOfflineAndFixtureVersion(t *testing.T) {
 	text := out.String()
 	if !strings.Contains(text, "offline") || !strings.Contains(text, "fixture") {
 		t.Fatalf("text output should mention offline fixture run, got: %s", text)
+	}
+}
+
+func TestSanitizedBenchErrorUsesStructuredSafeHTTPStatus(t *testing.T) {
+	err := providerhttp.NewHTTPStatusError("tavily", "search", 401, []byte(`token=SECRET Authorization: Bearer SECRET https://private.example`))
+	msg := sanitizedBenchError(err)
+	for _, forbidden := range []string{"SECRET", "Authorization", "private.example", "Bearer"} {
+		if strings.Contains(msg, forbidden) {
+			t.Fatalf("bench error leaked %q in %q", forbidden, msg)
+		}
+	}
+	for _, want := range []string{"tavily", "search", "401"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("bench error missing %q in %q", want, msg)
+		}
 	}
 }

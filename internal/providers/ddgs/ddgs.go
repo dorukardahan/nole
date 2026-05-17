@@ -57,7 +57,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return core.SearchResponse{}, fmt.Errorf("ddgs: search returned %d: %s", resp.StatusCode, string(body))
+		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("ddgs", "search", resp.StatusCode, body)
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)

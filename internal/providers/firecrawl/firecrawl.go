@@ -97,7 +97,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.SearchResponse{}, fmt.Errorf("firecrawl: search returned %d: %s", resp.StatusCode, string(respBody))
+		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("firecrawl", "search", resp.StatusCode, respBody)
 	}
 
 	var fcresp firecrawlSearchResponse
@@ -170,7 +170,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.ExtractResponse{}, fmt.Errorf("firecrawl: extract returned %d: %s", resp.StatusCode, string(respBody))
+		return core.ExtractResponse{}, providerhttp.NewHTTPStatusError("firecrawl", "extract", resp.StatusCode, respBody)
 	}
 
 	var fcresp firecrawlScrapeResponse

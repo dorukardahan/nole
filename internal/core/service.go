@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dorukardahan/nole/internal/safenet"
@@ -60,6 +61,11 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		resp.Task = req.Task
 		resp.Provider = provider.Name()
 		resp.Route = append([]string(nil), route...)
+		if len(resp.Results) == 0 {
+			lastErr = fmt.Errorf("search provider %s returned empty results", name)
+			trace = append(trace, RouteAttempt{Provider: name, Status: "failed", Reason: "empty_results", LatencyMS: latency, ResultCount: 0})
+			continue
+		}
 		trace = append(trace, RouteAttempt{Provider: name, Status: "success", Reason: "success", LatencyMS: latency, ResultCount: len(resp.Results)})
 		resp.RouteTrace = trace
 		return resp, nil
@@ -111,7 +117,13 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 		resp.URL = req.URL
 		resp.Provider = provider.Name()
 		resp.Route = append([]string(nil), route...)
-		trace = append(trace, RouteAttempt{Provider: name, Status: "success", Reason: "success", LatencyMS: latency, ResultCount: contentResultCount(resp.Content)})
+		resultCount := contentResultCount(resp.Content)
+		if strings.TrimSpace(resp.Content) == "" {
+			lastErr = fmt.Errorf("extract provider %s returned empty content", name)
+			trace = append(trace, RouteAttempt{Provider: name, Status: "failed", Reason: "empty_content", LatencyMS: latency, ResultCount: resultCount})
+			continue
+		}
+		trace = append(trace, RouteAttempt{Provider: name, Status: "success", Reason: "success", LatencyMS: latency, ResultCount: resultCount})
 		resp.RouteTrace = trace
 		return resp, nil
 	}

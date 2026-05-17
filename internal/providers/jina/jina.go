@@ -88,7 +88,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.SearchResponse{}, fmt.Errorf("jina: search returned %d: %s", resp.StatusCode, string(respBody))
+		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("jina", "search", resp.StatusCode, respBody)
 	}
 
 	var jresp jinaSearchResponse
@@ -163,7 +163,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.ExtractResponse{}, fmt.Errorf("jina: extract returned %d: %s", resp.StatusCode, string(respBody))
+		return core.ExtractResponse{}, providerhttp.NewHTTPStatusError("jina", "extract", resp.StatusCode, respBody)
 	}
 
 	var jresp jinaReaderResponse

@@ -12,6 +12,7 @@ import (
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/mcpserver"
+	"github.com/dorukardahan/nole/internal/safeerr"
 	mcpgo "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -76,7 +77,7 @@ func (h *httpHandler) start(addr string) error {
 			Limit int    `json:"limit"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeHTTPJSONError(w, http.StatusBadRequest, map[string]string{"error": safeerr.Message(err)})
 			return
 		}
 		if req.Limit == 0 {
@@ -88,7 +89,7 @@ func (h *httpHandler) start(addr string) error {
 			Limit: req.Limit,
 		})
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHTTPJSONError(w, http.StatusInternalServerError, buildCLIError("search", err, resp.Route, resp.RouteTrace))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -106,7 +107,7 @@ func (h *httpHandler) start(addr string) error {
 			Format string `json:"format"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeHTTPJSONError(w, http.StatusBadRequest, map[string]string{"error": safeerr.Message(err)})
 			return
 		}
 		resp, err := h.svc.Extract(r.Context(), core.ExtractRequest{
@@ -114,7 +115,7 @@ func (h *httpHandler) start(addr string) error {
 			Format: req.Format,
 		})
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHTTPJSONError(w, http.StatusInternalServerError, buildCLIError("extract", err, resp.Route, resp.RouteTrace))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -169,4 +170,10 @@ func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {
 }
 func buildMCPServer(svc *core.Service) *server.MCPServer {
 	return mcpserver.New(svc)
+}
+
+func writeHTTPJSONError(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
 }

@@ -138,13 +138,17 @@ func writeMCPJSONConfig(path, binary string) error {
 	if err != nil {
 		return err
 	}
-	servers := map[string]mcpServerEntry{}
+	servers := map[string]json.RawMessage{}
 	if raw, ok := root["mcpServers"]; ok && len(raw) > 0 {
 		if err := json.Unmarshal(raw, &servers); err != nil {
 			return fmt.Errorf("parse existing mcpServers: %w", err)
 		}
 	}
-	servers["nole"] = noleMCPServerEntry(binary)
+	nole, err := noleMCPServerRaw(binary)
+	if err != nil {
+		return err
+	}
+	servers["nole"] = nole
 	encoded, err := json.Marshal(servers)
 	if err != nil {
 		return fmt.Errorf("marshal mcpServers: %w", err)
@@ -165,17 +169,17 @@ func writeCodexConfigPath(path, binary string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
-	existing, exists, err := readExistingFile(path)
+	existing, exists, mode, err := readExistingFileWithMode(path)
 	if err != nil {
 		return err
 	}
 	if exists {
-		if err := writeBackup(path, existing); err != nil {
+		if err := writeBackup(path, existing, mode); err != nil {
 			return err
 		}
 	}
 	content := mergeCodexMCPServer(string(existing), binary)
-	return os.WriteFile(path, []byte(content), 0644)
+	return atomicWriteFile(path, []byte(content), configWriteMode(exists, mode))
 }
 
 func writeOpenCodeConfig(binary string) error {
@@ -190,13 +194,17 @@ func writeOpenCodeConfigPath(path, binary string) error {
 	if err != nil {
 		return err
 	}
-	servers := map[string]mcpServerEntry{}
+	servers := map[string]json.RawMessage{}
 	if raw, ok := root["mcp"]; ok && len(raw) > 0 {
 		if err := json.Unmarshal(raw, &servers); err != nil {
 			return fmt.Errorf("parse existing opencode mcp: %w", err)
 		}
 	}
-	servers["nole"] = noleMCPServerEntry(binary)
+	nole, err := noleMCPServerRaw(binary)
+	if err != nil {
+		return err
+	}
+	servers["nole"] = nole
 	encoded, err := json.Marshal(servers)
 	if err != nil {
 		return fmt.Errorf("marshal opencode mcp: %w", err)
@@ -210,10 +218,12 @@ func writeJSONConfig(path string, data any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
-	if existing, exists, err := readExistingFile(path); err != nil {
+	existing, exists, mode, err := readExistingFileWithMode(path)
+	if err != nil {
 		return err
-	} else if exists {
-		if err := writeBackup(path, existing); err != nil {
+	}
+	if exists {
+		if err := writeBackup(path, existing, mode); err != nil {
 			return err
 		}
 	}
@@ -223,11 +233,19 @@ func writeJSONConfig(path string, data any) error {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	return os.WriteFile(path, b, 0644)
+	return atomicWriteFile(path, b, configWriteMode(exists, mode))
 }
 
 func noleMCPServerEntry(binary string) mcpServerEntry {
 	return mcpServerEntry{Command: binary, Args: []string{"mcp"}}
+}
+
+func noleMCPServerRaw(binary string) (json.RawMessage, error) {
+	b, err := json.Marshal(noleMCPServerEntry(binary))
+	if err != nil {
+		return nil, fmt.Errorf("marshal nole MCP server: %w", err)
+	}
+	return json.RawMessage(b), nil
 }
 
 func readJSONObject(path string) (map[string]json.RawMessage, error) {
@@ -246,19 +264,80 @@ func readJSONObject(path string) (map[string]json.RawMessage, error) {
 }
 
 func readExistingFile(path string) ([]byte, bool, error) {
-	b, err := os.ReadFile(path)
-	if err == nil {
-		return b, true, nil
-	}
-	if os.IsNotExist(err) {
-		return nil, false, nil
-	}
-	return nil, false, fmt.Errorf("read existing config: %w", err)
+	b, exists, _, err := readExistingFileWithMode(path)
+	return b, exists, err
 }
 
-func writeBackup(path string, content []byte) error {
-	if err := os.WriteFile(path+".bak", content, 0644); err != nil {
+func readExistingFileWithMode(path string) ([]byte, bool, os.FileMode, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, 0, nil
+		}
+		return nil, false, 0, fmt.Errorf("stat existing config: %w", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false, 0, fmt.Errorf("read existing config: %w", err)
+	}
+	return b, true, info.Mode().Perm(), nil
+}
+
+func writeBackup(path string, content []byte, sourceMode os.FileMode) error {
+	if err := atomicWriteFile(path+".bak", content, configWriteMode(true, sourceMode)); err != nil {
 		return fmt.Errorf("write backup: %w", err)
+	}
+	return nil
+}
+
+func configWriteMode(exists bool, mode os.FileMode) os.FileMode {
+	if exists {
+		if perm := mode.Perm(); perm != 0 {
+			return perm
+		}
+	}
+	return 0600
+}
+
+func atomicWriteFile(path string, content []byte, mode os.FileMode) error {
+	if mode == 0 {
+		mode = 0600
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	closed := false
+	defer func() {
+		if !closed {
+			_ = tmp.Close()
+		}
+		_ = os.Remove(tmpName)
+	}()
+	if err := tmp.Chmod(mode); err != nil {
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+	if _, err := tmp.Write(content); err != nil {
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("sync temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		closed = true
+		return fmt.Errorf("close temp file: %w", err)
+	}
+	closed = true
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("rename temp file: %w", err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		return fmt.Errorf("chmod config: %w", err)
 	}
 	return nil
 }

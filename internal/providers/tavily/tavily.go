@@ -109,7 +109,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.SearchResponse{}, fmt.Errorf("tavily: search returned %d: %s", resp.StatusCode, string(respBody))
+		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("tavily", "search", resp.StatusCode, respBody)
 	}
 
 	var tresp tavilySearchResponse
@@ -183,7 +183,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.ExtractResponse{}, fmt.Errorf("tavily: extract returned %d: %s", resp.StatusCode, string(respBody))
+		return core.ExtractResponse{}, providerhttp.NewHTTPStatusError("tavily", "extract", resp.StatusCode, respBody)
 	}
 
 	var tresp tavilyExtractResponse

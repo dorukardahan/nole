@@ -8,6 +8,7 @@ import (
 
 	"github.com/dorukardahan/nole/internal/bench"
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/safeerr"
 	"github.com/spf13/cobra"
 )
 
@@ -153,9 +154,9 @@ func sanitizedBenchError(err error) string {
 	if err == nil {
 		return ""
 	}
-	msg := err.Error()
-	if len(msg) > 120 {
-		msg = msg[:120]
+	msg := safeerr.Message(err)
+	if len(msg) > 160 {
+		msg = msg[:160]
 	}
 	return msg
 }

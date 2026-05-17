@@ -8,6 +8,7 @@ Nólë is intentionally staying small for the public-readiness pass. The items b
 - Add an optional live benchmark writer that emits sanitized summaries only: fixture version, provider/task success counts, latency ranges, result counts, citation/source URL quality, extraction success, and error categories. Do not commit raw provider payloads, headers, keys, or private queries.
 - Keep the current route matrix unchanged until new evidence supports a change. Offline assumptions should be labeled as fixture evidence; live provider canaries should be explicit, low-limit, and reproducible.
 - Add a public route-evidence document once enough offline/live results exist to justify changing provider order.
+- Keep empty-result semantics aligned between production and bench: empty search results and empty extracted content should remain fallback attempts, with explicit `route_trace` reasons.
 
 ## Cache and quota ledger
 
@@ -17,7 +18,7 @@ Nólë is intentionally staying small for the public-readiness pass. The items b
 
 ## Agent integrations
 
-Verified writers currently target the config formats implemented by `nole setup` (Claude/Cursor-style `mcpServers`, Codex TOML `mcp_servers`, OpenCode `mcp`). Continue to merge existing config and create backups before updates.
+Verified writers currently target the config formats implemented by `nole setup` (Claude/Cursor-style `mcpServers`, Codex TOML `mcp_servers`, OpenCode `mcp`). Continue to merge existing config and create backups before updates. Preserve unknown client-specific JSON fields and preserve existing file modes; new sensitive config/backup files should stay private (`0600`).
 
 Generic MCP stdio template for clients that are not yet verified:
 
@@ -41,7 +42,7 @@ Client notes:
 
 ## Doctor and MCP reliability
 
-- Extend `doctor --mcp` from startup stdout cleanliness into a fuller MCP protocol smoke test if the CLI can safely run a short initialize/list-tools exchange without hanging.
+- Keep `doctor --mcp` as a real subprocess smoke test that performs `initialize` and `tools/list`, verifies expected tools, and treats non-JSON stdout as a failure.
 - Keep all protocol-external logs on stderr. Any stdout banner in `nole mcp` should be treated as a bug because MCP stdio reserves stdout for JSON-RPC.
 - Add client-config discovery checks only when they can avoid printing secrets and avoid reading provider key values.
 

@@ -37,11 +37,11 @@ Task types route to the best available provider from the current route matrix. R
 | research | brave -> firecrawl -> ddgs -> tavily -> jina |
 | extract | tavily -> firecrawl -> jina |
 
-Unavailable providers (no API key), quota-blocked providers, and providers without the requested capability are skipped automatically. Search and extract responses include a `route_trace` with provider, status, reason, latency, and result count so agents can explain why a provider was selected or skipped.
+Unavailable providers (no API key), quota-blocked providers, providers without the requested capability, empty search results, and empty extracted content are skipped automatically. Search and extract responses include a `route_trace` with provider, status, structured reason (`quota_blocked`, `provider_error`, `empty_results`, `empty_content`, etc.), latency, and result count so agents can explain why a provider was selected or skipped.
 
 ## Benchmark / Eval
 
-Nólë includes a deterministic offline benchmark harness for routing and failure-mode evaluation. Offline mode is the default and makes no provider network calls.
+Nólë includes a deterministic offline benchmark harness for routing-contract and failure-mode evaluation. Offline mode is the default and makes no provider network calls. Treat offline scores as fixture/contract evidence only, not proof that a route order is better on the live web.
 
 ```bash
 nole bench
@@ -54,7 +54,7 @@ Optional live smoke benchmarks require an explicit flag and use a low default ca
 nole bench --live --max-live-cases 3
 ```
 
-Do not commit raw live benchmark logs. If live runs are used to justify route changes, publish only sanitized summaries such as success counts, latency ranges, result counts, citation/source quality notes, and the fixture version.
+Do not commit raw live benchmark logs. If live runs are used to justify route changes, publish only sanitized summaries such as success counts, latency ranges, result counts, citation/source quality notes, and the fixture version. Route matrix changes should include that evidence in the same change.
 
 ## Install
 
@@ -97,7 +97,7 @@ nole setup --all
 
 ```
 nole doctor              # Check config and provider health
-nole doctor --mcp        # Also check MCP stdio startup/stdout health
+nole doctor --mcp        # Also run MCP stdio initialize + tools/list smoke
 nole providers --json    # List available providers
 nole bench [--json]      # Run deterministic offline eval fixtures
 nole search <query>      # Search with task-based routing
@@ -126,7 +126,7 @@ nole serve --mcp         # Start HTTP MCP + REST API server
 
 ## Agent Setup
 
-One command configures the MCP clients that Nólë can currently write safely. Existing config files are merged rather than clobbered; when a file already exists, Nólë writes a `.bak` backup before updating the `nole` server entry.
+One command configures the MCP clients that Nólë can currently write safely. Existing config files are merged rather than clobbered; when a file already exists, Nólë writes a `.bak` backup before updating the `nole` server entry. JSON merges preserve client-specific fields on unrelated servers, and config/backup writes preserve existing permissions or use `0600` for new sensitive files.
 
 ```bash
 nole setup --all
@@ -165,10 +165,11 @@ Auto-use is still client-dependent. Some clients require MCP servers to be enabl
 
 ## Observability and failure handling
 
-- Search and extract responses include `route_trace` entries with selected provider, skip/fallback reason, provider latency, and result count.
+- Search and extract responses include `route_trace` entries with selected provider, skip/fallback reason, provider latency, and result count. Empty search results and empty extracted content are fallback reasons, not successes.
 - Transient provider responses (`429`, `502`, `503`, `504`) use bounded retry/backoff and respect `Retry-After` when present.
 - Retries are intentionally low and configurable; Nólë never retries forever.
-- MCP stdio keeps stdout reserved for JSON-RPC protocol. Run `nole doctor --mcp` to smoke-check startup stdout cleanliness.
+- MCP and CLI JSON error payloads preserve `route_trace` where practical while redacting provider error detail.
+- MCP stdio keeps stdout reserved for JSON-RPC protocol. Run `nole doctor --mcp` to smoke-check startup stdout cleanliness and an actual `initialize` + `tools/list` exchange.
 
 ## MCP Tools
 
@@ -201,8 +202,9 @@ internal/
 
 - API keys are read from environment variables only. Never stored or logged.
 - `$0.00 local hard cap`: Nólë only routes through configured free-tier/keyless entries and returns a structured error when no free route is locally allowed. Provider-side overage controls still depend on your BYOK account settings; configure providers to disable paid overage where available.
-- MCP stdio mode keeps stdout clean for JSON-RPC; all logs go to stderr. `nole doctor --mcp` checks startup stdout cleanliness.
-- No telemetry, no tracking, no external data collection.
+- MCP stdio mode keeps stdout clean for JSON-RPC; all logs go to stderr. `nole doctor --mcp` checks startup stdout cleanliness and lists the expected MCP tools without printing stderr contents.
+- Provider HTTP errors do not print raw response bodies by default because providers can echo request bodies, auth headers, URLs, or keys.
+- No Nólë-owned telemetry, tracking, or external data collection. Configured providers still receive the search/extract requests that you route to them.
 
 ## License
 

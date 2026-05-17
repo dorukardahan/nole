@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -13,6 +14,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/jina"
 	"github.com/dorukardahan/nole/internal/providers/mock"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
+	"github.com/dorukardahan/nole/internal/safeerr"
 )
 
 func defaultService() *core.Service {
@@ -68,9 +70,29 @@ func defaultService() *core.Service {
 }
 
 func writeJSON(v any) error {
-	encoder := json.NewEncoder(os.Stdout)
+	return writeJSONTo(os.Stdout, v)
+}
+
+func writeJSONTo(w io.Writer, v any) error {
+	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(v)
+}
+
+type cliErrorEnvelope struct {
+	Operation  string              `json:"operation"`
+	Error      string              `json:"error"`
+	Route      []string            `json:"route,omitempty"`
+	RouteTrace []core.RouteAttempt `json:"route_trace,omitempty"`
+}
+
+func buildCLIError(operation string, err error, route []string, trace []core.RouteAttempt) cliErrorEnvelope {
+	return cliErrorEnvelope{
+		Operation:  operation,
+		Error:      safeerr.Message(err),
+		Route:      append([]string(nil), route...),
+		RouteTrace: append([]core.RouteAttempt(nil), trace...),
+	}
 }
 
 func parseTask(raw string) core.TaskType {

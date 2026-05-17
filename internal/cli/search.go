@@ -19,10 +19,13 @@ func newSearchCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resp, err := runSearch(args[0], parseTask(taskRaw), limit)
 			if err != nil {
+				if jsonOut {
+					_ = writeJSONTo(cmd.OutOrStdout(), buildCLIError("search", err, resp.Route, resp.RouteTrace))
+				}
 				return err
 			}
 			if jsonOut {
-				return writeJSON(resp)
+				return writeJSONTo(cmd.OutOrStdout(), resp)
 			}
 			for _, result := range resp.Results {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s\n%s\n%s\n\n", result.Title, result.URL, result.Snippet)

@@ -89,7 +89,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return core.SearchResponse{}, fmt.Errorf("brave: search returned %d: %s", resp.StatusCode, string(respBody))
+		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("brave", "search", resp.StatusCode, respBody)
 	}
 
 	var bresp braveSearchResponse
