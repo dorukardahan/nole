@@ -106,4 +106,19 @@ func TestDoWithRetryRespectsRetryAfterHeader(t *testing.T) {
 	}
 }
 
+func TestRetryDelayCapsRetryAfterHeader(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Retry-After", "3600")
+	got := retryDelay(headers, RetryOptions{BaseDelay: time.Millisecond, MaxDelay: 5 * time.Second}, 1)
+	if got != 5*time.Second {
+		t.Fatalf("Retry-After seconds delay = %s, want capped 5s", got)
+	}
+
+	headers.Set("Retry-After", time.Now().Add(time.Hour).UTC().Format(http.TimeFormat))
+	got = retryDelay(headers, RetryOptions{BaseDelay: time.Millisecond, MaxDelay: 5 * time.Second}, 1)
+	if got > 5*time.Second {
+		t.Fatalf("Retry-After date delay = %s, want <= 5s", got)
+	}
+}
+
 func noSleep(ctx context.Context, d time.Duration) error { return nil }

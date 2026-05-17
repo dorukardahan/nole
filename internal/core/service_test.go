@@ -12,6 +12,8 @@ type emptySearchProvider struct{ fakeProvider }
 
 type emptyExtractProvider struct{ fakeProvider }
 
+type whitespaceExtractProvider struct{ fakeProvider }
+
 func (f failingProvider) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
 	return SearchResponse{}, errors.New("provider failed")
 }
@@ -22,6 +24,10 @@ func (p emptySearchProvider) Search(ctx context.Context, req SearchRequest) (Sea
 
 func (p emptyExtractProvider) Extract(ctx context.Context, req ExtractRequest) (ExtractResponse, error) {
 	return ExtractResponse{URL: req.URL, Provider: p.name, Content: ""}, nil
+}
+
+func (p whitespaceExtractProvider) Extract(ctx context.Context, req ExtractRequest) (ExtractResponse, error) {
+	return ExtractResponse{URL: req.URL, Provider: p.name, Content: " \n\t "}, nil
 }
 
 func TestServiceSearchCallsSelectedProvider(t *testing.T) {
@@ -135,7 +141,7 @@ func TestServiceExtractUsesExtractRoute(t *testing.T) {
 
 func TestServiceExtractFallsBackOnEmptyContent(t *testing.T) {
 	registry := NewRegistry()
-	_ = registry.Register(emptyExtractProvider{fakeProvider{name: "empty"}})
+	_ = registry.Register(whitespaceExtractProvider{fakeProvider{name: "empty"}})
 	_ = registry.Register(fakeProvider{name: "firecrawl"})
 	ledger := NewMemoryQuotaLedger()
 	ledger.Set(QuotaEntry{Provider: "empty", FreeRemaining: 1})

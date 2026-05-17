@@ -159,7 +159,7 @@ func skippedAttempt(provider, reason string) RouteAttempt {
 }
 
 func contentResultCount(content string) int {
-	if content == "" {
+	if strings.TrimSpace(content) == "" {
 		return 0
 	}
 	return 1

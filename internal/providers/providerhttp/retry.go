@@ -92,12 +92,12 @@ func cloneRequestForAttempt(ctx context.Context, req *http.Request, attempt int)
 func retryDelay(headers http.Header, opts RetryOptions, attempt int) time.Duration {
 	if raw := headers.Get("Retry-After"); raw != "" {
 		if seconds, err := strconv.Atoi(raw); err == nil && seconds >= 0 {
-			return time.Duration(seconds) * time.Second
+			return capDelay(time.Duration(seconds)*time.Second, opts.MaxDelay)
 		}
 		if t, err := http.ParseTime(raw); err == nil {
 			d := time.Until(t)
 			if d > 0 {
-				return d
+				return capDelay(d, opts.MaxDelay)
 			}
 		}
 	}
@@ -107,6 +107,13 @@ func retryDelay(headers http.Header, opts RetryOptions, attempt int) time.Durati
 		if opts.MaxDelay > 0 && delay > opts.MaxDelay {
 			return opts.MaxDelay
 		}
+	}
+	return capDelay(delay, opts.MaxDelay)
+}
+
+func capDelay(delay, max time.Duration) time.Duration {
+	if max > 0 && delay > max {
+		return max
 	}
 	return delay
 }
