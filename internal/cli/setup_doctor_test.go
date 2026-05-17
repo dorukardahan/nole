@@ -167,7 +167,7 @@ func TestWriteCodexConfigMergesNoleSectionAndCreatesBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(b)
-	for _, want := range []string{"model = \"gpt-5\"", "[mcp_servers.other]", "[mcp_servers.nole]", "command = \"/usr/local/bin/nole\""} {
+	for _, want := range []string{"model = \"gpt-5\"", "[mcp_servers.other]", "[mcp_servers.nole]", "command = \"/bin/sh\"", ".config/nole/.env", "/usr/local/bin/nole"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("merged codex config missing %q:\n%s", want, text)
 		}
