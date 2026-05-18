@@ -14,7 +14,7 @@ func TestToolErrorJSONPreservesRouteTraceAndRedactsMessage(t *testing.T) {
 		{Provider: "ddgs", Status: "failed", Reason: "empty_results"},
 	})
 	text := string(payload)
-	for _, want := range []string{`"operation": "search"`, `"route_trace"`, `"provider": "ddgs"`, `"reason": "empty_results"`} {
+	for _, want := range []string{`"operation": "search"`, `"routing_insight"`, `"Nólë: search failed`, `"route_trace"`, `"provider": "ddgs"`, `"reason": "empty_results"`} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("tool error payload missing %s: %s", want, text)
 		}

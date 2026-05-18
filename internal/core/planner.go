@@ -29,12 +29,13 @@ type PlannedIntent struct {
 }
 
 type QueryClassification struct {
-	Query       string             `json:"query"`
-	PrimaryTask TaskType           `json:"primary_task"`
-	Ambiguous   bool               `json:"ambiguous"`
-	RuleVersion string             `json:"rule_version"`
-	Intents     []PlannedIntent    `json:"intents"`
-	Overrides   PlanOverrideReport `json:"overrides,omitempty"`
+	Query          string             `json:"query"`
+	PrimaryTask    TaskType           `json:"primary_task"`
+	Ambiguous      bool               `json:"ambiguous"`
+	RuleVersion    string             `json:"rule_version"`
+	Intents        []PlannedIntent    `json:"intents"`
+	RoutingInsight string             `json:"routing_insight,omitempty"`
+	Overrides      PlanOverrideReport `json:"overrides,omitempty"`
 }
 
 type PlannedRoute struct {
@@ -45,14 +46,15 @@ type PlannedRoute struct {
 }
 
 type RoutePlan struct {
-	Query       string             `json:"query"`
-	PrimaryTask TaskType           `json:"primary_task"`
-	Ambiguous   bool               `json:"ambiguous"`
-	RuleVersion string             `json:"rule_version"`
-	Intents     []PlannedIntent    `json:"intents"`
-	Routes      []PlannedRoute     `json:"routes"`
-	RouteTrace  []RouteAttempt     `json:"route_trace"`
-	Overrides   PlanOverrideReport `json:"overrides,omitempty"`
+	Query          string             `json:"query"`
+	PrimaryTask    TaskType           `json:"primary_task"`
+	Ambiguous      bool               `json:"ambiguous"`
+	RuleVersion    string             `json:"rule_version"`
+	Intents        []PlannedIntent    `json:"intents"`
+	Routes         []PlannedRoute     `json:"routes"`
+	RoutingInsight string             `json:"routing_insight,omitempty"`
+	RouteTrace     []RouteAttempt     `json:"route_trace"`
+	Overrides      PlanOverrideReport `json:"overrides,omitempty"`
 }
 
 type intentRule struct {
@@ -101,7 +103,7 @@ func ClassifyQuery(query string, opts PlanOptions) QueryClassification {
 	overrides := buildOverrideReport(opts)
 	if opts.TaskOverride != "" {
 		intent := PlannedIntent{Task: opts.TaskOverride, Label: taskLabel(opts.TaskOverride), Score: 100, Reason: "task override"}
-		return QueryClassification{
+		classification := QueryClassification{
 			Query:       query,
 			PrimaryTask: opts.TaskOverride,
 			Ambiguous:   false,
@@ -109,6 +111,8 @@ func ClassifyQuery(query string, opts PlanOptions) QueryClassification {
 			Intents:     []PlannedIntent{intent},
 			Overrides:   overrides,
 		}
+		classification.RoutingInsight = BuildClassificationRoutingInsight(classification)
+		return classification
 	}
 
 	norm := normalizeQuery(query)
@@ -124,7 +128,7 @@ func ClassifyQuery(query string, opts PlanOptions) QueryClassification {
 		}
 	}
 
-	return QueryClassification{
+	classification := QueryClassification{
 		Query:       query,
 		PrimaryTask: intents[0].Task,
 		Ambiguous:   ambiguous,
@@ -132,6 +136,8 @@ func ClassifyQuery(query string, opts PlanOptions) QueryClassification {
 		Intents:     intents,
 		Overrides:   overrides,
 	}
+	classification.RoutingInsight = BuildClassificationRoutingInsight(classification)
+	return classification
 }
 
 // BuildRoutePlan classifies a query and returns provider routes without making provider calls.
@@ -150,7 +156,7 @@ func BuildRoutePlan(query string, matrix RouteMatrix, opts PlanOptions) RoutePla
 			trace = append(trace, RouteAttempt{Provider: provider, Status: "planned", Reason: reason})
 		}
 	}
-	return RoutePlan{
+	plan := RoutePlan{
 		Query:       query,
 		PrimaryTask: classification.PrimaryTask,
 		Ambiguous:   classification.Ambiguous,
@@ -160,6 +166,8 @@ func BuildRoutePlan(query string, matrix RouteMatrix, opts PlanOptions) RoutePla
 		RouteTrace:  trace,
 		Overrides:   classification.Overrides,
 	}
+	plan.RoutingInsight = BuildRoutePlanRoutingInsight(plan)
+	return plan
 }
 
 func scoreIntents(norm string) []PlannedIntent {

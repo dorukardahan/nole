@@ -88,7 +88,6 @@ go build -o nole .
 ```
 
 Try the CLI:
-
 ```bash
 ./nole providers --json
 ./nole bench --json
@@ -97,6 +96,8 @@ Try the CLI:
 ./nole search "Go net/http Client Timeout documentation" --task docs --json
 ./nole extract "https://go.dev/doc/" --json
 ```
+
+Search, extract, classify and route-plan JSON responses include a short `routing_insight` by default; search, extract and route-plan keep detailed `route_trace` for debugging where available. Human search/extract output prints the same one-line insight before results. Use `--insight off` to omit the user-facing insight, or `--insight verbose` to print the compact line plus route trace lines in human output. The insight is deterministic and sanitized; it should not contain API keys, auth headers, raw provider payloads or private URLs.
 
 Install the binary somewhere on PATH:
 
@@ -167,6 +168,7 @@ Stable/core:
 
 - CLI: `nole search`, `nole extract`, `nole classify`, `nole route-plan`, `nole providers`, `nole doctor`, `nole bench`.
 - MCP stdio: `nole mcp` for agent tools `search`, `extract`, `provider_status`, `budget_status`.
+- Routing insight: `routing_insight` is a compact user-facing explanation; `route_trace` remains the structured debugging surface. Agents should cite the compact insight in normal answers and reserve full traces for troubleshooting.
 
 Experimental:
 

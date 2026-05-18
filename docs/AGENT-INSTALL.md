@@ -127,6 +127,8 @@ nole doctor
 nole doctor --mcp
 nole providers --json
 nole bench --json
+nole classify "OpenAI API docs pricing and latest changelog" --json
+nole route-plan "OpenAI API docs pricing and latest changelog" --json
 ```
 
 Optional low-risk smoke:
@@ -136,7 +138,7 @@ nole search "Go net/http Client Timeout documentation" --task docs --json
 nole extract "https://go.dev/doc/" --json
 ```
 
-`nole bench --json` is deterministic/offline. Search/extract may call live providers; keep usage low and cost-aware.
+`nole bench --json` is deterministic/offline. Search/extract may call live providers; keep usage low and cost-aware. Search, extract, classify and route-plan JSON include compact `routing_insight` by default; search, extract and route-plan keep detailed `route_trace` for debugging where available. Use `--insight off` to omit the user-facing insight, or `--insight verbose` when you intentionally need trace lines in human search/extract output.
 
 ## First agent prompt
 
@@ -145,6 +147,8 @@ After configuring the client, ask the agent:
 ```text
 Use Nólë to search for Go net/http Client Timeout documentation. Include one compact Nólë routing insight and cite the result URLs.
 ```
+
+The agent should report the compact insight, not the full route trace, unless the user asks for debugging detail. The compact insight and error envelopes are sanitized and must not contain provider keys, auth headers, raw provider payloads or private URLs.
 
 The agent should see MCP tools similar to:
 

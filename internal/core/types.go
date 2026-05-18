@@ -46,21 +46,23 @@ type SearchResult struct {
 }
 
 type SearchResponse struct {
-	Query      string         `json:"query"`
-	Task       TaskType       `json:"task"`
-	Provider   string         `json:"provider"`
-	Results    []SearchResult `json:"results"`
-	Route      []string       `json:"route"`
-	RouteTrace []RouteAttempt `json:"route_trace,omitempty"`
+	Query          string         `json:"query"`
+	Task           TaskType       `json:"task"`
+	Provider       string         `json:"provider"`
+	Results        []SearchResult `json:"results"`
+	Route          []string       `json:"route"`
+	RoutingInsight string         `json:"routing_insight,omitempty"`
+	RouteTrace     []RouteAttempt `json:"route_trace,omitempty"`
 }
 
 type ExtractResponse struct {
-	URL        string            `json:"url"`
-	Provider   string            `json:"provider"`
-	Content    string            `json:"content"`
-	Metadata   map[string]string `json:"metadata,omitempty"`
-	Route      []string          `json:"route,omitempty"`
-	RouteTrace []RouteAttempt    `json:"route_trace,omitempty"`
+	URL            string            `json:"url"`
+	Provider       string            `json:"provider"`
+	Content        string            `json:"content"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
+	Route          []string          `json:"route,omitempty"`
+	RoutingInsight string            `json:"routing_insight,omitempty"`
+	RouteTrace     []RouteAttempt    `json:"route_trace,omitempty"`
 }
 
 type RouteAttempt struct {
