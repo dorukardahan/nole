@@ -56,7 +56,7 @@ func (r *Router) Select(task TaskType, capability Capability) (Provider, []strin
 		if !HasCapability(provider.Capabilities(), capability) {
 			continue
 		}
-		if !r.ledger.Allow(name) {
+		if !r.ledger.Decide(name).Allowed {
 			continue
 		}
 		return provider, append([]string(nil), route...), nil

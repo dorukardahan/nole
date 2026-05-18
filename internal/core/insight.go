@@ -94,6 +94,12 @@ func FormatRouteTraceLines(trace []RouteAttempt) []string {
 		if attempt.Reason != "" {
 			parts = append(parts, "reason="+attempt.Reason)
 		}
+		if attempt.CostPolicy != "" {
+			parts = append(parts, "cost_policy="+string(attempt.CostPolicy))
+		}
+		if attempt.CostClass != "" {
+			parts = append(parts, "cost_class="+string(attempt.CostClass))
+		}
 		if attempt.ResultCount > 0 || attempt.Status == "success" {
 			parts = append(parts, fmt.Sprintf("results=%d", attempt.ResultCount))
 		}
@@ -108,6 +114,11 @@ func FormatRouteTraceLines(trace []RouteAttempt) []string {
 func buildRuntimeRoutingInsight(operation string, task TaskType, provider string, route []string, trace []RouteAttempt, resultCount int) string {
 	attempts := len(trace)
 	total := routeSlotCount(route, trace)
+	policy := tracePolicy(trace)
+	policyPart := ""
+	if policy != "" {
+		policyPart = string(policy) + ", "
+	}
 	if provider == "" {
 		provider = successProvider(trace)
 	}
@@ -115,7 +126,7 @@ func buildRuntimeRoutingInsight(operation string, task TaskType, provider string
 		if provider == "" {
 			return fmt.Sprintf("Nólë: extract failed (%s)", attemptSummary(attempts, total))
 		}
-		return fmt.Sprintf("Nólë: extract page via %s (%s, content extracted)", provider, attemptSummary(attempts, total))
+		return fmt.Sprintf("Nólë: extract page via %s (%s%s, content extracted)", provider, policyPart, attemptSummary(attempts, total))
 	}
 	if task == "" {
 		task = TaskGeneral
@@ -123,7 +134,21 @@ func buildRuntimeRoutingInsight(operation string, task TaskType, provider string
 	if provider == "" {
 		return fmt.Sprintf("Nólë: search %s failed (%s)", task, attemptSummary(attempts, total))
 	}
-	return fmt.Sprintf("Nólë: search %s via %s (%s, %s)", task, provider, attemptSummary(attempts, total), plural(resultCount, "result", "results"))
+	return fmt.Sprintf("Nólë: search %s via %s (%s%s, %s)", task, provider, policyPart, attemptSummary(attempts, total), plural(resultCount, "result", "results"))
+}
+
+func tracePolicy(trace []RouteAttempt) CostPolicy {
+	for i := len(trace) - 1; i >= 0; i-- {
+		if trace[i].Status == "success" && trace[i].CostPolicy != "" {
+			return trace[i].CostPolicy
+		}
+	}
+	for _, attempt := range trace {
+		if attempt.CostPolicy != "" {
+			return attempt.CostPolicy
+		}
+	}
+	return ""
 }
 
 func successProvider(trace []RouteAttempt) string {

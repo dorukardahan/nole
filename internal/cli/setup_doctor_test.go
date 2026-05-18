@@ -207,6 +207,27 @@ func TestDoctorCommandMCPFlagReportsStdioSmoke(t *testing.T) {
 	}
 }
 
+func TestDoctorCommandReportsCostPolicyWithoutSecrets(t *testing.T) {
+	t.Setenv("TAVILY_API_KEY", "placeholder-test-key")
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("doctor failed: %v", err)
+	}
+	text := out.String()
+	for _, want := range []string{"policy=free-first", "no_hidden_paid_spend=true", "premium-capable", "premium_blocked_free_first"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "placeholder-test-key") {
+		t.Fatalf("doctor output leaked provider key:\n%s", text)
+	}
+}
+
 func TestDoctorCommandMCPFlagReturnsErrorOnSmokeFailure(t *testing.T) {
 	t.Setenv("NOLE_MCP_SMOKE_BINARY", filepath.Join(t.TempDir(), "missing-nole"))
 	cmd := NewRootCommand()

@@ -74,6 +74,7 @@ Rules:
 - Do not commit `.env` files.
 - Do not print key values while debugging.
 - Prefer provider dashboards with free-tier limits or overage disabled where available.
+- Default `NOLE_COST_POLICY` is `free-first`: a key alone is `premium-capable` and remains blocked from live calls unless the user explicitly chooses `cost-capped` with local estimates or `quality-first`.
 
 A local env file can be useful for GUI apps that do not inherit shell env:
 
@@ -138,7 +139,7 @@ nole search "Go net/http Client Timeout documentation" --task docs --json
 nole extract "https://go.dev/doc/" --json
 ```
 
-`nole bench --json` is deterministic/offline. Search/extract may call live providers; keep usage low and cost-aware. Search, extract, classify and route-plan JSON include compact `routing_insight` by default; search, extract and route-plan keep detailed `route_trace` for debugging where available. Use `--insight off` to omit the user-facing insight, or `--insight verbose` when you intentionally need trace lines in human search/extract output.
+`nole bench --json` is deterministic/offline. Search/extract may call live providers only after the cost policy allows a provider; keep usage low and cost-aware. Search, extract, classify and route-plan JSON include compact `routing_insight` by default; search, extract and route-plan keep detailed `route_trace` for debugging where available. Runtime traces include sanitized cost policy/class fields such as `free-first`, `keyless-free` or `premium-capable`, never provider keys. Use `--insight off` to omit the user-facing insight, or `--insight verbose` when you intentionally need trace lines in human search/extract output.
 
 ## First agent prompt
 

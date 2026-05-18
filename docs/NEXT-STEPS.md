@@ -83,7 +83,7 @@ Goals:
 
 - Model `free-first`, `cost-capped`, `quality-first` policies.
 - Keep default no-hidden-paid-spend behavior.
-- Distinguish provider status: keyless-free, free-tier/byok, premium-capable, unknown-cost, disabled/no-key.
+- Distinguish provider status: keyless-free, free-tier-BYOK, premium-capable, unknown-cost, disabled-no-key.
 - Do not select a paid provider merely because a paid key exists.
 - Add provider_status and budget_status fields without printing secrets.
 

@@ -15,14 +15,14 @@ func newProvidersCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			statuses := defaultService().ProviderStatus(context.Background())
 			if jsonOut {
-				return writeJSON(statuses)
+				return writeJSONTo(cmd.OutOrStdout(), statuses)
 			}
 			for _, status := range statuses {
 				state := "unavailable"
 				if status.Available {
 					state = "available"
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", status.Name, state, status.Reason)
+				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\t%s\n", status.Name, state, status.CostClass, status.PolicyReason, status.Reason)
 			}
 			return nil
 		},

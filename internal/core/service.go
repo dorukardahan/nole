@@ -36,8 +36,9 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 			trace = append(trace, skippedAttempt(name, "missing_search_capability"))
 			continue
 		}
-		if !s.ledger.Allow(name) {
-			trace = append(trace, skippedAttempt(name, "quota_blocked"))
+		decision := s.ledger.Decide(name)
+		if !decision.Allowed {
+			trace = append(trace, skippedAttemptWithDecision(name, decision))
 			continue
 		}
 		if status := provider.Status(ctx); !status.Available {
@@ -45,7 +46,17 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 			if reason == "" {
 				reason = "provider_unavailable"
 			}
-			trace = append(trace, skippedAttempt(name, reason))
+			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, decision))
+			continue
+		}
+		if err := s.ledger.Record(name); err != nil {
+			lastErr = err
+			refreshed := s.ledger.Decide(name)
+			reason := refreshed.Reason
+			if reason == "" {
+				reason = "quota_record_failed"
+			}
+			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, refreshed))
 			continue
 		}
 		start := time.Now()
@@ -53,20 +64,19 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		latency := time.Since(start).Milliseconds()
 		if err != nil {
 			lastErr = err
-			trace = append(trace, RouteAttempt{Provider: name, Status: "failed", Reason: "provider_error", LatencyMS: latency})
+			trace = append(trace, attemptWithDecision(name, "failed", "provider_error", decision, latency, 0))
 			continue
 		}
-		_ = s.ledger.Record(name)
 		resp.Query = req.Query
 		resp.Task = req.Task
 		resp.Provider = provider.Name()
 		resp.Route = append([]string(nil), route...)
 		if len(resp.Results) == 0 {
 			lastErr = fmt.Errorf("search provider %s returned empty results", name)
-			trace = append(trace, RouteAttempt{Provider: name, Status: "failed", Reason: "empty_results", LatencyMS: latency, ResultCount: 0})
+			trace = append(trace, attemptWithDecision(name, "failed", "empty_results", decision, latency, 0))
 			continue
 		}
-		trace = append(trace, RouteAttempt{Provider: name, Status: "success", Reason: "success", LatencyMS: latency, ResultCount: len(resp.Results)})
+		trace = append(trace, attemptWithDecision(name, "success", "success", decision, latency, len(resp.Results)))
 		resp.RouteTrace = trace
 		resp.RoutingInsight = BuildSearchRoutingInsight(resp)
 		return resp, nil
@@ -98,8 +108,9 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 			trace = append(trace, skippedAttempt(name, "missing_extract_capability"))
 			continue
 		}
-		if !s.ledger.Allow(name) {
-			trace = append(trace, skippedAttempt(name, "quota_blocked"))
+		decision := s.ledger.Decide(name)
+		if !decision.Allowed {
+			trace = append(trace, skippedAttemptWithDecision(name, decision))
 			continue
 		}
 		if status := provider.Status(ctx); !status.Available {
@@ -107,7 +118,17 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 			if reason == "" {
 				reason = "provider_unavailable"
 			}
-			trace = append(trace, skippedAttempt(name, reason))
+			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, decision))
+			continue
+		}
+		if err := s.ledger.Record(name); err != nil {
+			lastErr = err
+			refreshed := s.ledger.Decide(name)
+			reason := refreshed.Reason
+			if reason == "" {
+				reason = "quota_record_failed"
+			}
+			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, refreshed))
 			continue
 		}
 		start := time.Now()
@@ -115,20 +136,19 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 		latency := time.Since(start).Milliseconds()
 		if err != nil {
 			lastErr = err
-			trace = append(trace, RouteAttempt{Provider: name, Status: "failed", Reason: "provider_error", LatencyMS: latency})
+			trace = append(trace, attemptWithDecision(name, "failed", "provider_error", decision, latency, 0))
 			continue
 		}
-		_ = s.ledger.Record(name)
 		resp.URL = req.URL
 		resp.Provider = provider.Name()
 		resp.Route = append([]string(nil), route...)
 		resultCount := contentResultCount(resp.Content)
 		if strings.TrimSpace(resp.Content) == "" {
 			lastErr = fmt.Errorf("extract provider %s returned empty content", name)
-			trace = append(trace, RouteAttempt{Provider: name, Status: "failed", Reason: "empty_content", LatencyMS: latency, ResultCount: resultCount})
+			trace = append(trace, attemptWithDecision(name, "failed", "empty_content", decision, latency, resultCount))
 			continue
 		}
-		trace = append(trace, RouteAttempt{Provider: name, Status: "success", Reason: "success", LatencyMS: latency, ResultCount: resultCount})
+		trace = append(trace, attemptWithDecision(name, "success", "success", decision, latency, resultCount))
 		resp.RouteTrace = trace
 		resp.RoutingInsight = BuildExtractRoutingInsight(resp)
 		return resp, nil
@@ -147,13 +167,14 @@ func (s *Service) ProviderStatus(ctx context.Context) []ProviderStatus {
 	providers := s.registry.List()
 	out := make([]ProviderStatus, 0, len(providers))
 	for _, provider := range providers {
-		out = append(out, provider.Status(ctx))
+		status := provider.Status(ctx)
+		out = append(out, mergeProviderCostStatus(status, s.ledger.Decide(provider.Name())))
 	}
 	return out
 }
 
 func (s *Service) BudgetStatus() BudgetStatus {
-	return BudgetStatus{HardCapCents: 0, Entries: s.ledger.Entries()}
+	return s.ledger.BudgetStatus()
 }
 
 func (s *Service) routeFor(task TaskType) []string {
@@ -166,6 +187,39 @@ func (s *Service) routeFor(task TaskType) []string {
 
 func skippedAttempt(provider, reason string) RouteAttempt {
 	return RouteAttempt{Provider: provider, Status: "skipped", Reason: reason}
+}
+
+func skippedAttemptWithDecision(provider string, decision QuotaDecision) RouteAttempt {
+	return skippedAttemptWithReasonAndDecision(provider, decision.Reason, decision)
+}
+
+func skippedAttemptWithReasonAndDecision(provider, reason string, decision QuotaDecision) RouteAttempt {
+	attempt := attemptWithDecision(provider, "skipped", reason, decision, 0, 0)
+	return attempt
+}
+
+func attemptWithDecision(provider, status, reason string, decision QuotaDecision, latency int64, resultCount int) RouteAttempt {
+	return RouteAttempt{
+		Provider:           provider,
+		Status:             status,
+		Reason:             reason,
+		CostPolicy:         decision.Policy,
+		CostClass:          decision.CostClass,
+		LatencyMS:          latency,
+		ResultCount:        resultCount,
+		EstimatedCostCents: decision.EstimatedCostCents,
+	}
+}
+
+func mergeProviderCostStatus(status ProviderStatus, decision QuotaDecision) ProviderStatus {
+	status.CostPolicy = decision.Policy
+	status.CostClass = decision.CostClass
+	status.AllowedByPolicy = decision.Allowed
+	status.PolicyReason = decision.Reason
+	status.FreeRemaining = decision.FreeRemaining
+	status.EstimatedCostCents = decision.EstimatedCostCents
+	status.SpentCents = decision.SpentCents
+	return status
 }
 
 func contentResultCount(content string) int {

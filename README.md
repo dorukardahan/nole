@@ -130,7 +130,21 @@ For unverified or generic clients, use the MCP command template:
 
 ## Provider keys and cost control
 
-Default stance: free-tier/BYOK-safe. Nólë should not create hidden paid usage by default. If you add premium-capable provider accounts, Nólë should use them according to policy, route evidence and task fit rather than picking a paid provider just because a key exists.
+Default stance: `free-first`. Nólë should not create hidden paid usage by default. If you add premium-capable provider accounts, a key by itself does not make that provider eligible for live calls under the default policy. Nólë classifies provider cost status and uses policy decisions before provider selection.
+
+Cost status classes exposed in `provider_status`, `budget_status`, `route_trace` and JSON CLI/MCP surfaces are:
+
+- `keyless-free` — no key required, currently used for DDGS search fallback.
+- `free-tier-BYOK` — user-keyed provider with known local free quota remaining.
+- `premium-capable` — keyed provider that may incur paid usage depending on account/plan.
+- `unknown-cost` — fail-closed unless an explicit quality-first policy is selected.
+- `disabled-no-key` — provider is present but no key is configured.
+
+Cost policy modes:
+
+- `free-first` (default): allow keyless/free-tier routes; block premium-capable providers so there is no hidden paid spend.
+- `cost-capped`: allow premium-capable providers only when a per-process local hard cap and explicit per-provider estimated cost keep the call inside the cap. Persistent cross-run ledgers are planned for M7.
+- `quality-first`: explicitly allow premium-capable providers when the user accepts provider-account cost risk for quality/task fit.
 
 Environment variables:
 
@@ -139,6 +153,11 @@ export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export JINA_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
+
+# Optional policy controls; omit for no-hidden-paid-spend default.
+export NOLE_COST_POLICY="free-first"        # free-first | cost-capped | quality-first
+export NOLE_HARD_CAP_CENTS="0"              # used by cost-capped
+export NOLE_TAVILY_ESTIMATED_COST_CENTS=""  # set explicitly before cost-capped live use
 ```
 
 Do not paste real keys into chat, GitHub issues, docs, PRs or logs. If a GUI agent does not inherit your shell environment, put keys in a local-only env file such as `~/.config/nole/.env` and configure the client launcher to source it. Keep that file out of git and restrict permissions.

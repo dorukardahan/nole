@@ -20,7 +20,7 @@ func TestServiceSearchAddsCompactRoutingInsight(t *testing.T) {
 	if resp.RoutingInsight == "" {
 		t.Fatal("expected compact routing insight")
 	}
-	for _, want := range []string{"Nólë:", "docs", "ddgs", "1 result"} {
+	for _, want := range []string{"Nólë:", "docs", "ddgs", "free-first", "1 result"} {
 		if !strings.Contains(resp.RoutingInsight, want) {
 			t.Fatalf("routing insight missing %q: %q", want, resp.RoutingInsight)
 		}
@@ -34,7 +34,7 @@ func TestServiceExtractAddsCompactRoutingInsight(t *testing.T) {
 	registry := NewRegistry()
 	_ = registry.Register(fakeProvider{name: "firecrawl"})
 	ledger := NewMemoryQuotaLedger()
-	ledger.Set(QuotaEntry{Provider: "firecrawl", Unknown: true})
+	ledger.Set(QuotaEntry{Provider: "firecrawl", CostClass: CostClassFreeTierBYOK, FreeRemaining: 1})
 	service := NewService(registry, ledger, RouteMatrix{TaskExtract: {"firecrawl"}})
 
 	resp, err := service.Extract(context.Background(), ExtractRequest{URL: "https://example.com"})

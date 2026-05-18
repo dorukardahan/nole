@@ -94,3 +94,24 @@ func TestRouterNewsPrefersBrave(t *testing.T) {
 		t.Fatalf("expected brave for news, got %q", provider.Name())
 	}
 }
+
+func TestRouterFreeFirstSkipsPremiumCapableAndUsesKeylessFallback(t *testing.T) {
+	registry := NewRegistry()
+	_ = registry.Register(fakeProvider{name: "brave"})
+	_ = registry.Register(fakeProvider{name: "ddgs"})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "brave", CostClass: CostClassPremiumCapable, EstimatedCostCents: 1})
+	ledger.Set(QuotaEntry{Provider: "ddgs", CostClass: CostClassKeylessFree, KeylessFree: true})
+	router := NewRouter(registry, ledger, RouteMatrix{TaskGeneral: []string{"brave", "ddgs"}})
+
+	provider, route, err := router.Select(TaskGeneral, CapabilitySearch)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	if provider.Name() != "ddgs" {
+		t.Fatalf("expected keyless fallback instead of premium-capable provider, got %q", provider.Name())
+	}
+	if len(route) != 2 || route[0] != "brave" || route[1] != "ddgs" {
+		t.Fatalf("route should preserve matrix order for traceability, got %#v", route)
+	}
+}

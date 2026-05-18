@@ -66,7 +66,7 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		return mcp.NewToolResultText(string(b)), nil
 	})
 
-	statusTool := mcp.NewTool("provider_status", mcp.WithDescription("Show configured provider health/status"))
+	statusTool := mcp.NewTool("provider_status", mcp.WithDescription("Show configured provider health plus sanitized cost policy/class status"))
 	s.AddTool(statusTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		b, err := json.MarshalIndent(svc.ProviderStatus(ctx), "", "  ")
 		if err != nil {
@@ -75,7 +75,7 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		return mcp.NewToolResultText(string(b)), nil
 	})
 
-	budgetTool := mcp.NewTool("budget_status", mcp.WithDescription("Show local free-tier budget/quota status"))
+	budgetTool := mcp.NewTool("budget_status", mcp.WithDescription("Show local cost policy, cap, spend, and free-tier budget/quota status"))
 	s.AddTool(budgetTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		b, err := json.MarshalIndent(svc.BudgetStatus(), "", "  ")
 		if err != nil {
