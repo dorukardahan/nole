@@ -12,6 +12,7 @@ func newClassifyCommand() *cobra.Command {
 	var taskRaw string
 	var singleIntent bool
 	var jsonOut bool
+	var insightRaw string
 	cmd := &cobra.Command{
 		Use:   "classify <query>",
 		Short: "Classify a query with the LLM-free rule-based intent planner",
@@ -20,16 +21,23 @@ func newClassifyCommand() *cobra.Command {
 			if !jsonOut {
 				return fmt.Errorf("classify always outputs JSON; omit --json=false")
 			}
+			insightMode, err := parseInsightModeFlag(insightRaw)
+			if err != nil {
+				return err
+			}
 			opts, err := planOptionsFromFlags(taskRaw, "", singleIntent)
 			if err != nil {
 				return err
 			}
-			return writeJSONTo(cmd.OutOrStdout(), core.ClassifyQuery(args[0], opts))
+			classification := core.ClassifyQuery(args[0], opts)
+			classification = applyClassificationInsightMode(classification, insightMode)
+			return writeJSONTo(cmd.OutOrStdout(), classification)
 		},
 	}
 	cmd.Flags().StringVar(&taskRaw, "task", "", "override task classification (accepts community as social)")
 	cmd.Flags().BoolVar(&singleIntent, "single-intent", false, "keep only the primary intent")
 	cmd.Flags().BoolVar(&jsonOut, "json", true, "output JSON (default)")
+	cmd.Flags().StringVar(&insightRaw, "insight", string(core.InsightCompact), "routing insight output: compact, off, or verbose")
 	return cmd
 }
 
@@ -38,6 +46,7 @@ func newRoutePlanCommand() *cobra.Command {
 	var providersRaw string
 	var singleIntent bool
 	var jsonOut bool
+	var insightRaw string
 	cmd := &cobra.Command{
 		Use:   "route-plan <query>",
 		Short: "Plan deterministic provider routes for a query without provider calls",
@@ -46,11 +55,16 @@ func newRoutePlanCommand() *cobra.Command {
 			if !jsonOut {
 				return fmt.Errorf("route-plan always outputs JSON; omit --json=false")
 			}
+			insightMode, err := parseInsightModeFlag(insightRaw)
+			if err != nil {
+				return err
+			}
 			opts, err := planOptionsFromFlags(taskRaw, providersRaw, singleIntent)
 			if err != nil {
 				return err
 			}
 			plan := core.BuildRoutePlan(args[0], core.DefaultRouteMatrix(), opts)
+			plan = applyRoutePlanInsightMode(plan, insightMode)
 			return writeJSONTo(cmd.OutOrStdout(), plan)
 		},
 	}
@@ -58,6 +72,7 @@ func newRoutePlanCommand() *cobra.Command {
 	cmd.Flags().StringVar(&providersRaw, "providers", "", "comma-separated provider route override for planning only")
 	cmd.Flags().BoolVar(&singleIntent, "single-intent", false, "keep only the primary intent")
 	cmd.Flags().BoolVar(&jsonOut, "json", true, "output JSON (default)")
+	cmd.Flags().StringVar(&insightRaw, "insight", string(core.InsightCompact), "routing insight output: compact, off, or verbose")
 	return cmd
 }
 

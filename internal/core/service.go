@@ -68,12 +68,17 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		}
 		trace = append(trace, RouteAttempt{Provider: name, Status: "success", Reason: "success", LatencyMS: latency, ResultCount: len(resp.Results)})
 		resp.RouteTrace = trace
+		resp.RoutingInsight = BuildSearchRoutingInsight(resp)
 		return resp, nil
 	}
 	if lastErr != nil {
-		return SearchResponse{Route: append([]string(nil), route...), RouteTrace: trace}, lastErr
+		resp := SearchResponse{Query: req.Query, Task: req.Task, Route: append([]string(nil), route...), RouteTrace: trace}
+		resp.RoutingInsight = BuildErrorRoutingInsight("search", resp.Route, resp.RouteTrace)
+		return resp, lastErr
 	}
-	return SearchResponse{Route: append([]string(nil), route...), RouteTrace: trace}, NoFreeQuotaError{Task: req.Task, Provider: route}
+	resp := SearchResponse{Query: req.Query, Task: req.Task, Route: append([]string(nil), route...), RouteTrace: trace}
+	resp.RoutingInsight = BuildErrorRoutingInsight("search", resp.Route, resp.RouteTrace)
+	return resp, NoFreeQuotaError{Task: req.Task, Provider: route}
 }
 
 func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResponse, error) {
@@ -125,12 +130,17 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 		}
 		trace = append(trace, RouteAttempt{Provider: name, Status: "success", Reason: "success", LatencyMS: latency, ResultCount: resultCount})
 		resp.RouteTrace = trace
+		resp.RoutingInsight = BuildExtractRoutingInsight(resp)
 		return resp, nil
 	}
 	if lastErr != nil {
-		return ExtractResponse{URL: req.URL, Route: append([]string(nil), route...), RouteTrace: trace}, lastErr
+		resp := ExtractResponse{URL: req.URL, Route: append([]string(nil), route...), RouteTrace: trace}
+		resp.RoutingInsight = BuildErrorRoutingInsight("extract", resp.Route, resp.RouteTrace)
+		return resp, lastErr
 	}
-	return ExtractResponse{URL: req.URL, Route: append([]string(nil), route...), RouteTrace: trace}, NoFreeQuotaError{Task: TaskExtract, Provider: route}
+	resp := ExtractResponse{URL: req.URL, Route: append([]string(nil), route...), RouteTrace: trace}
+	resp.RoutingInsight = BuildErrorRoutingInsight("extract", resp.Route, resp.RouteTrace)
+	return resp, NoFreeQuotaError{Task: TaskExtract, Provider: route}
 }
 
 func (s *Service) ProviderStatus(ctx context.Context) []ProviderStatus {

@@ -13,6 +13,7 @@ Completed technical MVP hardening:
 - deterministic benchmark harness;
 - private-prep CI/release gates;
 - LLM-free `classify` and `route-plan` commands;
+- compact `routing_insight` output for search/extract/classify/route-plan and CLI/MCP error envelopes;
 - config merge/backup safety for supported setup writers;
 - provider error redaction;
 - core checks passing on main after PR #1.
@@ -46,7 +47,7 @@ Goals:
 
 ### 3. Rule-based multi-intent planner
 
-Status: implemented for CLI JSON planning; MCP response surfacing remains part of compact insight/output work.
+Status: implemented for CLI JSON planning with compact `routing_insight` fields; MCP search/extract responses inherit core response fields.
 
 Goals:
 
@@ -60,12 +61,21 @@ Goals:
 
 ### 4. Compact insight UX
 
+Status: implemented for core search/extract/classify/route-plan responses, CLI human/JSON output and CLI/MCP error envelopes.
+
 Goals:
 
 - Add one short Nólë insight line for human output and JSON/MCP responses where practical.
 - Keep full `route_trace` for debugging.
 - Add insight mode config/flag if practical: compact/off/verbose.
 - Tell agents not to dump full traces unless debugging.
+
+Usage notes:
+
+- `--insight compact` is the default and emits one deterministic, sanitized `routing_insight` line.
+- `--insight off` omits the user-facing `routing_insight` field while preserving `route_trace` where available.
+- `--insight verbose` keeps the compact line and adds route trace lines to human search/extract output for debugging.
+- Compact insights must not include API keys, bearer tokens, auth headers, raw provider payloads or private URLs.
 
 ### 5. Cost policy and premium-capable routing
 

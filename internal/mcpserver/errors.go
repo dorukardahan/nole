@@ -8,18 +8,20 @@ import (
 )
 
 type toolErrorEnvelope struct {
-	Operation  string              `json:"operation"`
-	Error      string              `json:"error"`
-	Route      []string            `json:"route,omitempty"`
-	RouteTrace []core.RouteAttempt `json:"route_trace,omitempty"`
+	Operation      string              `json:"operation"`
+	Error          string              `json:"error"`
+	Route          []string            `json:"route,omitempty"`
+	RoutingInsight string              `json:"routing_insight,omitempty"`
+	RouteTrace     []core.RouteAttempt `json:"route_trace,omitempty"`
 }
 
 func toolErrorJSON(operation string, err error, route []string, trace []core.RouteAttempt) []byte {
 	payload := toolErrorEnvelope{
-		Operation:  operation,
-		Error:      safeerr.Message(err),
-		Route:      append([]string(nil), route...),
-		RouteTrace: append([]core.RouteAttempt(nil), trace...),
+		Operation:      operation,
+		Error:          safeerr.Message(err),
+		Route:          append([]string(nil), route...),
+		RoutingInsight: core.BuildErrorRoutingInsight(operation, route, trace),
+		RouteTrace:     append([]core.RouteAttempt(nil), trace...),
 	}
 	b, marshalErr := json.MarshalIndent(payload, "", "  ")
 	if marshalErr != nil {

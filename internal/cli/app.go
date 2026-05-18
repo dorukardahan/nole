@@ -81,18 +81,95 @@ func writeJSONTo(w io.Writer, v any) error {
 }
 
 type cliErrorEnvelope struct {
-	Operation  string              `json:"operation"`
-	Error      string              `json:"error"`
-	Route      []string            `json:"route,omitempty"`
-	RouteTrace []core.RouteAttempt `json:"route_trace,omitempty"`
+	Operation      string              `json:"operation"`
+	Error          string              `json:"error"`
+	Route          []string            `json:"route,omitempty"`
+	RoutingInsight string              `json:"routing_insight,omitempty"`
+	RouteTrace     []core.RouteAttempt `json:"route_trace,omitempty"`
 }
 
 func buildCLIError(operation string, err error, route []string, trace []core.RouteAttempt) cliErrorEnvelope {
+	return buildCLIErrorWithInsightMode(operation, err, route, trace, core.InsightCompact)
+}
+
+func buildCLIErrorWithInsightMode(operation string, err error, route []string, trace []core.RouteAttempt, mode core.InsightMode) cliErrorEnvelope {
+	insight := ""
+	if mode != core.InsightOff {
+		insight = core.BuildErrorRoutingInsight(operation, route, trace)
+	}
 	return cliErrorEnvelope{
-		Operation:  operation,
-		Error:      safeerr.Message(err),
-		Route:      append([]string(nil), route...),
-		RouteTrace: append([]core.RouteAttempt(nil), trace...),
+		Operation:      operation,
+		Error:          safeerr.Message(err),
+		Route:          append([]string(nil), route...),
+		RoutingInsight: insight,
+		RouteTrace:     append([]core.RouteAttempt(nil), trace...),
+	}
+}
+
+func parseInsightModeFlag(raw string) (core.InsightMode, error) {
+	mode, ok := core.ParseInsightMode(raw)
+	if !ok {
+		return "", fmt.Errorf("invalid --insight %q (want compact, off, or verbose)", raw)
+	}
+	return mode, nil
+}
+
+func applySearchInsightMode(resp core.SearchResponse, mode core.InsightMode) core.SearchResponse {
+	if mode == core.InsightOff {
+		resp.RoutingInsight = ""
+		return resp
+	}
+	if resp.RoutingInsight == "" {
+		resp.RoutingInsight = core.BuildSearchRoutingInsight(resp)
+	}
+	return resp
+}
+
+func applyExtractInsightMode(resp core.ExtractResponse, mode core.InsightMode) core.ExtractResponse {
+	if mode == core.InsightOff {
+		resp.RoutingInsight = ""
+		return resp
+	}
+	if resp.RoutingInsight == "" {
+		resp.RoutingInsight = core.BuildExtractRoutingInsight(resp)
+	}
+	return resp
+}
+
+func applyClassificationInsightMode(resp core.QueryClassification, mode core.InsightMode) core.QueryClassification {
+	if mode == core.InsightOff {
+		resp.RoutingInsight = ""
+		return resp
+	}
+	if resp.RoutingInsight == "" {
+		resp.RoutingInsight = core.BuildClassificationRoutingInsight(resp)
+	}
+	return resp
+}
+
+func applyRoutePlanInsightMode(resp core.RoutePlan, mode core.InsightMode) core.RoutePlan {
+	if mode == core.InsightOff {
+		resp.RoutingInsight = ""
+		return resp
+	}
+	if resp.RoutingInsight == "" {
+		resp.RoutingInsight = core.BuildRoutePlanRoutingInsight(resp)
+	}
+	return resp
+}
+
+func writeHumanRoutingInsight(w io.Writer, insight string, trace []core.RouteAttempt, mode core.InsightMode) {
+	if mode == core.InsightOff {
+		return
+	}
+	if strings.TrimSpace(insight) != "" {
+		fmt.Fprintln(w, insight)
+	}
+	if mode != core.InsightVerbose {
+		return
+	}
+	for _, line := range core.FormatRouteTraceLines(trace) {
+		fmt.Fprintf(w, "route_trace: %s\n", line)
 	}
 }
 
