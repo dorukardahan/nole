@@ -70,21 +70,24 @@ Nólë must not pick a paid provider merely because a paid key exists. It should
 
 ## Cost philosophy
 
-Default policy: free-first and BYOK-safe.
+Default policy: `free-first` and no-hidden-paid-spend.
 
 This means:
 
 - no hidden paid spend by default;
 - provider keys are user-owned;
-- Nólë reports key presence, never key values;
+- Nólë reports key presence/status, never key values;
+- a key alone classifies a provider as `premium-capable`, not automatically allowed;
 - free quota exhaustion should fail closed when policy requires no paid usage;
 - premium-capable providers can participate only according to explicit policy.
 
-Future policies can include:
+Implemented v0.1 policy modes:
 
-- `free-first`: prefer free/keyless/free-tier routes when they meet quality needs.
-- `cost-capped`: respect local daily/monthly provider budgets.
-- `quality-first`: allow premium-capable providers when evidence says they are materially better for the intent.
+- `free-first`: default; allow keyless/free-tier routes and block `premium-capable` routes.
+- `cost-capped`: allow premium-capable providers only when a per-process local hard cap and explicit per-provider estimated cost keep the call inside cap; persistent ledgers are planned for M7.
+- `quality-first`: explicitly allow premium-capable providers when evidence says they are materially better for the intent and the user accepts provider-account cost risk.
+
+Provider cost classes are `keyless-free`, `free-tier-BYOK`, `premium-capable`, `unknown-cost` and `disabled-no-key`. These appear in safe status surfaces and route traces without secrets or raw provider payloads.
 
 ## Multi-intent direction
 

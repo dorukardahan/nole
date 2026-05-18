@@ -66,23 +66,36 @@ type ExtractResponse struct {
 }
 
 type RouteAttempt struct {
-	Provider    string `json:"provider"`
-	Status      string `json:"status"`
-	Reason      string `json:"reason,omitempty"`
-	LatencyMS   int64  `json:"latency_ms,omitempty"`
-	ResultCount int    `json:"result_count,omitempty"`
+	Provider           string            `json:"provider"`
+	Status             string            `json:"status"`
+	Reason             string            `json:"reason,omitempty"`
+	CostPolicy         CostPolicy        `json:"cost_policy,omitempty"`
+	CostClass          ProviderCostClass `json:"cost_class,omitempty"`
+	LatencyMS          int64             `json:"latency_ms,omitempty"`
+	ResultCount        int               `json:"result_count,omitempty"`
+	EstimatedCostCents int               `json:"estimated_cost_cents,omitempty"`
 }
 
 type ProviderStatus struct {
-	Name         string       `json:"name"`
-	Available    bool         `json:"available"`
-	Capabilities []Capability `json:"capabilities,omitempty"`
-	Reason       string       `json:"reason,omitempty"`
+	Name               string            `json:"name"`
+	Available          bool              `json:"available"`
+	Capabilities       []Capability      `json:"capabilities,omitempty"`
+	Reason             string            `json:"reason,omitempty"`
+	CostPolicy         CostPolicy        `json:"cost_policy,omitempty"`
+	CostClass          ProviderCostClass `json:"cost_class,omitempty"`
+	AllowedByPolicy    bool              `json:"allowed_by_policy"`
+	PolicyReason       string            `json:"policy_reason,omitempty"`
+	FreeRemaining      int               `json:"free_remaining,omitempty"`
+	EstimatedCostCents int               `json:"estimated_cost_cents,omitempty"`
+	SpentCents         int               `json:"spent_cents,omitempty"`
 }
 
 type BudgetStatus struct {
-	HardCapCents int          `json:"hard_cap_cents"`
-	Entries      []QuotaEntry `json:"entries"`
+	Policy            CostPolicy   `json:"policy"`
+	HardCapCents      int          `json:"hard_cap_cents"`
+	SpentCents        int          `json:"spent_cents"`
+	NoHiddenPaidSpend bool         `json:"no_hidden_paid_spend"`
+	Entries           []QuotaEntry `json:"entries"`
 }
 
 type Provider interface {

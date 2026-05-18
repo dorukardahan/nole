@@ -7,6 +7,7 @@ import (
 )
 
 type failingProvider struct{ fakeProvider }
+type failingExtractProvider struct{ fakeProvider }
 
 type emptySearchProvider struct{ fakeProvider }
 
@@ -16,6 +17,10 @@ type whitespaceExtractProvider struct{ fakeProvider }
 
 func (f failingProvider) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
 	return SearchResponse{}, errors.New("provider failed")
+}
+
+func (f failingExtractProvider) Extract(ctx context.Context, req ExtractRequest) (ExtractResponse, error) {
+	return ExtractResponse{}, errors.New("provider failed")
 }
 
 func (p emptySearchProvider) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
@@ -91,8 +96,52 @@ func TestServiceSearchTraceExplainsSkippedProviders(t *testing.T) {
 	if len(resp.RouteTrace) < 2 {
 		t.Fatalf("expected skip and success trace, got %#v", resp.RouteTrace)
 	}
-	if resp.RouteTrace[0].Provider != "brave" || resp.RouteTrace[0].Status != "skipped" || resp.RouteTrace[0].Reason != "quota_blocked" {
+	if resp.RouteTrace[0].Provider != "brave" || resp.RouteTrace[0].Status != "skipped" || resp.RouteTrace[0].Reason != "free_quota_exhausted" {
 		t.Fatalf("unexpected skipped trace entry: %#v", resp.RouteTrace[0])
+	}
+}
+
+func TestServiceSearchTraceExplainsPremiumBlockedByFreeFirst(t *testing.T) {
+	registry := NewRegistry()
+	_ = registry.Register(fakeProvider{name: "brave"})
+	_ = registry.Register(fakeProvider{name: "ddgs"})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "brave", CostClass: CostClassPremiumCapable, EstimatedCostCents: 1})
+	ledger.Set(QuotaEntry{Provider: "ddgs", CostClass: CostClassKeylessFree, KeylessFree: true})
+	service := NewService(registry, ledger, RouteMatrix{TaskGeneral: {"brave", "ddgs"}})
+
+	resp, err := service.Search(context.Background(), SearchRequest{Query: "mcp", Task: TaskGeneral})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if resp.Provider != "ddgs" {
+		t.Fatalf("expected ddgs fallback, got %q", resp.Provider)
+	}
+	if len(resp.RouteTrace) != 2 {
+		t.Fatalf("expected premium skip and keyless success trace, got %#v", resp.RouteTrace)
+	}
+	if got := resp.RouteTrace[0]; got.Provider != "brave" || got.Status != "skipped" || got.Reason != "premium_blocked_free_first" || got.CostClass != CostClassPremiumCapable || got.CostPolicy != CostPolicyFreeFirst {
+		t.Fatalf("unexpected premium blocked trace entry: %#v", got)
+	}
+	if got := resp.RouteTrace[1]; got.Provider != "ddgs" || got.Status != "success" || got.CostClass != CostClassKeylessFree {
+		t.Fatalf("unexpected keyless success trace entry: %#v", got)
+	}
+}
+
+func TestServiceRecordsPremiumAttemptBeforeProviderError(t *testing.T) {
+	registry := NewRegistry()
+	_ = registry.Register(failingProvider{fakeProvider{name: "tavily"}})
+	ledger := NewMemoryQuotaLedgerWithPolicy(QuotaPolicy{Policy: CostPolicyCostCapped, HardCapCents: 5})
+	ledger.Set(QuotaEntry{Provider: "tavily", CostClass: CostClassPremiumCapable, EstimatedCostCents: 2})
+	service := NewService(registry, ledger, RouteMatrix{TaskGeneral: {"tavily"}})
+
+	_, err := service.Search(context.Background(), SearchRequest{Query: "mcp", Task: TaskGeneral})
+	if err == nil {
+		t.Fatal("expected provider error")
+	}
+	budget := ledger.BudgetStatus()
+	if budget.SpentCents != 2 {
+		t.Fatalf("premium attempt should be recorded before provider call, spent=%d", budget.SpentCents)
 	}
 }
 
@@ -136,6 +185,23 @@ func TestServiceExtractUsesExtractRoute(t *testing.T) {
 	}
 	if resp.Provider != "tavily" {
 		t.Fatalf("expected tavily, got %q", resp.Provider)
+	}
+}
+
+func TestServiceRecordsPremiumExtractAttemptBeforeProviderError(t *testing.T) {
+	registry := NewRegistry()
+	_ = registry.Register(failingExtractProvider{fakeProvider{name: "tavily"}})
+	ledger := NewMemoryQuotaLedgerWithPolicy(QuotaPolicy{Policy: CostPolicyCostCapped, HardCapCents: 5})
+	ledger.Set(QuotaEntry{Provider: "tavily", CostClass: CostClassPremiumCapable, EstimatedCostCents: 2})
+	service := NewService(registry, ledger, RouteMatrix{TaskExtract: {"tavily"}, TaskGeneral: {"tavily"}})
+
+	_, err := service.Extract(context.Background(), ExtractRequest{URL: "https://example.com"})
+	if err == nil {
+		t.Fatal("expected provider error")
+	}
+	budget := ledger.BudgetStatus()
+	if budget.SpentCents != 2 {
+		t.Fatalf("premium extract attempt should be recorded before provider call, spent=%d", budget.SpentCents)
 	}
 }
 
@@ -185,5 +251,35 @@ func TestServiceExtractBlocksSSRF(t *testing.T) {
 		if err == nil {
 			t.Errorf("expected SSRF URL %q to be blocked", u)
 		}
+	}
+}
+
+func TestServiceProviderAndBudgetStatusExposeSafeCostPolicy(t *testing.T) {
+	registry := NewRegistry()
+	_ = registry.Register(fakeProvider{name: "ddgs"})
+	_ = registry.Register(fakeProvider{name: "tavily"})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "ddgs", CostClass: CostClassKeylessFree, KeylessFree: true})
+	ledger.Set(QuotaEntry{Provider: "tavily", CostClass: CostClassPremiumCapable, EstimatedCostCents: 1})
+	service := NewService(registry, ledger, RouteMatrix{TaskGeneral: {"tavily", "ddgs"}})
+
+	statuses := service.ProviderStatus(context.Background())
+	if len(statuses) != 2 {
+		t.Fatalf("expected 2 provider statuses, got %#v", statuses)
+	}
+	byName := map[string]ProviderStatus{}
+	for _, status := range statuses {
+		byName[status.Name] = status
+	}
+	if got := byName["ddgs"]; got.CostClass != CostClassKeylessFree || got.CostPolicy != CostPolicyFreeFirst || got.PolicyReason != "keyless_free" {
+		t.Fatalf("unexpected ddgs cost status: %#v", got)
+	}
+	if got := byName["tavily"]; got.CostClass != CostClassPremiumCapable || got.CostPolicy != CostPolicyFreeFirst || got.PolicyReason != "premium_blocked_free_first" || got.AllowedByPolicy {
+		t.Fatalf("unexpected tavily cost status: %#v", got)
+	}
+
+	budget := service.BudgetStatus()
+	if budget.Policy != CostPolicyFreeFirst || !budget.NoHiddenPaidSpend || len(budget.Entries) != 2 {
+		t.Fatalf("unexpected budget status: %#v", budget)
 	}
 }

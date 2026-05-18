@@ -2,7 +2,7 @@
 
 Nólë is BYOK-first: you use your own provider accounts and keys. It should never print key values, auth headers or raw provider payloads. It should only report whether a key is present.
 
-Default policy is free-tier/BYOK-safe. That means no hidden paid usage by default, but it does not mean Nólë is forever free-only. Premium-capable providers can be used when the user explicitly chooses a policy that permits them and routing evidence supports the choice.
+Default policy is `free-first`. That means no hidden paid usage by default: a provider key by itself does not make a premium-capable provider eligible for live calls. Premium-capable providers can be used when the user explicitly chooses a policy that permits them, local cost controls are explicit, and routing evidence supports the choice.
 
 ## General rules
 
@@ -25,6 +25,22 @@ export FIRECRAWL_API_KEY="..."
 ```
 
 DDGS is keyless and does not need a key.
+
+Optional cost policy controls:
+
+```bash
+# Default if unset: free-first.
+export NOLE_COST_POLICY="free-first"     # free-first | cost-capped | quality-first
+
+# Used by cost-capped. Without explicit estimates, premium-capable calls fail closed.
+export NOLE_HARD_CAP_CENTS="0"
+export NOLE_BRAVE_ESTIMATED_COST_CENTS=""
+export NOLE_TAVILY_ESTIMATED_COST_CENTS=""
+export NOLE_JINA_ESTIMATED_COST_CENTS=""
+export NOLE_FIRECRAWL_ESTIMATED_COST_CENTS=""
+```
+
+Do not set `quality-first` or non-zero cost estimates unless you intentionally accept the provider-account cost risk. Nólë does not know your provider dashboard's exact real-time balance in v0.1; M7 will add a file-backed quota/cost ledger.
 
 ## Local env file pattern
 
@@ -151,12 +167,22 @@ Before sharing benchmark output, sanitize:
 - headers;
 - any token-like strings.
 
-## Future cost policy model
+## Cost policy model
 
-The product direction is:
+Nólë exposes cost policy/status in `nole providers --json`, `nole doctor`, MCP `provider_status`, MCP `budget_status`, runtime `route_trace` and compact `routing_insight` where relevant.
 
-- `free-first`: default; prefer keyless/free-tier/BYOK-safe routes that meet quality needs.
-- `cost-capped`: fail closed when local budget or known free quota is exhausted.
-- `quality-first`: allow premium-capable providers when quality/evidence justifies the cost and policy permits it.
+Cost classes:
 
-Until cost policy is fully implemented, behave conservatively: do not run live calls that may create paid usage unless the user explicitly approves.
+- `keyless-free`: no provider key required; DDGS search fallback is the current example.
+- `free-tier-BYOK`: a user-keyed provider with known local free quota remaining.
+- `premium-capable`: a keyed provider that may incur paid usage depending on the user's account/plan.
+- `unknown-cost`: cost cannot be safely classified; fail closed except under explicit `quality-first`.
+- `disabled-no-key`: provider exists but no key is configured.
+
+Policy modes:
+
+- `free-first`: default; allows keyless/free-tier routes and blocks premium-capable routes. This is the no-hidden-paid-spend mode.
+- `cost-capped`: allows premium-capable providers only if `NOLE_HARD_CAP_CENTS` and explicit per-provider estimated cost env vars keep the call inside the per-process local cap. Without an explicit local estimate, it fails closed with `unknown_cost_blocked`. Persistent cross-run ledgers are planned for M7.
+- `quality-first`: explicitly allows premium-capable providers when quality/evidence justifies it and the user accepts provider-account cost risk.
+
+Important: this is a conservative local policy model, not a live provider billing oracle. Check provider dashboards for real balances, plan limits and overage settings before live use.

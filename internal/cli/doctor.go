@@ -52,7 +52,7 @@ func newDoctorCommand() *cobra.Command {
 					}
 					caps += string(c)
 				}
-				line := fmt.Sprintf("  %-12s %s  [%s]", s.Name, status, caps)
+				line := fmt.Sprintf("  %-12s %s  [%s]  cost=%s policy=%s reason=%s", s.Name, status, caps, s.CostClass, s.CostPolicy, s.PolicyReason)
 				if s.Reason != "" {
 					line += fmt.Sprintf("  (%s)", s.Reason)
 				}
@@ -81,15 +81,9 @@ func newDoctorCommand() *cobra.Command {
 
 			budget := svc.BudgetStatus()
 			fmt.Fprintln(cmd.OutOrStdout(), "")
-			fmt.Fprintf(cmd.OutOrStdout(), "- budget: $%d.%02d hard cap\n", budget.HardCapCents/100, budget.HardCapCents%100)
+			fmt.Fprintf(cmd.OutOrStdout(), "- budget: policy=%s hard_cap=$%d.%02d spent=$%d.%02d no_hidden_paid_spend=%t\n", budget.Policy, budget.HardCapCents/100, budget.HardCapCents%100, budget.SpentCents/100, budget.SpentCents%100, budget.NoHiddenPaidSpend)
 			for _, e := range budget.Entries {
-				if e.KeylessFree {
-					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s keyless-free\n", e.Provider)
-				} else if e.Unknown {
-					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s unknown (free-tier)\n", e.Provider)
-				} else {
-					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %d remaining\n", e.Provider, e.FreeRemaining)
-				}
+				fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s free_remaining=%d estimated_cost_cents=%d spent_cents=%d\n", e.Provider, e.CostClass, e.FreeRemaining, e.EstimatedCostCents, e.SpentCents)
 			}
 
 			if checkMCP {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -60,14 +61,44 @@ func defaultService() *core.Service {
 	// DDGS — keyless free, always available
 	_ = registry.Register(ddgs.New())
 
-	ledger := core.NewMemoryQuotaLedger()
-	ledger.Set(core.QuotaEntry{Provider: "brave", Unknown: true})
-	ledger.Set(core.QuotaEntry{Provider: "tavily", Unknown: true})
-	ledger.Set(core.QuotaEntry{Provider: "jina", Unknown: true})
-	ledger.Set(core.QuotaEntry{Provider: "firecrawl", Unknown: true})
-	ledger.Set(core.QuotaEntry{Provider: "ddgs", KeylessFree: true, Unknown: true})
+	ledger := core.NewMemoryQuotaLedgerWithPolicy(defaultQuotaPolicyFromEnv())
+	ledger.Set(providerQuotaEntry("brave", braveKey != ""))
+	ledger.Set(providerQuotaEntry("tavily", tavilyKey != ""))
+	ledger.Set(providerQuotaEntry("jina", jinaKey != ""))
+	ledger.Set(providerQuotaEntry("firecrawl", firecrawlKey != ""))
+	ledger.Set(core.QuotaEntry{Provider: "ddgs", CostClass: core.CostClassKeylessFree, KeylessFree: true})
 
 	return core.NewService(registry, ledger, core.DefaultRouteMatrix())
+}
+
+func defaultQuotaPolicyFromEnv() core.QuotaPolicy {
+	policy := core.DefaultQuotaPolicy()
+	if parsed, ok := core.ParseCostPolicy(os.Getenv("NOLE_COST_POLICY")); ok {
+		policy.Policy = parsed
+	}
+	if raw := strings.TrimSpace(os.Getenv("NOLE_HARD_CAP_CENTS")); raw != "" {
+		if cents, err := strconv.Atoi(raw); err == nil && cents > 0 {
+			policy.HardCapCents = cents
+		}
+	}
+	return policy
+}
+
+func providerQuotaEntry(provider string, keyPresent bool) core.QuotaEntry {
+	if !keyPresent {
+		return core.QuotaEntry{Provider: provider, CostClass: core.CostClassDisabledNoKey}
+	}
+	return core.QuotaEntry{Provider: provider, CostClass: core.CostClassPremiumCapable, EstimatedCostCents: providerEstimatedCostCents(provider)}
+}
+
+func providerEstimatedCostCents(provider string) int {
+	envName := "NOLE_" + strings.ToUpper(provider) + "_ESTIMATED_COST_CENTS"
+	if raw := strings.TrimSpace(os.Getenv(envName)); raw != "" {
+		if cents, err := strconv.Atoi(raw); err == nil && cents > 0 {
+			return cents
+		}
+	}
+	return 0
 }
 
 func writeJSON(v any) error {
