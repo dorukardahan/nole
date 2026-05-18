@@ -37,14 +37,14 @@ $EDITOR ~/.config/nole/.env
 chmod 600 ~/.config/nole/.env
 ```
 
-Example shape only; do not commit real values:
+Variable names to set locally when you have the matching provider accounts:
 
-```bash
-BRAVE_API_KEY=replace-with-local-value
-TAVILY_API_KEY=replace-with-local-value
-JINA_API_KEY=replace-with-local-value
-FIRECRAWL_API_KEY=replace-with-local-value
-```
+- `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY`
+- `TAVILY_API_KEY`
+- `JINA_API_KEY`
+- `FIRECRAWL_API_KEY`
+
+Do not commit real values.
 
 Codex setup sources `~/.config/nole/.env` before launching `nole mcp`. Other clients may need a wrapper command such as `/bin/sh -lc 'set -a; [ -f "$HOME/.config/nole/.env" ] && . "$HOME/.config/nole/.env"; set +a; exec /absolute/path/to/nole mcp'`.
 

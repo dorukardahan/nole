@@ -164,7 +164,7 @@ Install Go 1.23+ or use a user-local Go toolchain. Do not commit the toolchain i
 GUI apps often do not inherit shell PATH. Use an absolute path in MCP config:
 
 ```json
-{"command":"/home/USER/.local/bin/nole","args":["mcp"]}
+{"command":"/absolute/path/to/nole","args":["mcp"]}
 ```
 
 ### Provider key not seen
