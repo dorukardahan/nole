@@ -12,11 +12,13 @@ Jobs:
 
 - `tests, docs, doctor, bench`
   - `./scripts/check-docs-framing.sh`
+  - `./scripts/check-benchmark-claims.sh`
   - `go test ./...`
   - `go vet ./...`
   - `go run . doctor`
   - `go run . doctor --mcp`
   - `go run . bench --json`
+  - `go run . bench --evidence-md`
   - `go run . providers --json`
   - `git diff --check`
 - `public-safety secret scan`
@@ -35,11 +37,13 @@ Run before merge when touching release, install, routing, MCP, or provider behav
 
 ```bash
 ./scripts/check-docs-framing.sh
+./scripts/check-benchmark-claims.sh
 go test ./...
 go vet ./...
 go run . doctor
 go run . doctor --mcp
 go run . bench --json
+go run . bench --evidence-md
 go run . providers --json
 git diff --check
 ./scripts/secret-scan.sh

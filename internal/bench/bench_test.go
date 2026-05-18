@@ -1,6 +1,7 @@
 package bench
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -23,6 +24,9 @@ func TestDefaultFixtureSetIsVersionedAndCoversAgentResearchTasks(t *testing.T) {
 		core.TaskAcademic:  false,
 		core.TaskFactcheck: false,
 		core.TaskPricing:   false,
+		core.TaskPeople:    false,
+		core.TaskSocial:    false,
+		core.TaskSemantic:  false,
 		core.TaskExtract:   false,
 	}
 	languages := map[string]bool{}
@@ -39,6 +43,63 @@ func TestDefaultFixtureSetIsVersionedAndCoversAgentResearchTasks(t *testing.T) {
 	}
 	if !languages["en"] || !languages["tr"] {
 		t.Fatalf("fixture set must include English and Turkish queries, got %#v", languages)
+	}
+}
+
+func TestOfflineReportCarriesHonestEvidenceMetadata(t *testing.T) {
+	report := RunOffline(DefaultFixtureSet(), core.DefaultRouteMatrix())
+	if report.Evidence.ArtifactKind != "deterministic_fixture_eval" {
+		t.Fatalf("artifact kind = %q, want deterministic_fixture_eval", report.Evidence.ArtifactKind)
+	}
+	if report.Evidence.NetworkRequired || report.Evidence.SecretsRequired {
+		t.Fatalf("offline evidence must not require network or secrets: %#v", report.Evidence)
+	}
+	if !report.Evidence.Sanitized {
+		t.Fatalf("offline evidence must be marked sanitized: %#v", report.Evidence)
+	}
+	joinedLimitations := strings.Join(report.Evidence.DoesNotMeasure, "\n")
+	for _, want := range []string{"live web result quality", "provider uptime", "actual cost/quota behavior"} {
+		if !strings.Contains(joinedLimitations, want) {
+			t.Fatalf("offline evidence limitations missing %q: %#v", want, report.Evidence.DoesNotMeasure)
+		}
+	}
+	joinedRepro := strings.Join(report.Evidence.Reproduction, "\n")
+	if !strings.Contains(joinedRepro, "nole bench --json") {
+		t.Fatalf("offline evidence reproduction should mention nole bench --json: %#v", report.Evidence.Reproduction)
+	}
+}
+
+func TestMarkdownEvidenceSummaryIsSanitizedAndHonest(t *testing.T) {
+	report := RunOffline(DefaultFixtureSet(), core.DefaultRouteMatrix())
+	report.GeneratedAt = "2026-05-18T00:00:00Z"
+	report.Cases[0].Attempts = append(report.Cases[0].Attempts, Attempt{
+		Provider: "brave",
+		Status:   "failed",
+		Reason:   "Authorization: Bearer SECRET https://private.example/internal",
+	})
+	md := MarkdownEvidenceSummary(report)
+	for _, want := range []string{"# Route evidence summary", "Mode: offline", "Private data: none included", "does not measure live web result quality"} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("evidence markdown missing %q:\n%s", want, md)
+		}
+	}
+	for _, forbidden := range []string{"SECRET", "Authorization", "Bearer", "private.example"} {
+		if strings.Contains(md, forbidden) {
+			t.Fatalf("evidence markdown leaked %q:\n%s", forbidden, md)
+		}
+	}
+}
+
+func TestLiveEvidenceMetadataIsExplicitAboutNetworkCostAndOptionalSecrets(t *testing.T) {
+	meta := LiveEvidenceMetadata(string(core.CostPolicyFreeFirst), 3)
+	if meta.ArtifactKind != "live_smoke_summary" || !meta.NetworkRequired || meta.SecretsRequired {
+		t.Fatalf("unexpected live metadata: %#v", meta)
+	}
+	if !strings.Contains(meta.CostCaveat, "may use configured provider keys") || !strings.Contains(meta.CostCaveat, "consume quota") {
+		t.Fatalf("live cost caveat should describe optional keys and quota/cost: %q", meta.CostCaveat)
+	}
+	if !strings.Contains(strings.Join(meta.DoesNotMeasure, "\n"), "provider ranking") {
+		t.Fatalf("live limitations should reject ranking claims: %#v", meta.DoesNotMeasure)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 
 func newBenchCommand() *cobra.Command {
 	var jsonOut bool
+	var evidenceMD bool
 	var live bool
 	var maxLiveCases int
 	cmd := &cobra.Command{
@@ -30,6 +31,10 @@ Use --live only for an explicit low-limit smoke run against configured free-tier
 			} else {
 				report = bench.RunOffline(bench.DefaultFixtureSet(), core.DefaultRouteMatrix())
 			}
+			if evidenceMD {
+				_, err := fmt.Fprint(cmd.OutOrStdout(), bench.MarkdownEvidenceSummary(report))
+				return err
+			}
 			if jsonOut {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
@@ -40,6 +45,7 @@ Use --live only for an explicit low-limit smoke run against configured free-tier
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output benchmark report as JSON")
+	cmd.Flags().BoolVar(&evidenceMD, "evidence-md", false, "output a sanitized Markdown route-evidence summary")
 	cmd.Flags().BoolVar(&live, "live", false, "run optional low-limit live smoke benchmark against configured providers")
 	cmd.Flags().IntVar(&maxLiveCases, "max-live-cases", 3, "maximum live fixture cases to run when --live is set")
 	return cmd
@@ -65,10 +71,11 @@ func runLiveBench(ctx context.Context, maxCases int) bench.Report {
 	}
 	svc := defaultService()
 	report := bench.Report{
-		SchemaVersion:  "1",
+		SchemaVersion:  "2",
 		Mode:           bench.ModeLive,
 		FixtureVersion: set.Version,
 		GeneratedAt:    time.Now().UTC().Format(time.RFC3339),
+		Evidence:       bench.LiveEvidenceMetadata(string(defaultQuotaPolicyFromEnv().Policy), maxCases),
 		RouteMatrix:    map[string][]string{},
 		Cases:          make([]bench.CaseResult, 0, len(set.Fixtures)),
 	}

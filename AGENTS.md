@@ -61,13 +61,14 @@ nole doctor
 nole doctor --mcp
 nole providers --json
 nole bench --json
+nole bench --evidence-md
 nole classify "OpenAI API docs pricing and latest changelog" --json
 nole route-plan "OpenAI API docs pricing and latest changelog" --json
 nole search "Go net/http Client Timeout documentation" --task docs --json
 nole extract "https://go.dev/doc/" --json
 ```
 
-Search, extract, classify and route-plan JSON responses should include a compact `routing_insight` by default; search, extract and route-plan preserve full `route_trace` for debugging where available. In normal user answers, include at most the compact Nólë insight and result URLs; do not dump full traces unless the user is troubleshooting. If live provider calls could incur cost or use quota, keep them low-limit and explicit. `nole bench --json` is deterministic/offline and safe.
+Search, extract, classify and route-plan JSON responses should include a compact `routing_insight` by default; search, extract and route-plan preserve full `route_trace` for debugging where available. In normal user answers, include at most the compact Nólë insight and result URLs; do not dump full traces unless the user is troubleshooting. If live provider calls could incur cost or use quota, keep them low-limit and explicit. `nole bench --json` and `nole bench --evidence-md` are deterministic/offline and safe.
 
 ## Configure clients
 
@@ -126,8 +127,10 @@ go vet ./...
 go run . doctor
 go run . doctor --mcp
 go run . bench --json
+go run . bench --evidence-md
 git diff --check
 ./scripts/check-docs-framing.sh
+./scripts/check-benchmark-claims.sh
 ```
 
 For each PR:

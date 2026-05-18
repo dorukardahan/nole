@@ -120,7 +120,8 @@ Detailed `route_trace` should remain in JSON/debug surfaces, not dumped into nor
 Be precise:
 
 - Deterministic offline harness validates routing/fallback contracts. It does not measure live web quality.
-- Optional live benchmark summaries compare configured providers on a fixture set and must be sanitized.
+- `nole bench --evidence-md` writes a public-safe Markdown summary with methodology, reproduction steps, raw artifact policy and explicit limitations.
+- Optional live benchmark summaries record configured-provider observations on a fixture set and must be sanitized.
 - Route matrix changes require evidence. Do not change routes just because a provider is popular or paid.
 
 ## v0.1 private-prep definition

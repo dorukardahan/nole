@@ -35,7 +35,15 @@ func TestBenchCommandRunsOfflineJSONByDefault(t *testing.T) {
 	var report struct {
 		Mode           string `json:"mode"`
 		FixtureVersion string `json:"fixture_version"`
-		Summary        struct {
+		Evidence       struct {
+			ArtifactKind    string   `json:"artifact_kind"`
+			DataSource      string   `json:"data_source"`
+			DoesNotMeasure  []string `json:"does_not_measure"`
+			NetworkRequired bool     `json:"network_required"`
+			SecretsRequired bool     `json:"secrets_required"`
+			Sanitized       bool     `json:"sanitized"`
+		} `json:"evidence"`
+		Summary struct {
 			TotalCases int `json:"total_cases"`
 		} `json:"summary"`
 	}
@@ -48,6 +56,12 @@ func TestBenchCommandRunsOfflineJSONByDefault(t *testing.T) {
 	if report.FixtureVersion == "" || report.Summary.TotalCases == 0 {
 		t.Fatalf("unexpected report: %#v", report)
 	}
+	if report.Evidence.ArtifactKind != "deterministic_fixture_eval" || report.Evidence.NetworkRequired || report.Evidence.SecretsRequired || !report.Evidence.Sanitized {
+		t.Fatalf("offline JSON must include honest evidence metadata, got %#v", report.Evidence)
+	}
+	if !strings.Contains(strings.Join(report.Evidence.DoesNotMeasure, "\n"), "live web result quality") {
+		t.Fatalf("offline JSON must say it does not measure live web quality, got %#v", report.Evidence.DoesNotMeasure)
+	}
 }
 
 func TestBenchCommandLiveModeRequiresExplicitFlagAndLowLimit(t *testing.T) {
@@ -59,6 +73,31 @@ func TestBenchCommandLiveModeRequiresExplicitFlagAndLowLimit(t *testing.T) {
 		t.Fatal("bench command missing --max-live-cases flag")
 	} else if flag.DefValue != "3" {
 		t.Fatalf("max live cases default = %q, want 3", flag.DefValue)
+	}
+	if flag := cmd.Flags().Lookup("evidence-md"); flag == nil {
+		t.Fatal("bench command missing --evidence-md flag")
+	}
+}
+
+func TestBenchCommandEvidenceMarkdownOutputIsPublicSafe(t *testing.T) {
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"bench", "--evidence-md"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("bench evidence markdown failed: %v", err)
+	}
+	text := out.String()
+	for _, want := range []string{"# Route evidence summary", "Mode: offline", "Private data: none included", "does not measure live web result quality"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("evidence markdown missing %q:\n%s", want, text)
+		}
+	}
+	for _, forbidden := range []string{"Authorization", "Bearer", "SECRET", "private.example", "/home/"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("evidence markdown leaked %q:\n%s", forbidden, text)
+		}
 	}
 }
 

@@ -35,6 +35,9 @@ jobs:
       - name: Product framing docs guard
         run: ./scripts/check-docs-framing.sh
 
+      - name: Benchmark evidence claims guard
+        run: ./scripts/check-benchmark-claims.sh
+
       - name: Go tests
         run: go test ./...
 
@@ -49,6 +52,9 @@ jobs:
 
       - name: Deterministic benchmark JSON
         run: go run . bench --json > /tmp/nole-bench.json
+
+      - name: Deterministic benchmark evidence summary
+        run: go run . bench --evidence-md > /tmp/nole-route-evidence.md
 
       - name: Provider status JSON
         run: go run . providers --json > /tmp/nole-providers.json

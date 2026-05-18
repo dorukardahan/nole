@@ -89,6 +89,8 @@ Goals:
 
 ### 6. Benchmark and route evidence
 
+Status: implemented for deterministic fixture metadata, public-safe Markdown summaries, `docs/ROUTE-EVIDENCE.md`, and docs/claim checks. Optional live summaries remain explicit low-limit smoke artifacts, not CI defaults.
+
 Goals:
 
 - Keep deterministic harness for routing/fallback contract.
