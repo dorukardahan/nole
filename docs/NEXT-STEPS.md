@@ -1,58 +1,140 @@
-# Nólë Next Steps
+# Next steps toward v0.1 private-prep
 
-Nólë is intentionally staying small for the public-readiness pass. The items below should be implemented as separate, test-driven changes rather than bundled into the current hardening work. Keep the repository generic and public-safe: no API keys, private queries, personal paths, raw live benchmark logs, or client/runtime-specific private details.
+Nólë is now positioned as a free, local web search router for AI agents and coding CLI tools. The goal is not to build a hosted search SaaS or replace an agent's research workflow. The goal is to improve the internet/search/extract layer used by Claude Code, Codex, OpenClaw, Hermes, OpenCode and similar tools.
 
-## Benchmark and routing evidence
+## Current baseline
 
-- Expand the offline fixture set only when a new case changes a provider decision or catches a real routing failure mode. Keep fixtures deterministic, generic, and safe to commit.
-- Add an optional live benchmark writer that emits sanitized summaries only: fixture version, provider/task success counts, latency ranges, result counts, citation/source URL quality, extraction success, and error categories. Do not commit raw provider payloads, headers, keys, or private queries.
-- Keep the current route matrix unchanged until new evidence supports a change. Offline assumptions should be labeled as fixture evidence; live provider canaries should be explicit, low-limit, and reproducible.
-- Add a public route-evidence document once enough offline/live results exist to justify changing provider order.
-- Keep empty-result semantics aligned between production and bench: empty search results and empty extracted content should remain fallback attempts, with explicit `route_trace` reasons.
+Completed technical MVP hardening:
 
-## Cache and quota ledger
+- task-based route matrix;
+- safe provider error envelopes;
+- `route_trace` in CLI/MCP surfaces;
+- `doctor --mcp` subprocess smoke;
+- deterministic benchmark harness;
+- config merge/backup safety for supported setup writers;
+- provider error redaction;
+- core checks passing on main after PR #1.
 
-- TTL cache can reduce free-tier usage, but should be opt-in or clearly bounded. Suggested scope: cache normalized search/extract responses by provider, task, query/URL, and options; include TTL and a cache-bypass flag.
-- File-backed quota ledger can make the `$0` hard-cap behavior more robust across restarts. Suggested scope: store provider, window, free remaining/unknown, keyless-free flag, last updated, and source of quota knowledge under the user config directory.
-- Do not add partial cache/quota code without tests for stale entries, corruption recovery, and fail-closed behavior when a paid provider has no known free quota.
+Remaining product gap: v0.1 private-prep needs clearer docs, CI gates, agent install experience and truthfully labeled client support.
 
-## Agent integrations
+## Roadmap order
 
-Verified writers currently target the config formats implemented by `nole setup` (Claude/Cursor-style `mcpServers`, Codex TOML `mcp_servers`, OpenCode `mcp`). Continue to merge existing config and create backups before updates. Preserve unknown client-specific JSON fields and preserve existing file modes; new sensitive config/backup files should stay private (`0600`).
+### 1. Product framing and docs
 
-Generic MCP stdio template for clients that are not yet verified:
+Status: in progress.
 
-```json
-{
-  "mcpServers": {
-    "nole": {
-      "command": "/absolute/path/to/nole",
-      "args": ["mcp"]
-    }
-  }
-}
-```
+Goals:
 
-Client notes:
+- README first screen says: `Free web search router for AI agents and coding CLI tools`.
+- MCP is described as an entrypoint, not the product category.
+- AGENTS.md and install docs let an AI agent clone, build, install, configure and verify Nólë.
+- Provider key docs explain BYOK, free-tier and overage cautions.
+- Client docs exist for Claude Code, Codex, OpenCode, OpenClaw, Hermes, Cursor/Kimi/generic MCP paths.
+- Benchmark docs distinguish deterministic offline harness from optional live summaries.
 
-- Codex CLI: template uses `[mcp_servers.nole]` in `~/.codex/config.toml`; verify exact CLI version behavior before marking new setup flows as verified.
-- Claude Code CLI: Claude/Cursor-style `mcpServers` JSON is supported by the current writer; users may still need to restart or enable MCP tools per workspace.
-- OpenCode: current writer uses top-level `mcp`; keep this marked as the implemented template unless tested against a specific OpenCode release.
-- Kimi CLI, Hermes, OpenClaw, and other MCP clients: provide generic stdio examples until their stable config formats are verified in this repo. Do not label these as verified integrations until tested.
+### 2. CI and private-prep release gates
 
-## Doctor and MCP reliability
+Goals:
 
-- Keep `doctor --mcp` as a real subprocess smoke test that performs `initialize` and `tools/list`, verifies expected tools, and treats non-JSON stdout as a failure.
-- Keep all protocol-external logs on stderr. Any stdout banner in `nole mcp` should be treated as a bug because MCP stdio reserves stdout for JSON-RPC.
-- Add client-config discovery checks only when they can avoid printing secrets and avoid reading provider key values.
+- GitHub Actions without secrets.
+- Run `go test ./...`, `go vet ./...`, `go run . bench --json`, `go run . doctor`, `go run . doctor --mcp`, `git diff --check` and docs/public-safety checks.
+- Add cross-platform build/release-prep workflow for Linux and macOS, Windows if low-friction.
+- Document private-prep vs public release.
+- Do not publish a release or change repo visibility without explicit approval.
 
-## Configuration
+### 3. Rule-based multi-intent planner
 
-- Add a small config file for default task, timeout, cache TTL, retry knobs, and route-matrix overrides.
-- Keep environment variables as the simplest setup path; diagnostics should show only set/not-set status and never provider key values.
+Goals:
 
-## CI and release readiness
+- Add LLM-free deterministic classifier/planner.
+- Support multiple intents per query: general, news, docs, academic, factcheck, semantic, code, social/community, people/company, pricing, research, extract.
+- Include matched signals, task scores, selected intents and confidence.
+- Preserve `--task` compatibility and add `--tasks`/`--no-classify` or equivalent.
+- Add `nole classify` or `nole route-plan` JSON output.
+- Expose inferred intents in MCP search responses.
+- Do not reorder provider priority without evidence.
 
-- Add GitHub Actions for `go test ./...`, `go vet ./...`, offline `nole bench --json`, and cross-platform builds.
-- Add release automation only after the repository is intentionally made public.
-- Add a public-safety check that rejects `.env`, raw benchmark output, provider keys, bearer tokens, and private local paths before release artifacts are published.
+### 4. Compact insight UX
+
+Goals:
+
+- Add one short Nólë insight line for human output and JSON/MCP responses where practical.
+- Keep full `route_trace` for debugging.
+- Add insight mode config/flag if practical: compact/off/verbose.
+- Tell agents not to dump full traces unless debugging.
+
+### 5. Cost policy and premium-capable routing
+
+Goals:
+
+- Model `free-first`, `cost-capped`, `quality-first` policies.
+- Keep default no-hidden-paid-spend behavior.
+- Distinguish provider status: keyless-free, free-tier/byok, premium-capable, unknown-cost, disabled/no-key.
+- Do not select a paid provider merely because a paid key exists.
+- Add provider_status and budget_status fields without printing secrets.
+
+### 6. Benchmark and route evidence
+
+Goals:
+
+- Keep deterministic harness for routing/fallback contract.
+- Add sanitized live summary writer if needed.
+- Add `docs/ROUTE-EVIDENCE.md` structure.
+- Add generic scenarios for docs, code, pricing, people/company, academic, news, social/community, factcheck, semantic and extraction.
+- Route matrix changes require evidence.
+
+### 7. Cache and quota ledger
+
+Goals:
+
+- TTL cache for normalized search/extract responses.
+- Cache hit/miss in route_trace/insight.
+- File-backed quota/cost ledger.
+- Fail closed under no-paid-spend policy when free quota is known exhausted.
+- Corruption recovery tests.
+
+### 8. Agent install experience
+
+Goals:
+
+- Improve AGENTS.md and docs until an AI agent can install Nólë from a GitHub link.
+- Add exact local/VPS, PATH, env, MCP config and troubleshooting steps.
+- Add provider-by-provider free-tier/overage notes.
+- Improve setup writers where safe, but do not claim verified support without real client tests.
+
+### 9. Integration verification
+
+Goals:
+
+- Verify priority agents when installed/available: Claude Code, Codex, OpenCode, Hermes, OpenClaw.
+- Record config path, setup command, tool visibility, doctor output and failure notes.
+- Keep unavailable clients labeled generic/unverified with future checklist.
+
+### 10. v0.1 private-prep polish
+
+Goals:
+
+- Main clean and CI green.
+- Core commands pass:
+  - `nole doctor`
+  - `nole doctor --mcp`
+  - `nole providers --json`
+  - `nole bench --json`
+  - `nole search "..." --json`
+  - `nole extract "..." --json`
+  - classifier/route-plan command once implemented.
+- Final `/tmp/nole-v0.1-private-prep-report.md`.
+- Public release/repo visibility still requires explicit user approval.
+
+## Success criteria
+
+- Product framing stable and consistent.
+- Priority client docs present with truthful status labels.
+- Agent-readable install path works from scratch.
+- Multi-intent planner implemented and tested.
+- Compact insight implemented and tested.
+- Cost policy safe by default and premium-capable by design.
+- Benchmark/evidence docs honest.
+- CI green.
+- Codex review loop complete for each PR.
+- Local main clean after merges.
