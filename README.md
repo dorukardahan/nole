@@ -143,7 +143,7 @@ Cost status classes exposed in `provider_status`, `budget_status`, `route_trace`
 Cost policy modes:
 
 - `free-first` (default): allow keyless/free-tier routes; block premium-capable providers so there is no hidden paid spend.
-- `cost-capped`: allow premium-capable providers only when a per-process local hard cap and explicit per-provider estimated cost keep the call inside the cap. Persistent cross-run ledgers are planned for M7.
+- `cost-capped`: allow premium-capable providers only when a local hard cap, persisted ledger state when configured and explicit per-provider estimated cost keep the call inside the cap.
 - `quality-first`: explicitly allow premium-capable providers when the user accepts provider-account cost risk for quality/task fit.
 
 Environment variables:
@@ -158,7 +158,13 @@ export FIRECRAWL_API_KEY="..."
 export NOLE_COST_POLICY="free-first"        # free-first | cost-capped | quality-first
 export NOLE_HARD_CAP_CENTS="0"              # used by cost-capped
 export NOLE_TAVILY_ESTIMATED_COST_CENTS=""  # set explicitly before cost-capped live use
+
+# Optional local state controls.
+export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"
+export NOLE_CACHE_TTL="5m"                  # or NOLE_CACHE_TTL_SECONDS="300"
 ```
+
+`NOLE_QUOTA_LEDGER_PATH` enables a file-backed quota/cost ledger. Use `memory`, `off` or leave it unset for memory-only accounting. The ledger stores provider names, cost classes, local free-quota counters and local estimated spend; it does not store provider keys or raw provider payloads. If a configured ledger is corrupt, Nólë backs it up and fails closed for paid/quota-tracked providers while still allowing keyless-free providers. `NOLE_CACHE_TTL` enables an in-memory TTL cache for normalized search/extract responses inside a running process, such as `nole mcp`; cache hit/miss status appears in `route_trace` and compact `routing_insight`.
 
 Do not paste real keys into chat, GitHub issues, docs, PRs or logs. If a GUI agent does not inherit your shell environment, put keys in a local-only env file such as `~/.config/nole/.env` and configure the client launcher to source it. Keep that file out of git and restrict permissions.
 

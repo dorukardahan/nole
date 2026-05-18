@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/providers/brave"
@@ -61,14 +62,71 @@ func defaultService() *core.Service {
 	// DDGS — keyless free, always available
 	_ = registry.Register(ddgs.New())
 
-	ledger := core.NewMemoryQuotaLedgerWithPolicy(defaultQuotaPolicyFromEnv())
-	ledger.Set(providerQuotaEntry("brave", braveKey != ""))
-	ledger.Set(providerQuotaEntry("tavily", tavilyKey != ""))
-	ledger.Set(providerQuotaEntry("jina", jinaKey != ""))
-	ledger.Set(providerQuotaEntry("firecrawl", firecrawlKey != ""))
-	ledger.Set(core.QuotaEntry{Provider: "ddgs", CostClass: core.CostClassKeylessFree, KeylessFree: true})
+	entries := defaultQuotaEntries(braveKey, tavilyKey, jinaKey, firecrawlKey)
+	ledger := defaultQuotaLedger(defaultQuotaPolicyFromEnv(), entries)
 
-	return core.NewService(registry, ledger, core.DefaultRouteMatrix())
+	opts := []core.ServiceOption{}
+	if cache := defaultResponseCacheFromEnv(); cache != nil {
+		opts = append(opts, core.WithResponseCache(cache))
+	}
+	return core.NewService(registry, ledger, core.DefaultRouteMatrix(), opts...)
+}
+
+func defaultQuotaEntries(braveKey, tavilyKey, jinaKey, firecrawlKey string) []core.QuotaEntry {
+	return []core.QuotaEntry{
+		providerQuotaEntry("brave", braveKey != ""),
+		providerQuotaEntry("tavily", tavilyKey != ""),
+		providerQuotaEntry("jina", jinaKey != ""),
+		providerQuotaEntry("firecrawl", firecrawlKey != ""),
+		{Provider: "ddgs", CostClass: core.CostClassKeylessFree, KeylessFree: true},
+	}
+}
+
+func defaultQuotaLedger(policy core.QuotaPolicy, entries []core.QuotaEntry) core.QuotaLedger {
+	path := strings.TrimSpace(os.Getenv("NOLE_QUOTA_LEDGER_PATH"))
+	if path == "" || strings.EqualFold(path, "memory") || strings.EqualFold(path, "off") || strings.EqualFold(path, "none") {
+		ledger := core.NewMemoryQuotaLedgerWithPolicy(policy)
+		for _, entry := range entries {
+			ledger.Set(entry)
+		}
+		return ledger
+	}
+	ledger, err := core.NewFileQuotaLedgerWithPolicy(path, policy, entries)
+	if err != nil && ledger != nil {
+		return ledger
+	}
+	if ledger != nil {
+		return ledger
+	}
+	fallback := core.NewMemoryQuotaLedgerWithPolicy(policy)
+	for _, entry := range entries {
+		fallback.Set(entry)
+	}
+	return fallback
+}
+
+func defaultResponseCacheFromEnv() core.ResponseCache {
+	if ttl := defaultCacheTTL(); ttl > 0 {
+		return core.NewMemoryResponseCache(ttl)
+	}
+	return nil
+}
+
+func defaultCacheTTL() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("NOLE_CACHE_TTL")); raw != "" {
+		if ttl, err := time.ParseDuration(raw); err == nil && ttl > 0 {
+			return ttl
+		}
+		return 0
+	}
+	if raw := strings.TrimSpace(os.Getenv("NOLE_CACHE_TTL_SECONDS")); raw != "" {
+		seconds, err := strconv.Atoi(raw)
+		if err != nil || seconds <= 0 {
+			return 0
+		}
+		return time.Duration(seconds) * time.Second
+	}
+	return 0
 }
 
 func defaultQuotaPolicyFromEnv() core.QuotaPolicy {

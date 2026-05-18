@@ -84,7 +84,7 @@ This means:
 Implemented v0.1 policy modes:
 
 - `free-first`: default; allow keyless/free-tier routes and block `premium-capable` routes.
-- `cost-capped`: allow premium-capable providers only when a per-process local hard cap and explicit per-provider estimated cost keep the call inside cap; persistent ledgers are planned for M7.
+- `cost-capped`: allow premium-capable providers only when a local hard cap, persisted ledger state when configured and explicit per-provider estimated cost keep the call inside cap.
 - `quality-first`: explicitly allow premium-capable providers when evidence says they are materially better for the intent and the user accepts provider-account cost risk.
 
 Provider cost classes are `keyless-free`, `free-tier-BYOK`, `premium-capable`, `unknown-cost` and `disabled-no-key`. These appear in safe status surfaces and route traces without secrets or raw provider payloads.

@@ -71,6 +71,7 @@ type RouteAttempt struct {
 	Reason             string            `json:"reason,omitempty"`
 	CostPolicy         CostPolicy        `json:"cost_policy,omitempty"`
 	CostClass          ProviderCostClass `json:"cost_class,omitempty"`
+	CacheStatus        string            `json:"cache_status,omitempty"`
 	LatencyMS          int64             `json:"latency_ms,omitempty"`
 	ResultCount        int               `json:"result_count,omitempty"`
 	EstimatedCostCents int               `json:"estimated_cost_cents,omitempty"`
@@ -95,6 +96,8 @@ type BudgetStatus struct {
 	HardCapCents      int          `json:"hard_cap_cents"`
 	SpentCents        int          `json:"spent_cents"`
 	NoHiddenPaidSpend bool         `json:"no_hidden_paid_spend"`
+	LedgerState       LedgerState  `json:"ledger_state,omitempty"`
+	LedgerWarning     string       `json:"ledger_warning,omitempty"`
 	Entries           []QuotaEntry `json:"entries"`
 }
 

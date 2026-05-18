@@ -40,7 +40,20 @@ export NOLE_JINA_ESTIMATED_COST_CENTS=""
 export NOLE_FIRECRAWL_ESTIMATED_COST_CENTS=""
 ```
 
-Do not set `quality-first` or non-zero cost estimates unless you intentionally accept the provider-account cost risk. Nólë does not know your provider dashboard's exact real-time balance in v0.1; M7 will add a file-backed quota/cost ledger.
+Do not set `quality-first` or non-zero cost estimates unless you intentionally accept the provider-account cost risk. Nólë does not know your provider dashboard's exact real-time balance in v0.1; when `NOLE_QUOTA_LEDGER_PATH` is configured it persists only local quota counters and estimated spend across process restarts.
+
+Optional local state controls:
+
+```bash
+# Enable a file-backed local quota/cost ledger. Leave unset, or use memory/off/none, for memory-only accounting.
+export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"
+
+# Enable in-process TTL cache for normalized search/extract responses, useful for long-running MCP sessions.
+export NOLE_CACHE_TTL="5m"                  # Go duration syntax
+export NOLE_CACHE_TTL_SECONDS="300"         # alternative integer seconds form
+```
+
+The ledger file stores provider names, cost classes, local free-quota counters and local estimated spend. It must not store provider keys, auth headers or raw provider payloads. If the ledger is corrupt, Nólë backs it up and fails closed for paid/quota-tracked providers while still allowing keyless-free providers. Cache entries are in-memory only and expire after the configured TTL; cache hit/miss status is visible in `route_trace` and compact `routing_insight`.
 
 ## Local env file pattern
 
@@ -182,7 +195,7 @@ Cost classes:
 Policy modes:
 
 - `free-first`: default; allows keyless/free-tier routes and blocks premium-capable routes. This is the no-hidden-paid-spend mode.
-- `cost-capped`: allows premium-capable providers only if `NOLE_HARD_CAP_CENTS` and explicit per-provider estimated cost env vars keep the call inside the per-process local cap. Without an explicit local estimate, it fails closed with `unknown_cost_blocked`. Persistent cross-run ledgers are planned for M7.
+- `cost-capped`: allows premium-capable providers only if `NOLE_HARD_CAP_CENTS`, persisted local ledger spend when configured and explicit per-provider estimated cost env vars keep the call inside the local cap. Without an explicit local estimate, it fails closed with `unknown_cost_blocked`.
 - `quality-first`: explicitly allows premium-capable providers when quality/evidence justifies it and the user accepts provider-account cost risk.
 
 Important: this is a conservative local policy model, not a live provider billing oracle. Check provider dashboards for real balances, plan limits and overage settings before live use.

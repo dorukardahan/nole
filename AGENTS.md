@@ -52,6 +52,15 @@ Do not ask the user to paste real keys into chat. Tell the user to create keys i
 
 For details and overage cautions, read `docs/PROVIDER-KEYS.md`.
 
+Optional local state controls for long-running agent sessions:
+
+```bash
+export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"  # local quota/cost ledger
+export NOLE_CACHE_TTL="5m"                                                # in-process normalized search/extract cache
+```
+
+Leave `NOLE_QUOTA_LEDGER_PATH` unset, or set it to `memory`/`off`, for memory-only accounting. The ledger and cache must not contain provider keys, auth headers or raw provider payloads.
+
 ## Verify core commands
 
 Run these before declaring success:
@@ -112,7 +121,7 @@ Client docs:
 - JSON-RPC initialize succeeds;
 - `tools/list` succeeds;
 - tools include `search`, `extract`, `provider_status`, `budget_status`;
-- stderr does not leak secrets.
+- stderr is counted but not printed.
 
 ## Contribution workflow
 

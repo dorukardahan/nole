@@ -1,10 +1,15 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 )
 
 type CostPolicy string
@@ -61,10 +66,35 @@ type QuotaLedger interface {
 	BudgetStatus() BudgetStatus
 }
 
+type LedgerState string
+
+const (
+	LedgerStateMemory           LedgerState = "memory"
+	LedgerStateFileOK           LedgerState = "file-ok"
+	LedgerStateRecoveredCorrupt LedgerState = "recovered-corrupt"
+	LedgerStateUnavailable      LedgerState = "unavailable"
+)
+
+const quotaLedgerSchemaVersion = 1
+
+type quotaLedgerFile struct {
+	SchemaVersion int          `json:"schema_version"`
+	Policy        QuotaPolicy  `json:"policy"`
+	Entries       []QuotaEntry `json:"entries"`
+	FailClosed    bool         `json:"fail_closed,omitempty"`
+	State         LedgerState  `json:"state,omitempty"`
+	Warning       string       `json:"warning,omitempty"`
+	UpdatedAt     string       `json:"updated_at"`
+}
+
 type MemoryQuotaLedger struct {
-	mu      sync.Mutex
-	policy  QuotaPolicy
-	entries map[string]QuotaEntry
+	mu               sync.Mutex
+	policy           QuotaPolicy
+	entries          map[string]QuotaEntry
+	path             string
+	ledgerState      LedgerState
+	ledgerWarning    string
+	failClosedReason string
 }
 
 func DefaultQuotaPolicy() QuotaPolicy {
@@ -89,14 +119,34 @@ func NewMemoryQuotaLedger() *MemoryQuotaLedger {
 }
 
 func NewMemoryQuotaLedgerWithPolicy(policy QuotaPolicy) *MemoryQuotaLedger {
-	return &MemoryQuotaLedger{policy: normalizeQuotaPolicy(policy), entries: map[string]QuotaEntry{}}
+	return &MemoryQuotaLedger{policy: normalizeQuotaPolicy(policy), entries: map[string]QuotaEntry{}, ledgerState: LedgerStateMemory}
 }
 
 func (l *MemoryQuotaLedger) Set(entry QuotaEntry) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	entry = normalizeQuotaEntry(entry)
-	l.entries[entry.Provider] = entry
+	apply := func() error {
+		if strings.TrimSpace(l.path) != "" {
+			if err := l.reloadFromDiskLocked(); err != nil {
+				return err
+			}
+			if existing, ok := l.entries[entry.Provider]; ok {
+				entry = mergeLedgerEntries(map[string]QuotaEntry{entry.Provider: entry}, []QuotaEntry{existing})[entry.Provider]
+			}
+		}
+		l.entries[entry.Provider] = entry
+		return l.persistLocked()
+	}
+	var err error
+	if strings.TrimSpace(l.path) != "" {
+		err = l.withFileLockLocked(apply)
+	} else {
+		err = apply()
+	}
+	if err != nil {
+		l.markUnavailableLocked(err)
+	}
 }
 
 func (l *MemoryQuotaLedger) Allow(provider string) bool {
@@ -110,6 +160,44 @@ func (l *MemoryQuotaLedger) Decide(provider string) QuotaDecision {
 }
 
 func (l *MemoryQuotaLedger) decideLocked(provider string) QuotaDecision {
+	if l.failClosedReason != "" {
+		entry, ok := l.entries[provider]
+		if ok {
+			entry = normalizeQuotaEntry(entry)
+			if entry.CostClass == CostClassKeylessFree {
+				return QuotaDecision{
+					Provider:           provider,
+					Allowed:            true,
+					Reason:             "keyless_free",
+					Policy:             l.policy.Policy,
+					CostClass:          entry.CostClass,
+					FreeRemaining:      entry.FreeRemaining,
+					HardCapCents:       l.policy.HardCapCents,
+					EstimatedCostCents: entry.EstimatedCostCents,
+					SpentCents:         entry.SpentCents,
+				}
+			}
+			return QuotaDecision{
+				Provider:           provider,
+				Allowed:            false,
+				Reason:             l.failClosedReason,
+				Policy:             l.policy.Policy,
+				CostClass:          entry.CostClass,
+				FreeRemaining:      entry.FreeRemaining,
+				HardCapCents:       l.policy.HardCapCents,
+				EstimatedCostCents: entry.EstimatedCostCents,
+				SpentCents:         entry.SpentCents,
+			}
+		}
+		return QuotaDecision{
+			Provider:     provider,
+			Allowed:      false,
+			Reason:       l.failClosedReason,
+			Policy:       l.policy.Policy,
+			CostClass:    CostClassDisabledNoKey,
+			HardCapCents: l.policy.HardCapCents,
+		}
+	}
 	entry, ok := l.entries[provider]
 	if !ok {
 		return QuotaDecision{
@@ -178,6 +266,19 @@ func (l *MemoryQuotaLedger) decideLocked(provider string) QuotaDecision {
 func (l *MemoryQuotaLedger) Record(provider string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if strings.TrimSpace(l.path) != "" {
+		return l.withFileLockLocked(func() error {
+			if err := l.reloadFromDiskLocked(); err != nil {
+				l.markUnavailableLocked(err)
+				return fmt.Errorf("refresh quota ledger: unavailable")
+			}
+			return l.recordLocked(provider)
+		})
+	}
+	return l.recordLocked(provider)
+}
+
+func (l *MemoryQuotaLedger) recordLocked(provider string) error {
 	decision := l.decideLocked(provider)
 	if !decision.Allowed {
 		return fmt.Errorf("provider %q is blocked by %s policy: %s", provider, decision.Policy, decision.Reason)
@@ -187,20 +288,31 @@ func (l *MemoryQuotaLedger) Record(provider string) error {
 		return fmt.Errorf("quota entry for provider %q not found", provider)
 	}
 	entry = normalizeQuotaEntry(entry)
+	oldEntry := entry
+	changed := false
 	switch entry.CostClass {
 	case CostClassKeylessFree:
 		return nil
 	case CostClassFreeTierBYOK:
 		if entry.FreeRemaining <= 0 {
-			return fmt.Errorf("provider %q has no free quota", provider)
+			return fmt.Errorf("provider %q is blocked by %s policy: free_quota_exhausted", provider, l.policy.Policy)
 		}
 		entry.FreeRemaining--
+		changed = true
 	case CostClassPremiumCapable:
 		if entry.EstimatedCostCents > 0 {
 			entry.SpentCents += entry.EstimatedCostCents
+			changed = true
 		}
 	}
 	l.entries[provider] = entry
+	if changed {
+		if err := l.persistLocked(); err != nil {
+			l.entries[provider] = oldEntry
+			l.markUnavailableLocked(err)
+			return fmt.Errorf("persist quota ledger: unavailable")
+		}
+	}
 	return nil
 }
 
@@ -242,6 +354,8 @@ func (l *MemoryQuotaLedger) BudgetStatus() BudgetStatus {
 		HardCapCents:      l.policy.HardCapCents,
 		SpentCents:        spent,
 		NoHiddenPaidSpend: l.policy.Policy != CostPolicyQualityFirst,
+		LedgerState:       l.ledgerState,
+		LedgerWarning:     l.ledgerWarning,
 		Entries:           entries,
 	}
 }
@@ -252,6 +366,188 @@ func (l *MemoryQuotaLedger) totalSpentLocked() int {
 		spent += normalizeQuotaEntry(entry).SpentCents
 	}
 	return spent
+}
+
+func NewFileQuotaLedgerWithPolicy(path string, policy QuotaPolicy, seeds []QuotaEntry) (*MemoryQuotaLedger, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		ledger := NewMemoryQuotaLedgerWithPolicy(policy)
+		for _, entry := range seeds {
+			ledger.Set(entry)
+		}
+		return ledger, nil
+	}
+
+	ledger := &MemoryQuotaLedger{
+		policy:      normalizeQuotaPolicy(policy),
+		entries:     seedEntryMap(seeds),
+		path:        path,
+		ledgerState: LedgerStateFileOK,
+	}
+
+	if err := ledger.withFileLockLocked(func() error { return ledger.reloadFromDiskLocked() }); err != nil {
+		ledger.markUnavailableLocked(err)
+		return ledger, err
+	}
+	return ledger, nil
+}
+
+func (l *MemoryQuotaLedger) reloadFromDiskLocked() error {
+	if strings.TrimSpace(l.path) == "" {
+		return nil
+	}
+	data, err := os.ReadFile(l.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			l.ledgerState = LedgerStateFileOK
+			l.ledgerWarning = ""
+			l.failClosedReason = ""
+			return l.persistLocked()
+		}
+		return err
+	}
+
+	var disk quotaLedgerFile
+	if err := json.Unmarshal(data, &disk); err != nil || disk.SchemaVersion != quotaLedgerSchemaVersion {
+		return l.recoverCorruptLedgerLocked(err)
+	}
+
+	l.entries = mergeLedgerEntries(l.entries, disk.Entries)
+	if disk.FailClosed {
+		l.failClosedReason = "ledger_corrupt_fail_closed"
+	} else if l.failClosedReason == "ledger_corrupt_fail_closed" || l.failClosedReason == "ledger_unavailable_fail_closed" {
+		l.failClosedReason = ""
+	}
+	if disk.State != "" {
+		l.ledgerState = disk.State
+	} else {
+		l.ledgerState = LedgerStateFileOK
+	}
+	l.ledgerWarning = disk.Warning
+	return nil
+}
+
+func (l *MemoryQuotaLedger) recoverCorruptLedgerLocked(parseErr error) error {
+	backup, backupErr := backupCorruptLedger(l.path)
+	l.ledgerState = LedgerStateRecoveredCorrupt
+	l.failClosedReason = "ledger_corrupt_fail_closed"
+	if parseErr != nil {
+		l.ledgerWarning = "quota ledger was corrupt; recovered in fail-closed mode"
+	} else {
+		l.ledgerWarning = "quota ledger schema was invalid; recovered in fail-closed mode"
+	}
+	if backupErr != nil {
+		l.ledgerWarning += "; backup failed"
+	} else if backup != "" {
+		l.ledgerWarning += "; backup created"
+	}
+	return l.persistLocked()
+}
+
+func (l *MemoryQuotaLedger) withFileLockLocked(fn func() error) error {
+	if strings.TrimSpace(l.path) == "" {
+		return fn()
+	}
+	if err := os.MkdirAll(filepath.Dir(l.path), 0o700); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(l.path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) }()
+	return fn()
+}
+
+func seedEntryMap(seeds []QuotaEntry) map[string]QuotaEntry {
+	entries := map[string]QuotaEntry{}
+	for _, entry := range seeds {
+		entry = normalizeQuotaEntry(entry)
+		if entry.Provider != "" {
+			entries[entry.Provider] = entry
+		}
+	}
+	return entries
+}
+
+func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[string]QuotaEntry {
+	entries := map[string]QuotaEntry{}
+	for provider, seed := range seeds {
+		entries[provider] = normalizeQuotaEntry(seed)
+	}
+	for _, loadedEntry := range loaded {
+		loadedEntry = normalizeQuotaEntry(loadedEntry)
+		if loadedEntry.Provider == "" {
+			continue
+		}
+		if seed, ok := entries[loadedEntry.Provider]; ok {
+			merged := seed
+			merged.FreeRemaining = loadedEntry.FreeRemaining
+			if loadedEntry.SpentCents > merged.SpentCents {
+				merged.SpentCents = loadedEntry.SpentCents
+			}
+			entries[loadedEntry.Provider] = normalizeQuotaEntry(merged)
+			continue
+		}
+		entries[loadedEntry.Provider] = loadedEntry
+	}
+	return entries
+}
+
+func (l *MemoryQuotaLedger) persistLocked() error {
+	if strings.TrimSpace(l.path) == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(l.path), 0o700); err != nil {
+		return err
+	}
+	state := l.ledgerState
+	if state == "" {
+		state = LedgerStateFileOK
+	}
+	disk := quotaLedgerFile{
+		SchemaVersion: quotaLedgerSchemaVersion,
+		Policy:        l.policy,
+		Entries:       l.entriesLocked(),
+		FailClosed:    l.failClosedReason != "",
+		State:         state,
+		Warning:       l.ledgerWarning,
+		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
+	}
+	payload, err := json.MarshalIndent(disk, "", "  ")
+	if err != nil {
+		return err
+	}
+	payload = append(payload, '\n')
+	tmp := l.path + ".tmp"
+	if err := os.WriteFile(tmp, payload, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, l.path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return os.Chmod(l.path, 0o600)
+}
+
+func (l *MemoryQuotaLedger) markUnavailableLocked(err error) {
+	l.ledgerState = LedgerStateUnavailable
+	l.ledgerWarning = "quota ledger unavailable; failing closed for paid/quota-tracked providers"
+	l.failClosedReason = "ledger_unavailable_fail_closed"
+}
+
+var backupCorruptLedger = defaultBackupCorruptLedger
+
+func defaultBackupCorruptLedger(path string) (string, error) {
+	backup := fmt.Sprintf("%s.corrupt-%d", path, time.Now().UTC().UnixNano())
+	if err := os.Rename(path, backup); err != nil {
+		return "", err
+	}
+	return backup, nil
 }
 
 func normalizeQuotaPolicy(policy QuotaPolicy) QuotaPolicy {

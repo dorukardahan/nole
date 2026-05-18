@@ -100,6 +100,9 @@ func FormatRouteTraceLines(trace []RouteAttempt) []string {
 		if attempt.CostClass != "" {
 			parts = append(parts, "cost_class="+string(attempt.CostClass))
 		}
+		if attempt.CacheStatus != "" {
+			parts = append(parts, "cache="+attempt.CacheStatus)
+		}
 		if attempt.ResultCount > 0 || attempt.Status == "success" {
 			parts = append(parts, fmt.Sprintf("results=%d", attempt.ResultCount))
 		}
@@ -115,9 +118,17 @@ func buildRuntimeRoutingInsight(operation string, task TaskType, provider string
 	attempts := len(trace)
 	total := routeSlotCount(route, trace)
 	policy := tracePolicy(trace)
-	policyPart := ""
+	cache := traceCacheStatus(trace)
+	modifiers := make([]string, 0, 2)
+	if cache == CacheStatusMiss {
+		modifiers = append(modifiers, "cache miss")
+	}
 	if policy != "" {
-		policyPart = string(policy) + ", "
+		modifiers = append(modifiers, string(policy))
+	}
+	modifierPart := ""
+	if len(modifiers) > 0 {
+		modifierPart = strings.Join(modifiers, ", ") + ", "
 	}
 	if provider == "" {
 		provider = successProvider(trace)
@@ -126,7 +137,10 @@ func buildRuntimeRoutingInsight(operation string, task TaskType, provider string
 		if provider == "" {
 			return fmt.Sprintf("Nólë: extract failed (%s)", attemptSummary(attempts, total))
 		}
-		return fmt.Sprintf("Nólë: extract page via %s (%s%s, content extracted)", provider, policyPart, attemptSummary(attempts, total))
+		if cache == CacheStatusHit {
+			return fmt.Sprintf("Nólë: cache hit for extract page via %s (%s, content extracted)", provider, attemptSummary(attempts, total))
+		}
+		return fmt.Sprintf("Nólë: extract page via %s (%s%s, content extracted)", provider, modifierPart, attemptSummary(attempts, total))
 	}
 	if task == "" {
 		task = TaskGeneral
@@ -134,7 +148,10 @@ func buildRuntimeRoutingInsight(operation string, task TaskType, provider string
 	if provider == "" {
 		return fmt.Sprintf("Nólë: search %s failed (%s)", task, attemptSummary(attempts, total))
 	}
-	return fmt.Sprintf("Nólë: search %s via %s (%s%s, %s)", task, provider, policyPart, attemptSummary(attempts, total), plural(resultCount, "result", "results"))
+	if cache == CacheStatusHit {
+		return fmt.Sprintf("Nólë: cache hit for search %s via %s (%s, %s)", task, provider, attemptSummary(attempts, total), plural(resultCount, "result", "results"))
+	}
+	return fmt.Sprintf("Nólë: search %s via %s (%s%s, %s)", task, provider, modifierPart, attemptSummary(attempts, total), plural(resultCount, "result", "results"))
 }
 
 func tracePolicy(trace []RouteAttempt) CostPolicy {
@@ -151,6 +168,20 @@ func tracePolicy(trace []RouteAttempt) CostPolicy {
 	return ""
 }
 
+func traceCacheStatus(trace []RouteAttempt) string {
+	for _, attempt := range trace {
+		if attempt.CacheStatus == CacheStatusHit {
+			return CacheStatusHit
+		}
+	}
+	for _, attempt := range trace {
+		if attempt.CacheStatus == CacheStatusMiss {
+			return CacheStatusMiss
+		}
+	}
+	return ""
+}
+
 func successProvider(trace []RouteAttempt) string {
 	for i := len(trace) - 1; i >= 0; i-- {
 		if trace[i].Status == "success" {
@@ -161,10 +192,23 @@ func successProvider(trace []RouteAttempt) string {
 }
 
 func routeSlotCount(route []string, trace []RouteAttempt) int {
+	if traceCacheStatus(trace) == CacheStatusHit {
+		return len(trace)
+	}
 	if len(route) > 0 {
-		return len(route)
+		return len(route) + cacheTraceCount(trace)
 	}
 	return len(trace)
+}
+
+func cacheTraceCount(trace []RouteAttempt) int {
+	count := 0
+	for _, attempt := range trace {
+		if attempt.CacheStatus != "" {
+			count++
+		}
+	}
+	return count
 }
 
 func attemptSummary(attempts, total int) string {
