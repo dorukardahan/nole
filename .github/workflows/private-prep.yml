@@ -1,0 +1,93 @@
+name: private-prep gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-prep-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: tests, docs, doctor, bench
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.0'
+          cache: true
+
+      - name: Go version
+        run: go version
+
+      - name: Product framing docs guard
+        run: ./scripts/check-docs-framing.sh
+
+      - name: Go tests
+        run: go test ./...
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Doctor
+        run: go run . doctor
+
+      - name: MCP doctor smoke
+        run: go run . doctor --mcp
+
+      - name: Deterministic benchmark JSON
+        run: go run . bench --json > /tmp/nole-bench.json
+
+      - name: Provider status JSON
+        run: go run . providers --json > /tmp/nole-providers.json
+
+      - name: Whitespace check
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --check "origin/${{ github.base_ref }}...HEAD"
+          else
+            git show --check --format=fuller --no-renames HEAD >/dev/null
+          fi
+
+  public-safety:
+    name: public-safety secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Scan tracked text files
+        run: ./scripts/secret-scan.sh
+
+  cross-platform-build:
+    name: non-publishing build/checksums
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.0'
+          cache: true
+
+      - name: Build private-prep artifacts and checksums
+        run: ./scripts/check-release-builds.sh
