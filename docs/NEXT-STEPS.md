@@ -11,6 +11,8 @@ Completed technical MVP hardening:
 - `route_trace` in CLI/MCP surfaces;
 - `doctor --mcp` subprocess smoke;
 - deterministic benchmark harness;
+- private-prep CI/release gates;
+- LLM-free `classify` and `route-plan` commands;
 - config merge/backup safety for supported setup writers;
 - provider error redaction;
 - core checks passing on main after PR #1.
@@ -44,13 +46,15 @@ Goals:
 
 ### 3. Rule-based multi-intent planner
 
+Status: implemented for CLI JSON planning; MCP response surfacing remains part of compact insight/output work.
+
 Goals:
 
 - Add LLM-free deterministic classifier/planner.
 - Support multiple intents per query: general, news, docs, academic, factcheck, semantic, code, social/community, people/company, pricing, research, extract.
 - Include matched signals, task scores, selected intents and confidence.
-- Preserve `--task` compatibility and add `--tasks`/`--no-classify` or equivalent.
-- Add `nole classify` or `nole route-plan` JSON output.
+- Preserve `--task` compatibility and planning overrides.
+- Add `nole classify` and `nole route-plan` JSON output.
 - Expose inferred intents in MCP search responses.
 - Do not reorder provider priority without evidence.
 
