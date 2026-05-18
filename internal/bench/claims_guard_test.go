@@ -1,0 +1,104 @@
+package bench
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
+
+func TestBenchmarkClaimsGuardRejectsUnsupportedClaims(t *testing.T) {
+	repoRoot := repoRootForTest(t)
+	cases := []string{
+		"Brave is #1 provider for benchmark routing.",
+		"Brave is faster than Tavily for benchmark routing.",
+		"Brave is the best provider for benchmark routing.",
+		"Brave outperforms Tavily for benchmark routing.",
+		"Brave has guaranteed benchmark routing results.",
+	}
+	for _, claim := range cases {
+		t.Run(claim, func(t *testing.T) {
+			root := copyBenchmarkClaimsGuardFixture(t, repoRoot)
+			f, err := os.OpenFile(filepath.Join(root, "docs", "ROUTE-EVIDENCE.md"), os.O_APPEND|os.O_WRONLY, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.WriteString("\n" + claim + "\n"); err != nil {
+				_ = f.Close()
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", "scripts/check-benchmark-claims.sh")
+			cmd.Dir = root
+			if err := cmd.Run(); err == nil {
+				t.Fatalf("claims guard accepted unsupported claim %q", claim)
+			}
+		})
+	}
+}
+
+func TestBenchmarkClaimsGuardAcceptsHonestFixtureDocs(t *testing.T) {
+	repoRoot := repoRootForTest(t)
+	root := copyBenchmarkClaimsGuardFixture(t, repoRoot)
+	cmd := exec.Command("bash", "scripts/check-benchmark-claims.sh")
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("claims guard rejected honest fixture docs: %v\n%s", err, out)
+	}
+}
+
+func repoRootForTest(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+}
+
+func copyBenchmarkClaimsGuardFixture(t *testing.T, repoRoot string) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script, err := os.ReadFile(filepath.Join(repoRoot, "scripts", "check-benchmark-claims.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "scripts", "check-benchmark-claims.sh"), script, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	benchDoc := []byte(`# Benchmarks
+
+Deterministic offline harness
+
+The deterministic offline harness does not measure live web quality.
+
+Route matrix changes require evidence.
+`)
+	if err := os.WriteFile(filepath.Join(root, "docs", "BENCHMARKS.md"), benchDoc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	evidenceDoc := []byte(`# Route evidence summary deterministic-offline
+
+This does not measure live web result quality.
+
+Private data: none included
+
+## Raw artifact policy
+
+No raw provider payloads exist in offline mode.
+`)
+	if err := os.WriteFile(filepath.Join(root, "docs", "ROUTE-EVIDENCE.md"), evidenceDoc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}

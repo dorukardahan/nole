@@ -128,6 +128,7 @@ nole doctor
 nole doctor --mcp
 nole providers --json
 nole bench --json
+nole bench --evidence-md
 nole classify "OpenAI API docs pricing and latest changelog" --json
 nole route-plan "OpenAI API docs pricing and latest changelog" --json
 ```
@@ -139,7 +140,7 @@ nole search "Go net/http Client Timeout documentation" --task docs --json
 nole extract "https://go.dev/doc/" --json
 ```
 
-`nole bench --json` is deterministic/offline. Search/extract may call live providers only after the cost policy allows a provider; keep usage low and cost-aware. Search, extract, classify and route-plan JSON include compact `routing_insight` by default; search, extract and route-plan keep detailed `route_trace` for debugging where available. Runtime traces include sanitized cost policy/class fields such as `free-first`, `keyless-free` or `premium-capable`, never provider keys. Use `--insight off` to omit the user-facing insight, or `--insight verbose` when you intentionally need trace lines in human search/extract output.
+`nole bench --json` and `nole bench --evidence-md` are deterministic/offline. Search/extract may call live providers only after the cost policy allows a provider; keep usage low and cost-aware. Search, extract, classify and route-plan JSON include compact `routing_insight` by default; search, extract and route-plan keep detailed `route_trace` for debugging where available. Runtime traces include sanitized cost policy/class fields such as `free-first`, `keyless-free` or `premium-capable`, never provider keys. Use `--insight off` to omit the user-facing insight, or `--insight verbose` when you intentionally need trace lines in human search/extract output.
 
 ## First agent prompt
 
@@ -196,7 +197,7 @@ Setup writers should merge existing config and create backups. If a config was c
 
 ### Paid usage risk
 
-If a provider dashboard has overage controls, disable overage or set a hard limit before using live calls. If unsure, run deterministic commands only: `doctor`, `providers`, `bench --json`.
+If a provider dashboard has overage controls, disable overage or set a hard limit before using live calls. If unsure, run deterministic commands only: `doctor`, `providers`, `bench --json`, `bench --evidence-md`.
 
 ## Verification status labels
 

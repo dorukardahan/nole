@@ -3,12 +3,10 @@ package core
 type RouteMatrix map[TaskType][]string
 
 func DefaultRouteMatrix() RouteMatrix {
-	// Evidence-based routing from benchmark 2026-05-12 v2.
-	// 12 categories x 5 providers x 2 queries, Brave URL encoding bug fixed.
-	// Search findings: Brave is strongest broad/default provider; Firecrawl is
-	// strong on social/code/semantic and fast; Tavily leads semantic/people;
-	// DDGS is excellent keyless fallback; Jina search is slower/weaker but useful
-	// for reader/extraction fallback.
+	// Route ordering is based on historical sanitized evidence plus provider
+	// capability contracts. Treat this as a routing prior, not as proof of current
+	// live-web quality or provider ranking. See docs/BENCHMARKS.md and
+	// docs/ROUTE-EVIDENCE.md; do not reorder providers without new evidence.
 	return RouteMatrix{
 		// Search tasks
 		TaskGeneral:   {"brave", "firecrawl", "ddgs", "tavily", "jina"},

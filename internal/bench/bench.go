@@ -1,7 +1,9 @@
 package bench
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -20,6 +22,21 @@ const (
 	KindSearch  Kind = "search"
 	KindExtract Kind = "extract"
 )
+
+type EvidenceMetadata struct {
+	ArtifactKind       string   `json:"artifact_kind"`
+	Methodology        string   `json:"methodology"`
+	DataSource         string   `json:"data_source"`
+	Measures           []string `json:"measures"`
+	DoesNotMeasure     []string `json:"does_not_measure"`
+	Reproduction       []string `json:"reproduction"`
+	RawArtifactsPolicy string   `json:"raw_artifacts_policy"`
+	NetworkRequired    bool     `json:"network_required"`
+	SecretsRequired    bool     `json:"secrets_required"`
+	CostPolicy         string   `json:"cost_policy,omitempty"`
+	CostCaveat         string   `json:"cost_caveat,omitempty"`
+	Sanitized          bool     `json:"sanitized"`
+}
 
 type FixtureSet struct {
 	Version  string    `json:"version"`
@@ -95,9 +112,263 @@ type Report struct {
 	Mode           Mode                `json:"mode"`
 	FixtureVersion string              `json:"fixture_version"`
 	GeneratedAt    string              `json:"generated_at"`
+	Evidence       EvidenceMetadata    `json:"evidence"`
 	Summary        Summary             `json:"summary"`
 	Cases          []CaseResult        `json:"cases"`
 	RouteMatrix    map[string][]string `json:"route_matrix"`
+}
+
+func OfflineEvidenceMetadata() EvidenceMetadata {
+	return EvidenceMetadata{
+		ArtifactKind: "deterministic_fixture_eval",
+		Methodology:  "Scores a versioned fixture set against deterministic observations and the configured route matrix; it makes no provider network calls.",
+		DataSource:   "Repository fixtures plus deterministic in-code observations; not live provider data.",
+		Measures: []string{
+			"routing and fallback contract coverage",
+			"fixture coverage by task and language",
+			"deterministic selected-provider behavior for the route matrix",
+		},
+		DoesNotMeasure: []string{
+			"live web result quality",
+			"currentness of real provider indexes",
+			"provider uptime or production availability",
+			"actual cost/quota behavior or provider account balances",
+			"statistically significant provider ranking",
+		},
+		Reproduction: []string{
+			"go test ./internal/bench ./internal/cli",
+			"nole bench --json",
+			"nole bench --evidence-md",
+		},
+		RawArtifactsPolicy: "No raw provider payloads exist in offline mode; generated summaries are public-safe and fixture-only.",
+		NetworkRequired:    false,
+		SecretsRequired:    false,
+		Sanitized:          true,
+	}
+}
+
+func LiveEvidenceMetadata(costPolicy string, maxCases int) EvidenceMetadata {
+	if maxCases <= 0 || maxCases > 10 {
+		maxCases = 3
+	}
+	if strings.TrimSpace(costPolicy) == "" {
+		costPolicy = string(core.CostPolicyFreeFirst)
+	}
+	return EvidenceMetadata{
+		ArtifactKind: "live_smoke_summary",
+		Methodology:  fmt.Sprintf("Runs at most %d explicit live fixture case(s) through the normal service/router and records only summarized route_trace outcomes.", maxCases),
+		DataSource:   "Live provider calls made by the local user environment, summarized without raw response bodies.",
+		Measures: []string{
+			"success/failure count for this small fixture sample",
+			"selected provider and sanitized route attempts",
+			"result count and coarse latency buckets",
+			"sanitized error categories",
+		},
+		DoesNotMeasure: []string{
+			"comprehensive live web quality",
+			"current provider ranking across all tasks",
+			"statistical significance",
+			"provider uptime guarantees",
+			"actual provider billing beyond local estimates and account dashboards",
+		},
+		Reproduction: []string{
+			fmt.Sprintf("NOLE_COST_POLICY=%s nole bench --live --max-live-cases %d --json", costPolicy, maxCases),
+			fmt.Sprintf("NOLE_COST_POLICY=%s nole bench --live --max-live-cases %d --evidence-md", costPolicy, maxCases),
+		},
+		RawArtifactsPolicy: "Do not commit raw provider responses, headers, private queries, private URLs or credentials; publish only sanitized summaries.",
+		NetworkRequired:    true,
+		SecretsRequired:    false,
+		CostPolicy:         costPolicy,
+		CostCaveat:         "Live calls require network access and may use configured provider keys; they can consume quota or incur provider-account cost according to the provider dashboard and Nólë cost policy.",
+		Sanitized:          true,
+	}
+}
+
+func MarkdownEvidenceSummary(report Report) string {
+	if report.Evidence.ArtifactKind == "" {
+		report.Evidence = evidenceMetadataForMode(report.Mode, "", len(report.Cases))
+	}
+	generatedAt := report.GeneratedAt
+	if generatedAt == "" {
+		generatedAt = DeterministicTimestamp()
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Route evidence summary %s\n\n", sanitizeMarkdownCell(generatedAt))
+	fmt.Fprintf(&b, "Fixture version: %s\n", sanitizeMarkdownCell(report.FixtureVersion))
+	fmt.Fprintf(&b, "Mode: %s\n", sanitizeMarkdownCell(string(report.Mode)))
+	fmt.Fprintf(&b, "Artifact kind: %s\n", sanitizeMarkdownCell(report.Evidence.ArtifactKind))
+	fmt.Fprintf(&b, "Private data: none included\n")
+	fmt.Fprintf(&b, "Keys: presence/status only, no values\n")
+	fmt.Fprintf(&b, "Network required: %t\n", report.Evidence.NetworkRequired)
+	fmt.Fprintf(&b, "Secrets required: %t\n", report.Evidence.SecretsRequired)
+	if report.Evidence.CostPolicy != "" {
+		fmt.Fprintf(&b, "Cost policy: %s\n", sanitizeMarkdownCell(report.Evidence.CostPolicy))
+	}
+	fmt.Fprintf(&b, "\n## Methodology\n\n%s\n\n", sanitizeMarkdownCell(report.Evidence.Methodology))
+	fmt.Fprintf(&b, "Data source: %s\n\n", sanitizeMarkdownCell(report.Evidence.DataSource))
+	writeEvidenceList(&b, "Measures", report.Evidence.Measures)
+	writeEvidenceList(&b, "Does not measure", report.Evidence.DoesNotMeasure)
+	writeEvidenceList(&b, "Reproduction", report.Evidence.Reproduction)
+	fmt.Fprintf(&b, "## Raw artifact policy\n\n%s\n\n", sanitizeMarkdownCell(report.Evidence.RawArtifactsPolicy))
+	if report.Evidence.CostCaveat != "" {
+		fmt.Fprintf(&b, "## Cost caveat\n\n%s\n\n", sanitizeMarkdownCell(report.Evidence.CostCaveat))
+	}
+	fmt.Fprintf(&b, "## Case summary\n\n")
+	fmt.Fprintf(&b, "| task | provider | cases | success | result range | latency bucket | notes |\n")
+	fmt.Fprintf(&b, "| --- | --- | --- | --- | --- | --- | --- |\n")
+	for _, row := range evidenceRows(report) {
+		fmt.Fprintf(&b, "| %s | %s | %d | %d | %s | %s | %s |\n",
+			sanitizeMarkdownCell(row.Task), sanitizeMarkdownCell(row.Provider), row.Cases, row.Successes,
+			sanitizeMarkdownCell(row.ResultRange), sanitizeMarkdownCell(row.LatencyBucket), sanitizeMarkdownCell(row.Notes))
+	}
+	return b.String()
+}
+
+func evidenceMetadataForMode(mode Mode, costPolicy string, maxCases int) EvidenceMetadata {
+	if mode == ModeLive {
+		return LiveEvidenceMetadata(costPolicy, maxCases)
+	}
+	return OfflineEvidenceMetadata()
+}
+
+func writeEvidenceList(b *strings.Builder, title string, values []string) {
+	fmt.Fprintf(b, "## %s\n\n", title)
+	if len(values) == 0 {
+		fmt.Fprintf(b, "- not recorded\n\n")
+		return
+	}
+	for _, value := range values {
+		fmt.Fprintf(b, "- %s\n", sanitizeMarkdownCell(value))
+	}
+	fmt.Fprintf(b, "\n")
+}
+
+type evidenceRow struct {
+	Task          string
+	Provider      string
+	Cases         int
+	Successes     int
+	ResultRange   string
+	LatencyBucket string
+	Notes         string
+}
+
+func evidenceRows(report Report) []evidenceRow {
+	rows := make([]evidenceRow, 0, len(report.Cases))
+	for _, c := range report.Cases {
+		provider := c.SelectedProvider
+		if provider == "" {
+			provider = "none"
+		}
+		rows = append(rows, evidenceRow{
+			Task:          string(c.Task),
+			Provider:      provider,
+			Cases:         1,
+			Successes:     boolToInt(c.SelectedProvider != ""),
+			ResultRange:   resultRange(c.Attempts),
+			LatencyBucket: latencyBucket(maxLatency(c.Attempts)),
+			Notes:         evidenceNotes(report.Mode, c.Attempts),
+		})
+	}
+	return rows
+}
+
+func evidenceNotes(mode Mode, attempts []Attempt) string {
+	if mode == ModeOffline {
+		return "offline fixture summary; does not measure live web result quality"
+	}
+	if len(attempts) == 0 {
+		return "no route attempts recorded"
+	}
+	reasons := make(map[string]bool)
+	for _, attempt := range attempts {
+		if attempt.Reason != "" {
+			reasons[publicReason(attempt.Reason)] = true
+		}
+	}
+	keys := make([]string, 0, len(reasons))
+	for reason := range reasons {
+		keys = append(keys, reason)
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return "live smoke summary"
+	}
+	return "live smoke summary: " + strings.Join(keys, ", ")
+}
+
+func publicReason(reason string) string {
+	switch reason {
+	case "success", "success_after_fallback", "empty_results", "provider_error", "extract_failed", "quota_blocked", "disabled_no_key", "premium_blocked_free_first", "cost_cap_exceeded", "unknown_cost_blocked", "within_cost_cap":
+		return reason
+	default:
+		return "sanitized_error"
+	}
+}
+
+func resultRange(attempts []Attempt) string {
+	maxResults := 0
+	for _, attempt := range attempts {
+		if attempt.ResultCount > maxResults {
+			maxResults = attempt.ResultCount
+		}
+	}
+	return fmt.Sprintf("0-%d", maxResults)
+}
+
+func maxLatency(attempts []Attempt) int64 {
+	var max int64
+	for _, attempt := range attempts {
+		if attempt.LatencyMS > max {
+			max = attempt.LatencyMS
+		}
+	}
+	return max
+}
+
+func latencyBucket(ms int64) string {
+	switch {
+	case ms <= 0:
+		return "not-recorded"
+	case ms <= 500:
+		return "<=500ms"
+	case ms <= 1000:
+		return "<=1s"
+	case ms <= 3000:
+		return "<=3s"
+	case ms <= 8000:
+		return "<=8s"
+	default:
+		return ">8s"
+	}
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
+func sanitizeMarkdownCell(value string) string {
+	value = strings.ReplaceAll(value, "|", "\\|")
+	for _, forbidden := range []string{"Authorization", "Bearer", "SECRET", "TOKEN", "token=", "api_key", "API_KEY"} {
+		value = strings.ReplaceAll(value, forbidden, "[redacted]")
+	}
+	words := strings.Fields(value)
+	for i, word := range words {
+		trimmed := strings.Trim(word, "()[]{}<>,.;:'\"")
+		if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+			words[i] = strings.Replace(word, trimmed, "[redacted-url]", 1)
+		}
+		if strings.HasPrefix(trimmed, "/home/") || strings.HasPrefix(trimmed, "/Users/") {
+			words[i] = strings.Replace(word, trimmed, "[redacted-path]", 1)
+		}
+	}
+	if len(words) > 0 {
+		value = strings.Join(words, " ")
+	}
+	return value
 }
 
 func DefaultFixtureSet() FixtureSet {
@@ -111,6 +382,9 @@ func DefaultFixtureSet() FixtureSet {
 			{ID: "academic-technical-en", Task: core.TaskAcademic, Kind: KindSearch, Query: "retrieval augmented generation survey paper", Language: "en", Category: "academic/technical source lookup"},
 			{ID: "factcheck-en", Task: core.TaskFactcheck, Kind: KindSearch, Query: "did NASA confirm alien life in 2025", Language: "en", Category: "fact-check style query"},
 			{ID: "product-pricing-en", Task: core.TaskPricing, Kind: KindSearch, Query: "Cloudflare Workers pricing limits", Language: "en", Category: "product/pricing/status page lookup"},
+			{ID: "people-company-en", Task: core.TaskPeople, Kind: KindSearch, Query: "who is the founder of Anthropic profile", Language: "en", Category: "people/company lookup"},
+			{ID: "social-community-en", Task: core.TaskSocial, Kind: KindSearch, Query: "Reddit discussions about local LLM routers", Language: "en", Category: "social/community discussion"},
+			{ID: "semantic-discovery-en", Task: core.TaskSemantic, Kind: KindSearch, Query: "semantic search tools for research discovery", Language: "en", Category: "semantic discovery"},
 			{ID: "troubleshooting-en", Task: core.TaskDocs, Kind: KindSearch, Query: "Go http client timeout exceeded while awaiting headers", Language: "en", Category: "troubleshooting/error-message query"},
 			{ID: "extract-doc-en", Task: core.TaskExtract, Kind: KindExtract, TargetURL: "https://go.dev/doc/", Language: "en", Category: "extraction/summarization target URL"},
 			{ID: "general-web-tr", Task: core.TaskGeneral, Kind: KindSearch, Query: "Model Context Protocol nedir", Language: "tr", Category: "multilingual general web search"},
@@ -128,10 +402,11 @@ func RunOffline(set FixtureSet, matrix core.RouteMatrix) Report {
 
 func RunOfflineWithObservations(set FixtureSet, matrix core.RouteMatrix, observations map[string]map[core.TaskType]Observation) Report {
 	report := Report{
-		SchemaVersion:  "1",
+		SchemaVersion:  "2",
 		Mode:           ModeOffline,
 		FixtureVersion: set.Version,
 		GeneratedAt:    "deterministic-offline",
+		Evidence:       OfflineEvidenceMetadata(),
 		RouteMatrix:    stringifyMatrix(matrix),
 		Cases:          make([]CaseResult, 0, len(set.Fixtures)),
 	}
