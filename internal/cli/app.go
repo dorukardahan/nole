@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/providers/brave"
@@ -96,31 +97,41 @@ func buildCLIError(operation string, err error, route []string, trace []core.Rou
 }
 
 func parseTask(raw string) core.TaskType {
-	switch raw {
-	case "news":
-		return core.TaskNews
-	case "docs", "technical-docs":
-		return core.TaskDocs
-	case "academic":
-		return core.TaskAcademic
-	case "factcheck":
-		return core.TaskFactcheck
-	case "semantic":
-		return core.TaskSemantic
-	case "code":
-		return core.TaskCode
-	case "social":
-		return core.TaskSocial
-	case "people":
-		return core.TaskPeople
-	case "pricing":
-		return core.TaskPricing
-	case "extract":
-		return core.TaskExtract
-	case "research", "deep-research":
-		return core.TaskResearch
-	default:
+	task, ok := parseTaskStrict(raw)
+	if !ok {
 		return core.TaskGeneral
+	}
+	return task
+}
+
+func parseTaskStrict(raw string) (core.TaskType, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "news":
+		return core.TaskNews, true
+	case "docs", "technical-docs":
+		return core.TaskDocs, true
+	case "academic":
+		return core.TaskAcademic, true
+	case "factcheck":
+		return core.TaskFactcheck, true
+	case "semantic":
+		return core.TaskSemantic, true
+	case "code":
+		return core.TaskCode, true
+	case "social", "community", "forum", "forums":
+		return core.TaskSocial, true
+	case "people":
+		return core.TaskPeople, true
+	case "pricing":
+		return core.TaskPricing, true
+	case "extract":
+		return core.TaskExtract, true
+	case "research", "deep-research":
+		return core.TaskResearch, true
+	case "general", "":
+		return core.TaskGeneral, true
+	default:
+		return core.TaskGeneral, false
 	}
 }
 

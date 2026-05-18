@@ -12,6 +12,8 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 	}
 	cmd.AddCommand(newSearchCommand())
+	cmd.AddCommand(newClassifyCommand())
+	cmd.AddCommand(newRoutePlanCommand())
 	cmd.AddCommand(newExtractCommand())
 	cmd.AddCommand(newResearchCommand())
 	cmd.AddCommand(newBenchCommand())

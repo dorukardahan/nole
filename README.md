@@ -36,7 +36,7 @@ Agents and coding CLIs often need web search, docs lookup, URL extraction and so
 4. Keep provider errors sanitized and avoid leaking secrets.
 5. Expose `route_trace` for debugging and a compact routing insight for user-facing output.
 
-Current routing is task-based. The roadmap adds LLM-free multi-intent planning so a single query can plan docs + pricing + academic + news + code routes without asking the user to choose one task.
+Current routing is task-based with an LLM-free multi-intent planner: `nole classify` explains detected intents and `nole route-plan` shows provider routes before any provider call.
 
 ## Supported and priority agents
 
@@ -92,6 +92,8 @@ Try the CLI:
 ```bash
 ./nole providers --json
 ./nole bench --json
+./nole classify "OpenAI API docs pricing and latest changelog" --json
+./nole route-plan "OpenAI API docs pricing and latest changelog" --json
 ./nole search "Go net/http Client Timeout documentation" --task docs --json
 ./nole extract "https://go.dev/doc/" --json
 ```
@@ -163,7 +165,7 @@ See `docs/BENCHMARKS.md`.
 
 Stable/core:
 
-- CLI: `nole search`, `nole extract`, `nole providers`, `nole doctor`, `nole bench`.
+- CLI: `nole search`, `nole extract`, `nole classify`, `nole route-plan`, `nole providers`, `nole doctor`, `nole bench`.
 - MCP stdio: `nole mcp` for agent tools `search`, `extract`, `provider_status`, `budget_status`.
 
 Experimental:
