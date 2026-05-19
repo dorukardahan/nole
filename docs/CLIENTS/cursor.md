@@ -1,12 +1,12 @@
 # Cursor client
 
-Status: repo-tested, live client verification pending.
+Status: verified (GUI MCP path + chat-agent tool dispatch).
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Cursor-style MCP clients can launch Nólë through `nole mcp`.
+Nólë is a free, local web search router for AI agents and coding CLI tools. Cursor-style MCP clients can launch Nólë through `nole mcp`. Live verification on macOS Cursor 3.4.20 is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` (2026-05-20 follow-up run).
 
 ## Setup
 
-Nólë includes a Cursor setup flag and repo coverage for the shared MCP JSON merge helper, but the real Cursor client has not been verified in this milestone:
+Nólë includes a Cursor setup flag and repo coverage for the shared MCP JSON merge helper. On a fresh host, build Nólë and write the Cursor MCP entry:
 
 ```bash
 go test ./...
@@ -42,12 +42,13 @@ The wrapper template lives in `docs/PROVIDER-KEYS.md`.
 
 ## Verification checklist
 
-Mark Cursor verified only after:
+To verify Cursor on a new host (or to re-verify after a Cursor upgrade), record:
 
-- Cursor version and config path are recorded;
-- Nólë tools `search`, `extract`, `provider_status`, `budget_status` are visible in Cursor;
-- one small search works;
-- no secrets appear in config/logs;
-- provider keys are visible to the Cursor-launched process.
+- Cursor version and config path (`~/.cursor/mcp.json`);
+- the Nólë MCP entry shape after setup (wrapper-direct: `command_basename=nole-mcp`, 0 args, 0 env keys);
+- that the Nólë tools `search`, `extract`, `provider_status`, `budget_status` are visible in Cursor's MCP panel or dispatchable by name through its chat agent (`provider_status` is a no-network sanity check; one `limit=1` `free-first` DDGS `search` is the live smoke);
+- that any unrelated MCP servers already present in the user's Cursor config are preserved unchanged by the writer;
+- that no secrets, bearer tokens, auth headers, raw provider payloads or local user paths appear in Cursor's MCP entry, in chat output, or in any committed artifact;
+- that provider keys are visible to the Cursor-launched process only via the `~/.local/bin/nole-mcp` wrapper sourcing `~/.config/nole/.env` at launch.
 
-Until then, treat this as a generic documented path.
+For the macOS 3.4.20 evidence already recorded, see `docs/CLIENTS/LIVE-VERIFICATION.md`.

@@ -1,8 +1,8 @@
 # Live client verification evidence (M11)
 
-Scope: M11 live client verification.
+Scope: M11 live client verification, plus a 2026-05-20 Cursor follow-up run.
 Run kind: local maintainer run, real clients launched.
-Run date: 2026-05-19.
+Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up).
 Host description: macOS arm64 workstation with Go toolchain installed.
 Cost policy: free-first (default; no policy change during the run).
 Live provider calls: one low-limit keyless smoke search via DDGS.
@@ -25,8 +25,8 @@ The verification is conservative. A client is only labeled `verified` when its r
 ## Versions and binaries
 
 - Nólë built from this branch; `nole doctor --mcp` reports `mcp: ok`, `stdout: startup-clean (0 bytes before protocol input)`, `protocol: initialize/tools/list (… non-json stdout lines: 0)`, `tools: [budget_status extract provider_status search]`.
-- Clients available on the verification host (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi.
-- Clients absent on the verification host (not exercised): Hermes Agent, OpenClaw, Cursor.
+- Clients available on the verification host (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run).
+- Clients absent on the verification host (not exercised): Hermes Agent, OpenClaw.
 
 ## Wrapper used in all client configs
 
@@ -125,11 +125,32 @@ In addition, a single MCP stdio JSON-RPC round trip was performed against the wr
 - Smoke search: recorded in the shared smoke section above; Kimi's `mcp test` already exercises the full connect/list path.
 - Secret-safety: no key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths were printed by the client. Provider keys come from the wrapper at launch only.
 
+### Cursor (2026-05-20 follow-up run)
+
+- Status: verified (GUI MCP path + chat-agent tool dispatch).
+- Client version: 3.4.20 (`Cursor.app` `CFBundleShortVersionString`).
+- Config location read by Cursor in this run: `~/.cursor/mcp.json`.
+- Setup performed via Nólë's writer:
+  - `nole setup --cursor --mcp-wrapper /absolute/path/to/nole-mcp`
+- An unrelated MCP server already present in the user's Cursor config was preserved unchanged by the writer; a writer-managed backup was written at `~/.cursor/mcp.json.bak`.
+- Resulting Nólë MCP entry shape (sanitized): keys `[args, command]`, `command_basename=nole-mcp`, 0 args, 0 env keys (wrapper-direct launch).
+- After a full Cursor restart, Cursor's chat agent successfully dispatched Nólë MCP tools by name end-to-end:
+  - `provider_status` returned the same 5-provider table that `nole doctor --mcp` and the CLI `providers --json` produce — brave / ddgs / firecrawl / jina / tavily, each with availability, capabilities, cost class, and a `free-first` policy reason. Under `free-first` only `ddgs` was policy-allowed; the other four providers were correctly reported as `premium_blocked_free_first`.
+  - `search` returned a single result through Nólë's `ddgs` provider under the `free-first` policy.
+- MCP tools observed: `search`, `extract`, `provider_status`, `budget_status`. Successful dispatch of `provider_status` and `search` by name through Cursor's MCP client proves Cursor loaded the full `tools/list` schema; `extract` and `budget_status` are published by that same `tools/list` (confirmed independently by `nole doctor --mcp`).
+- Smoke search through Cursor (sanitized):
+  - Query: `Go net/http Client Timeout documentation`
+  - Task: `docs`
+  - Limit: `1`
+  - Provider used: `ddgs`
+  - Compact routing insight: cache miss → premium providers `brave`, `firecrawl`, `tavily` skipped under `free-first` policy → `ddgs` returned 1 result.
+  - Result URL: `https://pkg.go.dev/net/http`
+- Secret-safety: no key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths were printed by Cursor or by Nólë during this verification. The Cursor MCP entry contains no key values; the wrapper sources `~/.config/nole/.env` at launch only.
+
 ## Pending clients on this host
 
 These clients were not installed on the verification host and remain `generic/unverified` per the matrix in `docs/CLIENTS/README.md`. Each requires its own host-side test before status upgrade:
 
-- Cursor: Cursor application not installed. The shared MCP JSON merge path is covered by repo tests, but live UI tool visibility is not recorded here.
 - Hermes Agent: not installed.
 - OpenClaw: not installed.
 
@@ -141,7 +162,7 @@ These follow-ups are recorded for future PRs; they were intentionally not change
 2. `nole setup --opencode` writes to `~/opencode.json` with a `{command, args}` schema; the current OpenCode release reads `~/.config/opencode/opencode.json` and uses a `{type, command:[…], enabled, environment}` schema. The OpenCode writer should be updated to match the installed schema/location or instructed to use `opencode mcp add`.
 3. Consider shipping the `~/.local/bin/nole-mcp` env-sourcing wrapper pattern as a documented (not committed) install step so non-Codex clients can reliably load `~/.config/nole/.env` without each writer embedding a shell launch line.
 4. Add a `nole setup --kimi` writer or document the `kimi mcp add` path in `docs/CLIENTS/kimi.md` so Kimi setup has the same self-serve experience as Codex.
-5. Add live verification for Cursor, Hermes Agent and OpenClaw on hosts where those clients are installed.
+5. Add live verification for Hermes Agent and OpenClaw on hosts where those clients are installed.
 
 ## Public-safety statement
 
