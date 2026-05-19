@@ -172,6 +172,40 @@ The file should contain shell-compatible `KEY=value` lines. Codex setup currentl
 
 See `docs/PROVIDER-KEYS.md`.
 
+## Optional env-sourcing MCP wrapper
+
+Several MCP clients launch the configured `command` without inheriting the user's interactive shell environment (this is common for GUI apps, gateway/service processes and some agent runtimes). For those clients, register the MCP server through a small local wrapper that sources `~/.config/nole/.env` and execs `nole mcp`. The wrapper is local-only; do not commit it.
+
+```bash
+mkdir -p ~/.local/bin
+cat > ~/.local/bin/nole-mcp <<'SH'
+#!/bin/sh
+set -a
+if [ -f "$HOME/.config/nole/.env" ]; then
+  . "$HOME/.config/nole/.env"
+fi
+set +a
+
+if [ -n "${NOLE_BIN:-}" ] && [ -x "$NOLE_BIN" ]; then
+  exec "$NOLE_BIN" mcp
+fi
+if command -v nole >/dev/null 2>&1; then
+  exec nole mcp
+fi
+if [ -x "$HOME/.local/bin/nole" ]; then
+  exec "$HOME/.local/bin/nole" mcp
+fi
+
+echo "nole binary not found. Install nole to PATH or set NOLE_BIN." >&2
+exit 127
+SH
+chmod 700 ~/.local/bin/nole-mcp
+```
+
+Then point the client's MCP command at `/absolute/path/to/nole-mcp` with empty args. The Codex setup writer already inlines an equivalent env-sourcing shell line, so Codex does not need a separate wrapper.
+
+This pattern keeps provider keys out of every per-client config file and ensures `nole mcp` always launches with the same set of keys regardless of how the client itself is started.
+
 ## MCP configuration template
 
 Use an absolute binary path:
@@ -201,6 +235,8 @@ nole setup --all
 ```
 
 Current setup command also includes Cursor and Windsurf flags. For any client, read the generated config before declaring success, and verify tool visibility inside the real client when possible.
+
+The Codex writer is currently the only one that inlines `~/.config/nole/.env` sourcing in its output. The Claude, OpenCode, Cursor and Windsurf writers write a bare `{command, args}` MCP entry; for clients whose installed release does not inherit shell env, prefer the env-sourcing wrapper (`/absolute/path/to/nole-mcp`) or the client's first-class `mcp add` CLI. See `docs/CLIENTS/LIVE-VERIFICATION.md` and `docs/NEXT-STEPS.md` for the current per-client status and writer follow-ups.
 
 ## Verification commands
 

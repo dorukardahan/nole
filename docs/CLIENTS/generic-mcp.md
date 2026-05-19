@@ -58,6 +58,23 @@ Set these variable names locally when you have the matching provider accounts:
 
 Do not print actual values. Use `nole doctor` to check presence only.
 
+## Optional env-sourcing wrapper
+
+If the client does not inherit the shell environment that owns provider keys, register Nólë via a local wrapper that sources `~/.config/nole/.env` and execs `nole mcp`:
+
+```json
+{
+  "mcpServers": {
+    "nole": {
+      "command": "/absolute/path/to/nole-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+See `docs/PROVIDER-KEYS.md` and `docs/AGENT-INSTALL.md` for the wrapper template. The wrapper is local-only; do not commit it.
+
 ## MCP stdout requirement
 
 The `nole mcp` process must keep stdout for JSON-RPC only. If a client fails to initialize, run:

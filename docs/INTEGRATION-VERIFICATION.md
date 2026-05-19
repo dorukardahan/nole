@@ -47,6 +47,8 @@ All commands above ran with provider key environment variables unset and with lo
 
 ## Limitations
 
+This document is the offline/CI integration evidence artifact. For M11 live-client evidence on a macOS host (Claude Code, Codex CLI, OpenCode and Kimi), see `docs/CLIENTS/LIVE-VERIFICATION.md`. That artifact is recorded separately so this document can continue to describe only the offline/CI run.
+
 - This evidence does not verify real-client UI/tool visibility.
 - This evidence does not verify client-specific environment inheritance in GUI/gateway/service modes.
 - This evidence does not measure live web result quality.
