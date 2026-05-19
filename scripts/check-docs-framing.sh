@@ -14,6 +14,7 @@ required=(
   docs/PROVIDER-KEYS.md
   docs/BENCHMARKS.md
   docs/ROUTE-EVIDENCE.md
+  docs/INTEGRATION-VERIFICATION.md
   docs/NEXT-STEPS.md
   docs/CLIENTS/claude-code.md
   docs/CLIENTS/codex.md
@@ -66,6 +67,7 @@ grep -Fq "Deterministic offline harness" docs/BENCHMARKS.md \
 grep -Fiq "does not measure live web quality" docs/BENCHMARKS.md \
   || fail "benchmark docs must not overclaim offline web quality"
 ./scripts/check-benchmark-claims.sh
+./scripts/check-integration-evidence.sh
 
 grep -Fq "free-first" docs/PRODUCT.md \
   || fail "product docs must include free-first policy"

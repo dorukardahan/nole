@@ -52,7 +52,7 @@ Priority v0.1 agent targets:
 
 Also documented as secondary/generic paths: Cursor CLI, Kimi and generic MCP clients. A client is only called verified after config path, tool visibility and `doctor --mcp` behavior are checked without printing credentials.
 
-See `docs/CLIENTS/README.md` for the client support matrix and `docs/AGENT-INSTALL.md` for an agent-readable install/handoff checklist.
+See `docs/CLIENTS/README.md` for the client support matrix, `docs/AGENT-INSTALL.md` for an agent-readable install/handoff checklist, and `docs/INTEGRATION-VERIFICATION.md` for the latest truthful local/offline integration evidence.
 
 ## Providers
 
