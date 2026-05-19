@@ -24,6 +24,8 @@ go test ./...
 go build -o nole .
 mkdir -p ~/.local/bin
 cp ./nole ~/.local/bin/nole
+export PATH="$HOME/.local/bin:$PATH"
+command -v nole
 ```
 
 Optionally create a local env file for provider keys:
@@ -60,7 +62,7 @@ Mark this client `verified` only after:
 
 - `nole doctor` passes;
 - `nole doctor --mcp` passes;
-- Codex CLI lists or can call Nólë MCP tools;
+- Codex CLI lists or can call Nólë MCP tools `search`, `extract`, `provider_status`, `budget_status`;
 - a small docs search works;
 - no credentials appear in config, logs or chat.
 

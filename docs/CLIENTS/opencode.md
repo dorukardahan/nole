@@ -21,9 +21,13 @@ go test ./...
 go build -o nole .
 mkdir -p ~/.local/bin
 cp ./nole ~/.local/bin/nole
+export PATH="$HOME/.local/bin:$PATH"
+command -v nole
 nole setup --opencode
 nole doctor --mcp
 ```
+
+If OpenCode does not inherit PATH, use an absolute binary path in manual config.
 
 ## Generic config template
 

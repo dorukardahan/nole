@@ -4,6 +4,18 @@ Nólë is BYOK-first: you use your own provider accounts and keys. It should nev
 
 Default policy is `free-first`. That means no hidden paid usage by default: a provider key by itself does not make a premium-capable provider eligible for live calls. Premium-capable providers can be used when the user explicitly chooses a policy that permits them, local cost controls are explicit, and routing evidence supports the choice.
 
+## Provider cost/overage checklist
+
+| Provider | Key variable(s) | Current role | Cost/overage note |
+| --- | --- | --- | --- |
+| Brave Search API | `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` | Search for broad/docs/news/pricing routes when policy allows | Review plan limits and disable overage or set request caps where the dashboard supports it. |
+| Tavily | `TAVILY_API_KEY` | Search/extract for semantic, people/company, fact-check and pricing routes when evidence and policy allow | Can be premium-capable depending on account plan; do not enable only because a key exists. |
+| Jina | `JINA_API_KEY` | Search and reader/extraction fallback | Review free quota and paid terms; keep fetched content and raw payloads out of shared logs. |
+| Firecrawl | `FIRECRAWL_API_KEY` | Search/extract for docs/code/social scenarios when evidence and policy allow | Can consume quota quickly during extraction; keep live tests low-limit. |
+| DDGS | none | Keyless fallback search | Keyless does not mean guaranteed availability, SLA or unlimited use. |
+
+Use `nole doctor`, `nole providers --json` and MCP `provider_status`/`budget_status` to inspect status safely. These surfaces should report presence/status and local policy decisions, never key values.
+
 ## General rules
 
 - Create provider keys in each provider's dashboard.
