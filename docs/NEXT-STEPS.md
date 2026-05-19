@@ -134,17 +134,20 @@ Goals:
 
 ### 10. v0.1 private-prep polish
 
+Status: implemented for release-gate alignment, integration-evidence gate documentation, and public-safe local search/extract smoke expectations. Final private-prep report is produced after this milestone merges and post-merge verification passes.
+
 Goals:
 
 - Main clean and CI green.
-- Core commands pass:
+- Core deterministic commands pass:
   - `nole doctor`
   - `nole doctor --mcp`
   - `nole providers --json`
   - `nole bench --json`
-  - `nole search "..." --json`
-  - `nole extract "..." --json`
   - classifier/route-plan command once implemented.
+- Public-safe local CLI smoke is interpreted truthfully:
+  - `nole search "..." --json` may succeed via keyless DDGS or return a sanitized provider/network error envelope.
+  - `nole extract "..." --json` fails closed in no-key/free-first mode because v0.1 has no keyless extract provider; it may return content only with explicit user-owned extract-provider keys and policy.
 - Final `/tmp/nole-v0.1-private-prep-report.md`.
 - Public release/repo visibility still requires explicit user approval.
 

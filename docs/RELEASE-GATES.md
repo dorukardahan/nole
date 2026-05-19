@@ -13,6 +13,7 @@ Jobs:
 - `tests, docs, doctor, bench`
   - `./scripts/check-docs-framing.sh`
   - `./scripts/check-benchmark-claims.sh`
+  - `./scripts/check-integration-evidence.sh`
   - `go test ./...`
   - `go vet ./...`
   - `go run . doctor`
@@ -20,6 +21,7 @@ Jobs:
   - `go run . bench --json`
   - `go run . bench --evidence-md`
   - `go run . providers --json`
+  - `./scripts/verify-integration-evidence.sh` and `./scripts/check-integration-evidence.sh` against the generated summary
   - `git diff --check`
 - `public-safety secret scan`
   - `./scripts/secret-scan.sh`
@@ -38,6 +40,7 @@ Run before merge when touching release, install, routing, MCP, or provider behav
 ```bash
 ./scripts/check-docs-framing.sh
 ./scripts/check-benchmark-claims.sh
+./scripts/check-integration-evidence.sh
 go test ./...
 go vet ./...
 go run . doctor
@@ -45,9 +48,25 @@ go run . doctor --mcp
 go run . bench --json
 go run . bench --evidence-md
 go run . providers --json
+./scripts/verify-integration-evidence.sh > /tmp/nole-integration-verification.md
+./scripts/check-integration-evidence.sh /tmp/nole-integration-verification.md
 git diff --check
 ./scripts/secret-scan.sh
 ./scripts/check-release-builds.sh
+```
+
+Optional public-safe CLI smoke before declaring private-prep readiness from a local checkout:
+
+```bash
+# Search may use the keyless DDGS fallback and can fail because of network/provider availability.
+# Treat either a successful JSON response or a sanitized JSON error envelope as useful evidence;
+# do not make CI depend on live web availability.
+nole search "Nólë private prep smoke" --task general --limit 1 --json
+
+# Extract has no keyless-free provider in v0.1. In a no-key/free-first environment this should
+# fail closed with a sanitized JSON error envelope; with explicit user-owned extract-provider keys
+# and policy it may return content.
+nole extract "https://example.com" --json
 ```
 
 ## Safety invariants

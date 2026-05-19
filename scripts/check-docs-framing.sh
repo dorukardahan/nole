@@ -16,6 +16,7 @@ required=(
   docs/ROUTE-EVIDENCE.md
   docs/INTEGRATION-VERIFICATION.md
   docs/NEXT-STEPS.md
+  docs/RELEASE-GATES.md
   docs/CLIENTS/claude-code.md
   docs/CLIENTS/codex.md
   docs/CLIENTS/opencode.md
@@ -68,6 +69,15 @@ grep -Fiq "does not measure live web quality" docs/BENCHMARKS.md \
   || fail "benchmark docs must not overclaim offline web quality"
 ./scripts/check-benchmark-claims.sh
 ./scripts/check-integration-evidence.sh
+
+grep -Fq "./scripts/check-integration-evidence.sh" docs/RELEASE-GATES.md \
+  || fail "release gates must list the integration evidence guard"
+grep -Fq "./scripts/verify-integration-evidence.sh" docs/RELEASE-GATES.md \
+  || fail "release gates must list generated integration evidence verification"
+grep -Fq "nole search" docs/RELEASE-GATES.md \
+  || fail "release gates must include search smoke expectations"
+grep -Fq "nole extract" docs/RELEASE-GATES.md \
+  || fail "release gates must include extract smoke expectations"
 
 grep -Fq "free-first" docs/PRODUCT.md \
   || fail "product docs must include free-first policy"
