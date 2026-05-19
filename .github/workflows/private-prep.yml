@@ -38,6 +38,9 @@ jobs:
       - name: Benchmark evidence claims guard
         run: ./scripts/check-benchmark-claims.sh
 
+      - name: Integration evidence guard
+        run: ./scripts/check-integration-evidence.sh
+
       - name: Go tests
         run: go test ./...
 
@@ -58,6 +61,11 @@ jobs:
 
       - name: Provider status JSON
         run: go run . providers --json > /tmp/nole-providers.json
+
+      - name: Generate integration evidence summary
+        run: |
+          ./scripts/verify-integration-evidence.sh > /tmp/nole-integration-verification.md
+          ./scripts/check-integration-evidence.sh /tmp/nole-integration-verification.md
 
       - name: Whitespace check
         shell: bash

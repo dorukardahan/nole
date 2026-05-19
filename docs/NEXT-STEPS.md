@@ -124,6 +124,8 @@ Goals:
 
 ### 9. Integration verification
 
+Status: implemented for local-offline integration evidence, MCP stdio smoke evidence, no-secret deterministic command verification, and truthful client status labels. Real client UI/tool visibility remains pending until each client is actually launched and tested.
+
 Goals:
 
 - Verify priority agents when installed/available: Claude Code, Codex, OpenCode, Hermes, OpenClaw.
