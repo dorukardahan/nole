@@ -228,15 +228,25 @@ If the client supports environment variables in config, reference variable names
 Nólë has setup writers for several clients:
 
 ```bash
-nole setup --claude
-nole setup --codex
-nole setup --opencode
-nole setup --all
+nole setup --claude     # prints `claude mcp add` instructions; no file is written
+nole setup --codex      # writes ~/.codex/config.toml with env-sourcing launch line
+nole setup --opencode   # writes ~/.config/opencode/opencode.json (native schema)
+nole setup --kimi       # writes ~/.kimi/mcp.json
+nole setup --cursor     # writes ~/.cursor/mcp.json
+nole setup --windsurf   # writes ~/.codeium/windsurf/mcp_config.json
+nole setup --all        # all of the above
 ```
 
-Current setup command also includes Cursor and Windsurf flags. For any client, read the generated config before declaring success, and verify tool visibility inside the real client when possible.
+Non-Codex writers (and the Codex writer when the flag is given) accept `--mcp-wrapper /absolute/path/to/nole-mcp` to register an env-sourcing wrapper instead of the bare `nole mcp` binary. Use the wrapper form when the client launches without inheriting your interactive shell environment:
 
-The Codex writer is currently the only one that inlines `~/.config/nole/.env` sourcing in its output. The Claude, OpenCode, Cursor and Windsurf writers write a bare `{command, args}` MCP entry; for clients whose installed release does not inherit shell env, prefer the env-sourcing wrapper (`/absolute/path/to/nole-mcp`) or the client's first-class `mcp add` CLI. See `docs/CLIENTS/LIVE-VERIFICATION.md` and `docs/NEXT-STEPS.md` for the current per-client status and writer follow-ups.
+```bash
+nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --kimi     --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --cursor   --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --claude   --mcp-wrapper /absolute/path/to/nole-mcp   # prints the matching claude mcp add
+```
+
+For any client, read the generated config before declaring success, and verify tool visibility inside the real client when possible. The Codex writer is the only one that inlines `~/.config/nole/.env` sourcing in its default output; with `--mcp-wrapper` it also defers env sourcing to the wrapper. See `docs/CLIENTS/LIVE-VERIFICATION.md` and `docs/NEXT-STEPS.md` for current per-client status.
 
 ## Verification commands
 

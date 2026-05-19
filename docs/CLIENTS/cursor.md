@@ -19,7 +19,13 @@ nole setup --cursor
 nole doctor --mcp
 ```
 
-If Cursor does not inherit PATH, use the generic config template with an absolute binary path.
+If Cursor does not inherit PATH, use the generic config template with an absolute binary path. If Cursor also does not inherit the shell environment that owns provider keys, run the writer with the wrapper flag to point the MCP entry at an env-sourcing wrapper:
+
+```bash
+nole setup --cursor --mcp-wrapper /absolute/path/to/nole-mcp
+```
+
+The wrapper template lives in `docs/PROVIDER-KEYS.md`.
 
 ## Generic config template
 

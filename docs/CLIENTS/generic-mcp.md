@@ -75,6 +75,8 @@ If the client does not inherit the shell environment that owns provider keys, re
 
 See `docs/PROVIDER-KEYS.md` and `docs/AGENT-INSTALL.md` for the wrapper template. The wrapper is local-only; do not commit it.
 
+If the client matches one of Nólë's setup writers (`--cursor`, `--opencode`, `--kimi`, `--windsurf`), the writer accepts `--mcp-wrapper /absolute/path/to/nole-mcp` and will emit the wrapper-direct entry for you. `nole setup --claude --mcp-wrapper /absolute/path/to/nole-mcp` prints the matching `claude mcp add` command.
+
 ## MCP stdout requirement
 
 The `nole mcp` process must keep stdout for JSON-RPC only. If a client fails to initialize, run:

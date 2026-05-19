@@ -3,12 +3,37 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
+
+// launchSpec describes how a client should be told to invoke Nólë's MCP server.
+// When wrapper is empty the client launches the bare binary with the "mcp"
+// subcommand. When wrapper is set the client launches the wrapper directly with
+// no extra args; the wrapper is responsible for sourcing ~/.config/nole/.env and
+// exec'ing the binary. The wrapper template lives in docs/PROVIDER-KEYS.md.
+type launchSpec struct {
+	Binary  string
+	Wrapper string
+}
+
+func (l launchSpec) command() string {
+	if l.Wrapper != "" {
+		return l.Wrapper
+	}
+	return l.Binary
+}
+
+func (l launchSpec) args() []string {
+	if l.Wrapper != "" {
+		return []string{}
+	}
+	return []string{"mcp"}
+}
 
 func newSetupCommand() *cobra.Command {
 	var all bool
@@ -17,92 +42,141 @@ func newSetupCommand() *cobra.Command {
 	var codex bool
 	var opencode bool
 	var windsurf bool
+	var kimi bool
+	var wrapper string
 
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Configure AI agents to use nole as MCP server",
-		Long:  "Writes MCP server configuration files for supported AI coding agents.\nSupports: --claude, --cursor, --codex, --opencode, --windsurf, or --all",
+		Long: "Writes MCP server configuration files for supported AI coding agents.\n" +
+			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, or --all.\n" +
+			"Use --mcp-wrapper /absolute/path/to/nole-mcp to register an env-sourcing wrapper instead of the bare binary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
-				claude, cursor, codex, opencode, windsurf = true, true, true, true, true
+				claude, cursor, codex, opencode, kimi, windsurf = true, true, true, true, true, true
 			}
-			if !claude && !cursor && !codex && !opencode && !windsurf {
-				return fmt.Errorf("specify at least one agent: --claude, --cursor, --codex, --opencode, --windsurf, or --all")
+			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf {
+				return fmt.Errorf("specify at least one agent: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, or --all")
 			}
 
 			binary, err := os.Executable()
 			if err != nil {
 				binary = "nole"
 			}
-
-			// Resolve to absolute path
 			absBinary, err := filepath.Abs(binary)
 			if err != nil {
 				absBinary = binary
 			}
 
+			spec := launchSpec{Binary: absBinary, Wrapper: strings.TrimSpace(wrapper)}
+			if spec.Wrapper != "" && !filepath.IsAbs(spec.Wrapper) {
+				return fmt.Errorf("--mcp-wrapper must be an absolute path, got %q", spec.Wrapper)
+			}
+
+			out := cmd.OutOrStdout()
+			errOut := cmd.OutOrStderr()
 			configured := 0
 
 			if claude {
-				if err := writeClaudeConfig(absBinary); err != nil {
-					fmt.Fprintf(cmd.OutOrStderr(), "claude: %v\n", err)
-				} else {
-					fmt.Fprintln(cmd.OutOrStdout(), "claude: configured")
-					configured++
+				// Claude is intentionally instruction-only — the writer does
+				// not modify any file. Print the command but do not count it
+				// as a configured client in the summary line, so users do not
+				// mistake the printout for a finished setup.
+				if err := printClaudeInstructions(out, spec); err != nil {
+					fmt.Fprintf(errOut, "claude: %v\n", err)
 				}
 			}
 			if cursor {
-				if err := writeCursorConfig(absBinary); err != nil {
-					fmt.Fprintf(cmd.OutOrStderr(), "cursor: %v\n", err)
+				if err := writeCursorConfig(spec); err != nil {
+					fmt.Fprintf(errOut, "cursor: %v\n", err)
 				} else {
-					fmt.Fprintln(cmd.OutOrStdout(), "cursor: configured")
+					fmt.Fprintln(out, "cursor: configured")
 					configured++
 				}
 			}
 			if codex {
-				if err := writeCodexConfig(absBinary); err != nil {
-					fmt.Fprintf(cmd.OutOrStderr(), "codex: %v\n", err)
+				if err := writeCodexConfig(spec); err != nil {
+					fmt.Fprintf(errOut, "codex: %v\n", err)
 				} else {
-					fmt.Fprintln(cmd.OutOrStdout(), "codex: configured")
+					fmt.Fprintln(out, "codex: configured")
 					configured++
 				}
 			}
 			if opencode {
-				if err := writeOpenCodeConfig(absBinary); err != nil {
-					fmt.Fprintf(cmd.OutOrStderr(), "opencode: %v\n", err)
+				if err := writeOpenCodeConfig(spec); err != nil {
+					fmt.Fprintf(errOut, "opencode: %v\n", err)
 				} else {
-					fmt.Fprintln(cmd.OutOrStdout(), "opencode: configured")
+					fmt.Fprintln(out, "opencode: configured")
+					configured++
+				}
+			}
+			if kimi {
+				if err := writeKimiConfig(spec); err != nil {
+					fmt.Fprintf(errOut, "kimi: %v\n", err)
+				} else {
+					fmt.Fprintln(out, "kimi: configured")
 					configured++
 				}
 			}
 			if windsurf {
-				if err := writeWindsurfConfig(absBinary); err != nil {
-					fmt.Fprintf(cmd.OutOrStderr(), "windsurf: %v\n", err)
+				if err := writeWindsurfConfig(spec); err != nil {
+					fmt.Fprintf(errOut, "windsurf: %v\n", err)
 				} else {
-					fmt.Fprintln(cmd.OutOrStdout(), "windsurf: configured")
+					fmt.Fprintln(out, "windsurf: configured")
 					configured++
 				}
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "\n%d agent(s) configured. Set provider keys before starting:\n", configured)
-			fmt.Fprintln(cmd.OutOrStdout(), "  export JINA_API_KEY=...")
-			fmt.Fprintln(cmd.OutOrStdout(), "  export FIRECRAWL_API_KEY=...")
-			fmt.Fprintln(cmd.OutOrStdout(), "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
-			fmt.Fprintln(cmd.OutOrStdout(), "  export TAVILY_API_KEY=...")
-			fmt.Fprintln(cmd.OutOrStdout(), "  Or store them in ~/.config/nole/.env; Codex setup sources that file without putting secrets in config.toml.")
+			fmt.Fprintf(out, "\n%d agent(s) configured. Set provider keys before starting:\n", configured)
+			fmt.Fprintln(out, "  export JINA_API_KEY=...")
+			fmt.Fprintln(out, "  export FIRECRAWL_API_KEY=...")
+			fmt.Fprintln(out, "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
+			fmt.Fprintln(out, "  export TAVILY_API_KEY=...")
+			fmt.Fprintln(out, "  Or store them in ~/.config/nole/.env; Codex setup sources that file without putting secrets in config.toml.")
+			if spec.Wrapper == "" {
+				fmt.Fprintln(out, "  For non-Codex clients that do not inherit shell env, point them at an env-sourcing wrapper:")
+				fmt.Fprintln(out, "    nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp")
+				fmt.Fprintln(out, "  Wrapper template: docs/PROVIDER-KEYS.md")
+			}
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "configure all supported agents")
-	cmd.Flags().BoolVar(&claude, "claude", false, "configure Claude Code")
+	cmd.Flags().BoolVar(&claude, "claude", false, "print Claude Code setup instructions")
 	cmd.Flags().BoolVar(&cursor, "cursor", false, "configure Cursor")
 	cmd.Flags().BoolVar(&codex, "codex", false, "configure Codex CLI")
 	cmd.Flags().BoolVar(&opencode, "opencode", false, "configure OpenCode")
+	cmd.Flags().BoolVar(&kimi, "kimi", false, "configure Kimi CLI")
 	cmd.Flags().BoolVar(&windsurf, "windsurf", false, "configure Windsurf")
+	cmd.Flags().StringVar(&wrapper, "mcp-wrapper", "", "absolute path to an env-sourcing MCP wrapper (e.g. ~/.local/bin/nole-mcp). Applies to non-Codex writers and changes the Codex launch line to call the wrapper directly.")
 	return cmd
 }
 
-// mcpConfig is the common MCP server config format used by Claude Code and Cursor.
+// printClaudeInstructions does not write any file. Claude Code's installed
+// release manages user-scope MCP servers through `claude mcp add` and reads
+// from its own evolving config schema; writing to a stale path on its behalf
+// would silently mislead users. Instead we print the exact command to run.
+func printClaudeInstructions(out io.Writer, spec launchSpec) error {
+	target := spec.command()
+	fmt.Fprintln(out, "claude: instructions (no file written)")
+	fmt.Fprintln(out, "  Claude Code manages user-scope MCP servers via its CLI.")
+	fmt.Fprintln(out, "  Run the following to register Nólë:")
+	if len(spec.args()) == 0 {
+		fmt.Fprintf(out, "    claude mcp add nole -s user -- %s\n", target)
+	} else {
+		fmt.Fprintf(out, "    claude mcp add nole -s user -- %s %s\n", target, strings.Join(spec.args(), " "))
+	}
+	fmt.Fprintln(out, "  Then verify:")
+	fmt.Fprintln(out, "    claude mcp list")
+	fmt.Fprintln(out, "    claude mcp get nole")
+	if spec.Wrapper == "" {
+		fmt.Fprintln(out, "  If Claude Code does not inherit your shell env, prefer the wrapper form:")
+		fmt.Fprintln(out, "    nole setup --claude --mcp-wrapper /absolute/path/to/nole-mcp")
+	}
+	return nil
+}
+
+// mcpConfig is the common MCP server config format used by Cursor and Windsurf.
 type mcpConfig struct {
 	McpServers map[string]mcpServerEntry `json:"mcpServers"`
 }
@@ -113,28 +187,40 @@ type mcpServerEntry struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
-func writeClaudeConfig(binary string) error {
-	// Claude Code: .mcp.json in project root or ~/.claude/mcp.json
-	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, ".claude", "mcp.json")
-	return writeMCPJSONConfig(path, binary)
-}
-
-func writeCursorConfig(binary string) error {
-	// Cursor: ~/.cursor/mcp.json
-	home, _ := os.UserHomeDir()
+func writeCursorConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
 	path := filepath.Join(home, ".cursor", "mcp.json")
-	return writeMCPJSONConfig(path, binary)
+	return writeMCPJSONConfig(path, spec)
 }
 
-func writeWindsurfConfig(binary string) error {
-	// Windsurf: ~/.codeium/windsurf/mcp_config.json
-	home, _ := os.UserHomeDir()
+func writeWindsurfConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
 	path := filepath.Join(home, ".codeium", "windsurf", "mcp_config.json")
-	return writeMCPJSONConfig(path, binary)
+	return writeMCPJSONConfig(path, spec)
 }
 
-func writeMCPJSONConfig(path, binary string) error {
+// resolveHomeDir returns os.UserHomeDir() with a more actionable error message
+// when neither HOME nor /etc/passwd yields a directory. Falling back silently
+// to "" would have writers create relative paths like ".cursor/mcp.json" in the
+// current working directory, which is almost never what the user wants.
+func resolveHomeDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w (set HOME or run in a context with a known user home)", err)
+	}
+	if home == "" {
+		return "", fmt.Errorf("resolve home dir: empty result (set HOME or run in a context with a known user home)")
+	}
+	return home, nil
+}
+
+func writeMCPJSONConfig(path string, spec launchSpec) error {
 	root, err := readJSONObject(path)
 	if err != nil {
 		return err
@@ -145,7 +231,7 @@ func writeMCPJSONConfig(path, binary string) error {
 			return fmt.Errorf("parse existing mcpServers: %w", err)
 		}
 	}
-	nole, err := noleMCPServerRaw(binary)
+	nole, err := noleMCPServerRaw(spec)
 	if err != nil {
 		return err
 	}
@@ -159,14 +245,16 @@ func writeMCPJSONConfig(path, binary string) error {
 	return writeJSONConfig(path, root)
 }
 
-func writeCodexConfig(binary string) error {
-	// Codex CLI: ~/.codex/config.toml (TOML format)
-	home, _ := os.UserHomeDir()
+func writeCodexConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
 	path := filepath.Join(home, ".codex", "config.toml")
-	return writeCodexConfigPath(path, binary)
+	return writeCodexConfigPath(path, spec)
 }
 
-func writeCodexConfigPath(path, binary string) error {
+func writeCodexConfigPath(path string, spec launchSpec) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
@@ -179,14 +267,22 @@ func writeCodexConfigPath(path, binary string) error {
 			return err
 		}
 	}
-	content := upsertCodexTomlTable(string(existing), "mcp_servers.nole", codexMCPServerBlock(binary))
+	content := upsertCodexTomlTable(string(existing), "mcp_servers.nole", codexMCPServerBlock(spec))
 	return atomicWriteFile(path, []byte(content), configWriteMode(exists, mode))
 }
 
-func codexMCPServerBlock(binary string) string {
+func codexMCPServerBlock(spec launchSpec) string {
+	if spec.Wrapper != "" {
+		// The wrapper sources ~/.config/nole/.env and exec's nole mcp itself,
+		// so Codex can call it directly without the inline shell.
+		return fmt.Sprintf(
+			"# nole MCP server\n[mcp_servers.nole]\ncommand = %q\nargs = []\n",
+			spec.Wrapper,
+		)
+	}
 	launch := fmt.Sprintf(
 		`set -a; [ -f "$HOME/.config/nole/.env" ] && . "$HOME/.config/nole/.env"; set +a; exec %q mcp`,
-		binary,
+		spec.Binary,
 	)
 	return fmt.Sprintf(
 		"# nole MCP server\n[mcp_servers.nole]\ncommand = \"/bin/sh\"\nargs = [\"-lc\", %q]\n",
@@ -203,7 +299,20 @@ func upsertCodexTomlTable(existing string, table string, block string) string {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
 			header := strings.Trim(trimmed, "[]")
-			skipping = header == table || strings.HasPrefix(header, table+".")
+			willSkip := header == table || strings.HasPrefix(header, table+".")
+			if willSkip {
+				// Drop any contiguous comment lines (and a single trailing
+				// blank line) we just kept above this header. Without this,
+				// the marker comment that `codexMCPServerBlock` emits would
+				// accumulate one copy per re-run.
+				for len(kept) > 0 && strings.HasPrefix(strings.TrimSpace(kept[len(kept)-1]), "#") {
+					kept = kept[:len(kept)-1]
+				}
+				for len(kept) > 0 && strings.TrimSpace(kept[len(kept)-1]) == "" {
+					kept = kept[:len(kept)-1]
+				}
+			}
+			skipping = willSkip
 		}
 		if !skipping {
 			kept = append(kept, line)
@@ -217,14 +326,29 @@ func upsertCodexTomlTable(existing string, table string, block string) string {
 	return preserved + strings.TrimRight(block, "\n") + "\n"
 }
 
-func writeOpenCodeConfig(binary string) error {
-	// OpenCode: opencode.json in current directory or home
-	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, "opencode.json")
-	return writeOpenCodeConfigPath(path, binary)
+// writeOpenCodeConfig writes Nólë's MCP entry to OpenCode's native user-scope
+// config path, using the schema the installed OpenCode release reads:
+//
+//	{
+//	  "mcp": {
+//	    "nole": {
+//	      "type": "local",
+//	      "command": ["/absolute/path/to/nole", "mcp"],
+//	      "enabled": true,
+//	      "environment": {}
+//	    }
+//	  }
+//	}
+func writeOpenCodeConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".config", "opencode", "opencode.json")
+	return writeOpenCodeConfigPath(path, spec)
 }
 
-func writeOpenCodeConfigPath(path, binary string) error {
+func writeOpenCodeConfigPath(path string, spec launchSpec) error {
 	root, err := readJSONObject(path)
 	if err != nil {
 		return err
@@ -235,7 +359,7 @@ func writeOpenCodeConfigPath(path, binary string) error {
 			return fmt.Errorf("parse existing opencode mcp: %w", err)
 		}
 	}
-	nole, err := noleMCPServerRaw(binary)
+	nole, err := openCodeEntryRaw(spec)
 	if err != nil {
 		return err
 	}
@@ -247,6 +371,98 @@ func writeOpenCodeConfigPath(path, binary string) error {
 	root["mcp"] = encoded
 
 	return writeJSONConfig(path, root)
+}
+
+type openCodeEntry struct {
+	Type        string            `json:"type"`
+	Command     []string          `json:"command"`
+	Enabled     bool              `json:"enabled"`
+	Environment map[string]string `json:"environment"`
+}
+
+func openCodeEntryRaw(spec launchSpec) (json.RawMessage, error) {
+	args := spec.args()
+	command := make([]string, 0, 1+len(args))
+	command = append(command, spec.command())
+	command = append(command, args...)
+	entry := openCodeEntry{
+		Type:        "local",
+		Command:     command,
+		Enabled:     true,
+		Environment: map[string]string{},
+	}
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return nil, fmt.Errorf("marshal opencode entry: %w", err)
+	}
+	return json.RawMessage(b), nil
+}
+
+// writeKimiConfig writes Nólë's MCP entry to Kimi's user-scope config path,
+// matching the shape `kimi mcp add` produces:
+//
+//	{
+//	  "mcpServers": {
+//	    "nole": {
+//	      "command": "/absolute/path/to/nole-mcp"
+//	    }
+//	  }
+//	}
+//
+// When --mcp-wrapper is unset the writer emits {command, args} so the entry
+// still launches `nole mcp` directly. Both shapes are valid per Kimi's mcp.json
+// reader; the wrapper form matches what the official CLI writes.
+func writeKimiConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".kimi", "mcp.json")
+	return writeKimiConfigPath(path, spec)
+}
+
+func writeKimiConfigPath(path string, spec launchSpec) error {
+	root, err := readJSONObject(path)
+	if err != nil {
+		return err
+	}
+	servers := map[string]json.RawMessage{}
+	if raw, ok := root["mcpServers"]; ok && len(raw) > 0 {
+		if err := json.Unmarshal(raw, &servers); err != nil {
+			return fmt.Errorf("parse existing kimi mcpServers: %w", err)
+		}
+	}
+	nole, err := kimiEntryRaw(spec)
+	if err != nil {
+		return err
+	}
+	servers["nole"] = nole
+	encoded, err := json.Marshal(servers)
+	if err != nil {
+		return fmt.Errorf("marshal kimi mcpServers: %w", err)
+	}
+	root["mcpServers"] = encoded
+	return writeJSONConfig(path, root)
+}
+
+func kimiEntryRaw(spec launchSpec) (json.RawMessage, error) {
+	if spec.Wrapper != "" {
+		// Match the single-command shape that `kimi mcp add` writes.
+		entry := struct {
+			Command string `json:"command"`
+		}{Command: spec.Wrapper}
+		b, err := json.Marshal(entry)
+		if err != nil {
+			return nil, fmt.Errorf("marshal kimi entry: %w", err)
+		}
+		return json.RawMessage(b), nil
+	}
+	entry := mcpServerEntry{Command: spec.Binary, Args: []string{"mcp"}}
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return nil, fmt.Errorf("marshal kimi entry: %w", err)
+	}
+	return json.RawMessage(b), nil
 }
 
 func writeJSONConfig(path string, data any) error {
@@ -271,12 +487,12 @@ func writeJSONConfig(path string, data any) error {
 	return atomicWriteFile(path, b, configWriteMode(exists, mode))
 }
 
-func noleMCPServerEntry(binary string) mcpServerEntry {
-	return mcpServerEntry{Command: binary, Args: []string{"mcp"}}
+func noleMCPServerEntry(spec launchSpec) mcpServerEntry {
+	return mcpServerEntry{Command: spec.command(), Args: spec.args()}
 }
 
-func noleMCPServerRaw(binary string) (json.RawMessage, error) {
-	b, err := json.Marshal(noleMCPServerEntry(binary))
+func noleMCPServerRaw(spec launchSpec) (json.RawMessage, error) {
+	b, err := json.Marshal(noleMCPServerEntry(spec))
 	if err != nil {
 		return nil, fmt.Errorf("marshal nole MCP server: %w", err)
 	}

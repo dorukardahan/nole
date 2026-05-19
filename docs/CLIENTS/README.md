@@ -8,14 +8,14 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Cl
 
 | Client | Current status | Setup path | Notes |
 | --- | --- | --- | --- |
-| Claude Code | verified (CLI MCP manager) | `claude mcp add nole -s user -- /absolute/path/to/nole-mcp` | Verified on macOS via `claude mcp list/get`; see `docs/CLIENTS/LIVE-VERIFICATION.md`. The `nole setup --claude` writer currently targets a Claude config path Claude Code does not read for user-scope MCP servers; until that writer is fixed, prefer `claude mcp add`. |
-| Codex CLI | verified (CLI MCP manager) | `nole setup --codex` or TOML block | Verified on macOS via `codex mcp list/get`; setup writer correctly sources `~/.config/nole/.env` inline. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
-| OpenCode | verified (CLI MCP manager) | direct entry in `~/.config/opencode/opencode.json` or `opencode mcp add` | Verified on macOS via `opencode mcp list`. The `nole setup --opencode` writer currently targets a different path and a different schema than OpenCode reads; until that writer is fixed, write the entry directly with the OpenCode `{type, command, enabled, environment}` schema. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
+| Claude Code | verified (CLI MCP manager) | `nole setup --claude` (prints `claude mcp add` instructions) or `claude mcp add nole -s user -- /absolute/path/to/nole-mcp` directly | Verified on macOS via `claude mcp list/get`; see `docs/CLIENTS/LIVE-VERIFICATION.md`. `nole setup --claude` no longer writes a stale `~/.claude/mcp.json`; it prints the exact `claude mcp add` invocation the installed Claude Code release reads. |
+| Codex CLI | verified (CLI MCP manager) | `nole setup --codex` or TOML block | Verified on macOS via `codex mcp list/get`; setup writer correctly sources `~/.config/nole/.env` inline. With `--mcp-wrapper` the writer emits a wrapper-direct launch line instead. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
+| OpenCode | verified (CLI MCP manager) | `nole setup --opencode` (writes `~/.config/opencode/opencode.json`) or `opencode mcp add` | Verified on macOS via `opencode mcp list`. The `nole setup --opencode` writer now targets OpenCode's native path and schema (`{type, command, enabled, environment}`). See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
 | OpenClaw | generic/unverified | generic MCP stdio template | Keep generic until real client config path/schema and tool visibility are recorded. Not installed on the M11 verification host. |
 | Hermes Agent | generic/unverified | generic MCP stdio template | Priority target, but no verified Hermes config test is recorded in this repo yet. Not installed on the M11 verification host. |
 | Cursor | repo-tested | `nole setup --cursor` where available, otherwise generic MCP JSON | Setup flag/shared MCP JSON merge helper coverage exists; live Cursor verification still pending (Cursor not installed on the M11 verification host). |
-| Kimi | verified (CLI MCP manager) | `kimi mcp add nole -- /absolute/path/to/nole-mcp` | Verified on macOS via `kimi mcp list` and `kimi mcp test nole` (4 tools reported). A `nole setup --kimi` writer is tracked as a follow-up in `docs/NEXT-STEPS.md` (Integration verification — M11 follow-ups). See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
-| Generic MCP clients | generic/unverified | command `/absolute/path/to/nole`, args `["mcp"]`, or `/absolute/path/to/nole-mcp` if env-sourcing is desired | Use for clients not listed above. |
+| Kimi | verified (CLI MCP manager) | `nole setup --kimi` (writes `~/.kimi/mcp.json`) or `kimi mcp add nole -- /absolute/path/to/nole-mcp` | Verified on macOS via `kimi mcp list` and `kimi mcp test nole` (4 tools reported). The `nole setup --kimi` writer is now in-repo and tested; it produces the same `{"mcpServers":{"nole":{...}}}` shape that `kimi mcp add` writes. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
+| Generic MCP clients | generic/unverified | command `/absolute/path/to/nole`, args `["mcp"]`, or `/absolute/path/to/nole-mcp` if env-sourcing is desired | Use for clients not listed above. Pass `--mcp-wrapper /absolute/path/to/nole-mcp` to any non-Codex setup writer to point the entry at the wrapper. |
 
 ## Status labels
 
@@ -59,6 +59,15 @@ If the client does not inherit the shell environment that owns provider keys (co
 ```
 
 A wrapper template is documented in `docs/PROVIDER-KEYS.md` and `docs/AGENT-INSTALL.md`. The Codex CLI setup writer already inlines the same env-sourcing pattern in its TOML output, so Codex does not need a separate wrapper.
+
+Non-Codex setup writers accept `--mcp-wrapper /absolute/path/to/nole-mcp` to emit the wrapper-direct entry instead of the bare-binary command. The Codex writer also accepts the flag and switches to a simpler wrapper-direct launch line (no inline `/bin/sh -lc`). Examples:
+
+```bash
+nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --kimi     --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --cursor   --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --claude   --mcp-wrapper /absolute/path/to/nole-mcp   # prints the matching claude mcp add command
+```
 
 ## Environment and cost safety
 

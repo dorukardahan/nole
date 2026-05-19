@@ -20,7 +20,7 @@ func TestRootCommandUsesNoleExecutableName(t *testing.T) {
 
 func TestSetupConfigUsesNoleMCPServerName(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mcp.json")
-	if err := writeMCPJSONConfig(path, "/usr/local/bin/nole"); err != nil {
+	if err := writeMCPJSONConfig(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestMCPJSONSetupPreservesExistingServers(t *testing.T) {
 		t.Fatalf("write existing config: %v", err)
 	}
 
-	if err := writeMCPJSONConfig(path, "/usr/local/bin/nole"); err != nil {
+	if err := writeMCPJSONConfig(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
