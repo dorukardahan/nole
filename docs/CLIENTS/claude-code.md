@@ -16,12 +16,8 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Cl
 
 ## What is also tested in this repo
 
-- Nólë has a setup writer for Claude-style MCP JSON config; tests cover preserving existing MCP servers while upserting the `nole` server key.
+- `nole setup --claude` no longer writes a misleading `~/.claude/mcp.json`. It prints the exact `claude mcp add nole -s user -- <command>` invocation the installed Claude Code release reads, with the wrapper path substituted in when `--mcp-wrapper` is given. Repo tests cover both the bare-binary and wrapper-mode instruction output and assert no stale config files are created.
 - `nole doctor --mcp` verifies Nólë's own MCP stdio startup and tool list.
-
-## Known limitation in this run
-
-`nole setup --claude` currently writes to a Claude MCP config path that the installed Claude Code release does not read for user-scope MCP servers. For now, prefer the official `claude mcp add` path. The writer is tracked as a follow-up in `docs/NEXT-STEPS.md`.
 
 ## Setup
 
@@ -41,19 +37,14 @@ Recommended path (works against the installed Claude Code release; sources keys 
 ```bash
 # 1. Create the env-sourcing wrapper (see docs/PROVIDER-KEYS.md and docs/AGENT-INSTALL.md).
 #    Wrapper lives at: ~/.local/bin/nole-mcp; chmod 700.
-# 2. Register Nólë with Claude Code's official MCP manager:
+# 2. Have nole print the official register command (no file is written):
+nole setup --claude --mcp-wrapper /absolute/path/to/nole-mcp
+# 3. Run the printed command:
 claude mcp add nole -s user -- /absolute/path/to/nole-mcp
-# 3. Confirm the server is connected:
+# 4. Confirm the server is connected:
 claude mcp list
 claude mcp get nole
-# 4. Sanity-check Nólë's MCP stdio outside the client:
-nole doctor --mcp
-```
-
-If you want to try the setup writer (subject to the limitation noted above), run:
-
-```bash
-nole setup --claude
+# 5. Sanity-check Nólë's MCP stdio outside the client:
 nole doctor --mcp
 ```
 

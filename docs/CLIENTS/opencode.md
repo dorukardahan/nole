@@ -14,13 +14,9 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Op
 
 ## What is also tested in this repo
 
-- Nólë has an OpenCode setup writer.
-- The writer upserts a `nole` MCP server entry into a JSON config while preserving existing data.
+- `nole setup --opencode` now writes to `~/.config/opencode/opencode.json` using OpenCode's native schema: `{type: "local", command: [<bin>, "mcp"], enabled: true, environment: {}}` (or `{type: "local", command: [<wrapper>], enabled: true, environment: {}}` when `--mcp-wrapper` is given).
+- Repo tests cover preserving unknown root keys and unrelated MCP entries, idempotent re-runs, replacing stale `nole` entries (no leftover `environment` secrets from older runs), and wrapper-mode output shape.
 - `nole doctor --mcp` verifies Nólë's own MCP stdio behavior.
-
-## Known limitation in this run
-
-`nole setup --opencode` writes to `~/opencode.json` using a `{command, args}` schema, but the installed OpenCode release reads `~/.config/opencode/opencode.json` and uses a `{type, command:[…], enabled, environment}` schema. Until the writer is updated, write the entry directly or use `opencode mcp add`. Tracked as a follow-up in `docs/NEXT-STEPS.md`.
 
 ## Setup
 
@@ -34,7 +30,16 @@ command -v nole
 nole doctor --mcp
 ```
 
-Recommended path against the installed OpenCode release (direct config entry, OpenCode-native schema):
+Recommended path against the installed OpenCode release:
+
+```bash
+# Bare-binary form (OpenCode inherits your shell env / you do not need an env file):
+nole setup --opencode
+# Wrapper form (recommended when OpenCode launches without your shell env):
+nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp
+```
+
+Either invocation upserts the `nole` entry into `~/.config/opencode/opencode.json` using OpenCode's native schema:
 
 ```json
 // inside ~/.config/opencode/opencode.json
@@ -50,7 +55,7 @@ Recommended path against the installed OpenCode release (direct config entry, Op
 }
 ```
 
-After editing, run:
+After running setup (or editing the file by hand), run:
 
 ```bash
 opencode mcp list

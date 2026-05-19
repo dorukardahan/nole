@@ -18,8 +18,8 @@ Provider key handling: presence/status only; keys unset during this run
 - Tools observed: search, extract, provider_status, budget_status.
 - Provider status JSON: providers --json generated with provider keys unset.
 - Deterministic benchmark JSON and Markdown evidence generation complete without live provider calls.
-- Repo-tested setup writers: Claude Code, Codex CLI, OpenCode, Cursor.
-- Generic/unverified clients: Hermes Agent, OpenClaw, Kimi, generic MCP clients.
+- Repo-tested setup writers: Claude Code, Codex CLI, OpenCode, Cursor, Kimi.
+- Generic/unverified clients: Hermes Agent, OpenClaw, generic MCP clients.
 
 ## Commands represented
 
@@ -40,9 +40,9 @@ All commands above ran with provider key environment variables unset and with lo
 | Codex CLI | TOML setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
 | OpenCode | setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
 | Cursor | shared MCP JSON setup path covered by repo tests; real client not launched | repo-tested, live verification pending |
+| Kimi | `~/.kimi/mcp.json` setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
 | Hermes Agent | generic MCP template only; no local Hermes config/tool visibility test recorded | generic/unverified |
 | OpenClaw | generic MCP template only; no real client config/tool visibility test recorded | generic/unverified |
-| Kimi | generic MCP template only; no real client config/tool visibility test recorded | generic/unverified |
 | generic MCP clients | generic stdio command template only | generic/unverified |
 
 ## Limitations

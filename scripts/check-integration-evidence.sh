@@ -28,9 +28,9 @@ grep -Fq "MCP smoke binary: temporary binary built from current repository state
   || fail "must state MCP smoke uses the current repository binary"
 grep -Fq "Tools observed: search, extract, provider_status, budget_status" "$target" \
   || fail "must record required MCP tools"
-grep -Fq "Repo-tested setup writers: Claude Code, Codex CLI, OpenCode, Cursor" "$target" \
+grep -Fq "Repo-tested setup writers: Claude Code, Codex CLI, OpenCode, Cursor, Kimi" "$target" \
   || fail "must distinguish repo-tested setup writers"
-grep -Fq "Generic/unverified clients: Hermes Agent, OpenClaw, Kimi, generic MCP clients" "$target" \
+grep -Fq "Generic/unverified clients: Hermes Agent, OpenClaw, generic MCP clients" "$target" \
   || fail "must keep unavailable clients generic/unverified"
 grep -Fq "This evidence does not verify real-client UI/tool visibility" "$target" \
   || fail "must state real-client visibility limitation"

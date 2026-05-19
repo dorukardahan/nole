@@ -18,7 +18,7 @@ func TestWriteMCPJSONConfigMergesExistingServersAndCreatesBackup(t *testing.T) {
 	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeMCPJSONConfig(path, "/usr/local/bin/nole"); err != nil {
+	if err := writeMCPJSONConfig(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	var cfg mcpConfig
@@ -50,7 +50,7 @@ func TestWriteMCPJSONConfigPreservesUnknownFieldsAndSecretPermissions(t *testing
 	if err := os.WriteFile(path, []byte(existing), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeMCPJSONConfig(path, "/usr/local/bin/nole"); err != nil {
+	if err := writeMCPJSONConfig(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	assertFileMode(t, path, 0600)
@@ -85,7 +85,7 @@ func TestWriteMCPJSONConfigPreservesUnknownFieldsAndSecretPermissions(t *testing
 
 func TestWriteMCPJSONConfigCreatesNewFile0600(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "mcp.json")
-	if err := writeMCPJSONConfig(path, "/usr/local/bin/nole"); err != nil {
+	if err := writeMCPJSONConfig(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	assertFileMode(t, path, 0600)
@@ -96,29 +96,37 @@ func TestWriteMCPJSONConfigCreatesNewFile0600(t *testing.T) {
 
 func TestWriteOpenCodeConfigMergesExistingMCPAndCreatesBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "opencode.json")
-	existing := `{"mcp":{"other":{"command":"other","args":["serve"]}},"theme":"dark"}`
+	existing := `{"mcp":{"other":{"type":"local","command":["other","serve"],"enabled":true,"environment":{}}},"theme":"dark"}`
 	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeOpenCodeConfigPath(path, "/usr/local/bin/nole"); err != nil {
+	if err := writeOpenCodeConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
 		t.Fatalf("write opencode config: %v", err)
 	}
-	var cfg struct {
-		MCP   map[string]mcpServerEntry `json:"mcp"`
-		Theme string                    `json:"theme"`
+	root := readJSONRoot(t, path)
+	if !strings.Contains(string(root["theme"]), `"dark"`) {
+		t.Fatalf("existing non-MCP fields not preserved: %s", string(root["theme"]))
 	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
+	servers := readRawObject(t, root["mcp"])
+	if _, ok := servers["other"]; !ok {
+		t.Fatalf("existing opencode MCP server was not preserved: %#v", servers)
 	}
-	if err := json.Unmarshal(b, &cfg); err != nil {
-		t.Fatalf("unmarshal: %v\n%s", err, string(b))
+	nole := readRawObject(t, servers["nole"])
+	if got := strings.Trim(string(nole["type"]), `"`); got != "local" {
+		t.Fatalf("nole.type = %q, want %q", got, "local")
 	}
-	if cfg.Theme != "dark" {
-		t.Fatalf("existing non-MCP fields not preserved: %#v", cfg)
+	var command []string
+	if err := json.Unmarshal(nole["command"], &command); err != nil {
+		t.Fatalf("nole.command not a string array: %v\n%s", err, string(nole["command"]))
 	}
-	if _, ok := cfg.MCP["other"]; !ok {
-		t.Fatalf("existing opencode MCP server was not preserved: %#v", cfg.MCP)
+	if len(command) != 2 || command[0] != "/usr/local/bin/nole" || command[1] != "mcp" {
+		t.Fatalf("nole.command = %#v, want [/usr/local/bin/nole mcp]", command)
+	}
+	if !strings.Contains(string(nole["enabled"]), "true") {
+		t.Fatalf("nole.enabled = %s, want true", string(nole["enabled"]))
+	}
+	if _, ok := nole["environment"]; !ok {
+		t.Fatalf("nole entry missing environment field: %s", string(servers["nole"]))
 	}
 	if _, err := os.Stat(path + ".bak"); err != nil {
 		t.Fatalf("expected backup file: %v", err)
@@ -127,11 +135,11 @@ func TestWriteOpenCodeConfigMergesExistingMCPAndCreatesBackup(t *testing.T) {
 
 func TestWriteOpenCodeConfigPreservesUnknownMCPFieldsAndPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "opencode.json")
-	existing := `{"mcp":{"other":{"url":"https://example.com/sse","transport":"sse","headers":{"X-Token":"SECRET"},"cwd":"/workspace","disabled":false},"nole":{"command":"old","args":["old"]}},"theme":"dark","metadata":{"keep":true}}`
+	existing := `{"mcp":{"other":{"type":"remote","url":"https://example.com/sse","transport":"sse","headers":{"X-Token":"SECRET"},"cwd":"/workspace","disabled":false},"nole":{"type":"local","command":["old"],"enabled":false,"environment":{"OLD_SECRET":"keep-out"}}},"theme":"dark","metadata":{"keep":true}}`
 	if err := os.WriteFile(path, []byte(existing), 0640); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeOpenCodeConfigPath(path, "/usr/local/bin/nole"); err != nil {
+	if err := writeOpenCodeConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
 		t.Fatalf("write opencode config: %v", err)
 	}
 	assertFileMode(t, path, 0640)
@@ -142,14 +150,26 @@ func TestWriteOpenCodeConfigPreservesUnknownMCPFieldsAndPermissions(t *testing.T
 	}
 	servers := readRawObject(t, root["mcp"])
 	other := readRawObject(t, servers["other"])
-	for _, want := range []string{"url", "transport", "headers", "cwd", "disabled"} {
+	for _, want := range []string{"type", "url", "transport", "headers", "cwd", "disabled"} {
 		if _, ok := other[want]; !ok {
 			t.Fatalf("unknown opencode mcp field %q not preserved: %s", want, string(servers["other"]))
 		}
 	}
 	nole := readRawObject(t, servers["nole"])
-	if got := strings.Trim(string(nole["command"]), `"`); got != "/usr/local/bin/nole" {
-		t.Fatalf("nole command = %q", got)
+	var command []string
+	if err := json.Unmarshal(nole["command"], &command); err != nil {
+		t.Fatalf("nole.command not array after upsert: %v\n%s", err, string(nole["command"]))
+	}
+	if len(command) != 2 || command[0] != "/usr/local/bin/nole" {
+		t.Fatalf("nole.command = %#v, want [/usr/local/bin/nole mcp]", command)
+	}
+	if _, ok := nole["environment"]; !ok {
+		t.Fatalf("nole entry must keep an environment field: %s", string(servers["nole"]))
+	}
+	// The old environment value must be replaced (not merged) so stale secrets
+	// can't linger after an upsert.
+	if strings.Contains(string(nole["environment"]), "OLD_SECRET") {
+		t.Fatalf("nole entry should not inherit stale environment secrets: %s", string(nole["environment"]))
 	}
 }
 
@@ -159,7 +179,7 @@ func TestWriteCodexConfigMergesNoleSectionAndCreatesBackup(t *testing.T) {
 	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCodexConfigPath(path, "/usr/local/bin/nole"); err != nil {
+	if err := writeCodexConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
 		t.Fatalf("write codex config: %v", err)
 	}
 	b, err := os.ReadFile(path)
@@ -183,7 +203,7 @@ func TestWriteCodexConfigPreservesExistingModeAndBackupMode(t *testing.T) {
 	if err := os.WriteFile(path, []byte(existing), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCodexConfigPath(path, "/usr/local/bin/nole"); err != nil {
+	if err := writeCodexConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
 		t.Fatalf("write codex config: %v", err)
 	}
 	assertFileMode(t, path, 0600)

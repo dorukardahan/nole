@@ -118,6 +118,16 @@ The wrapper is local-only; do not commit it. Then register the MCP server with t
 }
 ```
 
+Nólë's setup writers accept `--mcp-wrapper /absolute/path/to/nole-mcp` to emit this shape directly for the supported clients:
+
+```bash
+nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --kimi     --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --cursor   --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --claude   --mcp-wrapper /absolute/path/to/nole-mcp   # prints the matching claude mcp add command
+nole setup --codex    --mcp-wrapper /absolute/path/to/nole-mcp   # uses a wrapper-direct launch line
+```
+
 The wrapper keeps provider keys out of each per-client config file and ensures `nole mcp` always launches with the same env regardless of how the client is started.
 
 ## Brave Search API

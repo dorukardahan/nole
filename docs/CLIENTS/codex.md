@@ -17,7 +17,8 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Co
 
 - Nólë has a Codex TOML setup writer.
 - Tests cover preserving existing config while replacing/upserting `[mcp_servers.nole]`.
-- The generated command launches through `/bin/sh -lc`, sources `~/.config/nole/.env` if present, then executes `nole mcp`.
+- The default generated command launches through `/bin/sh -lc`, sources `~/.config/nole/.env` if present, then executes `nole mcp`.
+- When `--mcp-wrapper /absolute/path/to/nole-mcp` is passed, the writer emits a simpler `command = "<wrapper>"`, `args = []` entry and defers env sourcing to the wrapper.
 - `nole doctor --mcp` verifies Nólë's MCP stdio behavior.
 
 ## Setup

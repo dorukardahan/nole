@@ -134,13 +134,13 @@ Goals:
 
 M11 live-client evidence: see `docs/CLIENTS/LIVE-VERIFICATION.md`.
 
-M11 follow-ups for the setup writers (intentionally not changed in M11; tracked here for follow-up PRs):
+M11 follow-ups for the setup writers (most fixed in the follow-up PR after M11 — tracked here for context):
 
-- `nole setup --claude` should write to a Claude MCP config path that the installed Claude Code release actually reads for user-scope MCP servers, or point users at `claude mcp add`. The current writer location is not picked up by recent Claude Code releases.
-- `nole setup --opencode` should match the installed OpenCode release: config location `~/.config/opencode/opencode.json` with schema `{type, command:[…], enabled, environment}`. The current writer targets a different path and a different schema.
-- Consider adding a `nole setup --kimi` writer that produces the same `~/.kimi/mcp.json` shape that `kimi mcp add` writes.
-- Consider supporting an optional env-sourcing wrapper mode in setup writers so non-Codex clients can launch via the wrapper without each writer embedding a shell line.
-- Live verification for Cursor, Hermes Agent and OpenClaw is still pending.
+- **Done.** `nole setup --claude` no longer writes to a stale Claude MCP config path. It now prints the exact `claude mcp add nole -s user -- <command>` invocation the installed Claude Code release reads. With `--mcp-wrapper /absolute/path/to/nole-mcp` it substitutes the wrapper path into that command.
+- **Done.** `nole setup --opencode` now writes to `~/.config/opencode/opencode.json` using OpenCode's native schema (`{type: "local", command: [<bin>, "mcp"], enabled: true, environment: {}}`). Regression tests cover preserving unknown fields, replacing stale `nole` entries, and idempotent re-runs.
+- **Done.** `nole setup --kimi` exists and writes the same `{"mcpServers":{"nole":{"command": <path>, "args"?:[...]}}}` shape Kimi's own `kimi mcp add` produces.
+- **Done.** A consistent `--mcp-wrapper /absolute/path/to/nole-mcp` flag is supported across setup writers. Non-Codex writers emit `command = <wrapper>`, `args = []` when the flag is given; the Codex writer drops its inline `/bin/sh -lc` env-sourcing line and emits a wrapper-direct launch entry. The flag is rejected unless it is an absolute path.
+- Still pending: live verification for Cursor, Hermes Agent and OpenClaw on hosts where those clients are installed.
 
 ### 10. v0.1 private-prep polish
 

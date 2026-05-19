@@ -29,10 +29,21 @@ nole doctor --mcp
 
 Create the env-sourcing wrapper at `~/.local/bin/nole-mcp` (`chmod 700`); see `docs/PROVIDER-KEYS.md` and `docs/AGENT-INSTALL.md`.
 
-Register Nólë with Kimi's MCP manager:
+Either run Nólë's built-in writer:
+
+```bash
+nole setup --kimi --mcp-wrapper /absolute/path/to/nole-mcp
+```
+
+…or register the entry through Kimi's MCP manager directly:
 
 ```bash
 kimi mcp add nole -- /absolute/path/to/nole-mcp
+```
+
+Both paths produce the same `~/.kimi/mcp.json` shape. Then verify:
+
+```bash
 kimi mcp list
 kimi mcp test nole
 ```
@@ -67,7 +78,7 @@ Mark this client `verified` only after:
 
 ## Follow-ups
 
-- Add a `nole setup --kimi` writer that produces the same config shape as `kimi mcp add`, so Kimi has the same self-serve experience as Codex.
+- Live verification on additional hosts/Kimi versions remains an open item — see `docs/CLIENTS/LIVE-VERIFICATION.md` and `docs/NEXT-STEPS.md`.
 - The Kimi process surfaces an upstream `AuthlibDeprecationWarning` from `fastmcp` on stderr; that is unrelated to Nólë and does not affect the MCP protocol.
 
 ## Troubleshooting
