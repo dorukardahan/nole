@@ -81,7 +81,10 @@ func newDoctorCommand() *cobra.Command {
 
 			budget := svc.BudgetStatus()
 			fmt.Fprintln(cmd.OutOrStdout(), "")
-			fmt.Fprintf(cmd.OutOrStdout(), "- budget: policy=%s hard_cap=$%d.%02d spent=$%d.%02d no_hidden_paid_spend=%t\n", budget.Policy, budget.HardCapCents/100, budget.HardCapCents%100, budget.SpentCents/100, budget.SpentCents%100, budget.NoHiddenPaidSpend)
+			fmt.Fprintf(cmd.OutOrStdout(), "- budget: policy=%s hard_cap=$%d.%02d spent=$%d.%02d no_hidden_paid_spend=%t ledger=%s\n", budget.Policy, budget.HardCapCents/100, budget.HardCapCents%100, budget.SpentCents/100, budget.SpentCents%100, budget.NoHiddenPaidSpend, budget.LedgerState)
+			if budget.LedgerWarning != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "  ledger_warning: %s\n", budget.LedgerWarning)
+			}
 			for _, e := range budget.Entries {
 				fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s free_remaining=%d estimated_cost_cents=%d spent_cents=%d\n", e.Provider, e.CostClass, e.FreeRemaining, e.EstimatedCostCents, e.SpentCents)
 			}
@@ -229,7 +232,7 @@ func checkMCPProtocolSmoke(parent context.Context, binary string) mcpProtocolSmo
 	go scanJSONLines(stdout, lines)
 
 	if err := cmd.Start(); err != nil {
-		result.Reason = fmt.Sprintf("start MCP subprocess: %v", err)
+		result.Reason = "start MCP subprocess: executable not found or not runnable"
 		return result
 	}
 

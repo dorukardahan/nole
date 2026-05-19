@@ -13,10 +13,25 @@ type Service struct {
 	registry *Registry
 	ledger   QuotaLedger
 	router   *Router
+	cache    ResponseCache
 }
 
-func NewService(registry *Registry, ledger QuotaLedger, matrix RouteMatrix) *Service {
-	return &Service{registry: registry, ledger: ledger, router: NewRouter(registry, ledger, matrix)}
+type ServiceOption func(*Service)
+
+func WithResponseCache(cache ResponseCache) ServiceOption {
+	return func(s *Service) {
+		s.cache = cache
+	}
+}
+
+func NewService(registry *Registry, ledger QuotaLedger, matrix RouteMatrix, opts ...ServiceOption) *Service {
+	service := &Service{registry: registry, ledger: ledger, router: NewRouter(registry, ledger, matrix)}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(service)
+		}
+	}
+	return service
 }
 
 func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
@@ -25,7 +40,20 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 	}
 	var lastErr error
 	route := s.routeFor(req.Task)
-	trace := make([]RouteAttempt, 0, len(route))
+	trace := make([]RouteAttempt, 0, len(route)+1)
+	if s.cache != nil {
+		if cached, ok := s.cache.GetSearch(req); ok {
+			cached.Query = req.Query
+			cached.Task = req.Task
+			if len(cached.Route) == 0 {
+				cached.Route = append([]string(nil), route...)
+			}
+			cached.RouteTrace = []RouteAttempt{cacheHitAttempt(cached.Provider, len(cached.Results))}
+			cached.RoutingInsight = BuildSearchRoutingInsight(cached)
+			return cached, nil
+		}
+		trace = append(trace, cacheMissAttempt())
+	}
 	for _, name := range route {
 		provider, ok := s.registry.Get(name)
 		if !ok {
@@ -79,6 +107,9 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		trace = append(trace, attemptWithDecision(name, "success", "success", decision, latency, len(resp.Results)))
 		resp.RouteTrace = trace
 		resp.RoutingInsight = BuildSearchRoutingInsight(resp)
+		if s.cache != nil {
+			s.cache.SetSearch(req, resp)
+		}
 		return resp, nil
 	}
 	if lastErr != nil {
@@ -92,11 +123,27 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 }
 
 func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResponse, error) {
+	req.URL = strings.TrimSpace(req.URL)
+	if req.Format == "" {
+		req.Format = "markdown"
+	}
 	if err := safenet.ValidateURL(req.URL); err != nil {
 		return ExtractResponse{}, fmt.Errorf("url validation: %w", err)
 	}
 	route := s.routeFor(TaskExtract)
-	trace := make([]RouteAttempt, 0, len(route))
+	trace := make([]RouteAttempt, 0, len(route)+1)
+	if s.cache != nil {
+		if cached, ok := s.cache.GetExtract(req); ok {
+			cached.URL = req.URL
+			if len(cached.Route) == 0 {
+				cached.Route = append([]string(nil), route...)
+			}
+			cached.RouteTrace = []RouteAttempt{cacheHitAttempt(cached.Provider, contentResultCount(cached.Content))}
+			cached.RoutingInsight = BuildExtractRoutingInsight(cached)
+			return cached, nil
+		}
+		trace = append(trace, cacheMissAttempt())
+	}
 	var lastErr error
 	for _, name := range route {
 		provider, ok := s.registry.Get(name)
@@ -151,6 +198,9 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 		trace = append(trace, attemptWithDecision(name, "success", "success", decision, latency, resultCount))
 		resp.RouteTrace = trace
 		resp.RoutingInsight = BuildExtractRoutingInsight(resp)
+		if s.cache != nil {
+			s.cache.SetExtract(req, resp)
+		}
 		return resp, nil
 	}
 	if lastErr != nil {
@@ -187,6 +237,17 @@ func (s *Service) routeFor(task TaskType) []string {
 
 func skippedAttempt(provider, reason string) RouteAttempt {
 	return RouteAttempt{Provider: provider, Status: "skipped", Reason: reason}
+}
+
+func cacheMissAttempt() RouteAttempt {
+	return RouteAttempt{Provider: "cache", Status: "skipped", Reason: "cache_miss", CacheStatus: CacheStatusMiss}
+}
+
+func cacheHitAttempt(provider string, resultCount int) RouteAttempt {
+	if provider == "" {
+		provider = "cache"
+	}
+	return RouteAttempt{Provider: provider, Status: "success", Reason: "cache_hit", CacheStatus: CacheStatusHit, ResultCount: resultCount}
 }
 
 func skippedAttemptWithDecision(provider string, decision QuotaDecision) RouteAttempt {

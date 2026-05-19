@@ -24,7 +24,7 @@ func newResearchCommand() *cobra.Command {
   2. Extracts key content from top results
   3. Synthesizes a cited summary
 
-Uses free-tier routing. No paid requests.`,
+Defaults to free-first/no-hidden-paid-spend routing. Explicit cost policy settings can allow premium-capable providers.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			question := strings.Join(args, " ")

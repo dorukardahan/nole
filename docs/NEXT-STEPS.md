@@ -101,6 +101,8 @@ Goals:
 
 ### 7. Cache and quota ledger
 
+Status: implemented for in-process normalized search/extract TTL cache, cache hit/miss trace/insight fields, file-backed local quota/cost ledger, fail-closed corrupt-ledger recovery and persistence tests.
+
 Goals:
 
 - TTL cache for normalized search/extract responses.
