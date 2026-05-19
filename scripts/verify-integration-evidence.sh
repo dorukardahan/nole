@@ -83,7 +83,7 @@ All commands above ran with provider key environment variables unset and with lo
 | Claude Code | setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
 | Codex CLI | TOML setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
 | OpenCode | setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
-| Cursor | shared MCP JSON setup path covered by repo tests; real client not launched | repo-tested, live verification pending |
+| Cursor | shared MCP JSON setup path covered by repo tests; real client not launched in this offline run | repo-tested; live evidence in \`docs/CLIENTS/LIVE-VERIFICATION.md\` |
 | Kimi | \`~/.kimi/mcp.json\` setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
 | Hermes Agent | generic MCP template only; no local Hermes config/tool visibility test recorded | generic/unverified |
 | OpenClaw | generic MCP template only; no real client config/tool visibility test recorded | generic/unverified |
@@ -91,7 +91,7 @@ All commands above ran with provider key environment variables unset and with lo
 
 ## Limitations
 
-This document is the offline/CI integration evidence artifact. For M11 live-client evidence on a macOS host (Claude Code, Codex CLI, OpenCode and Kimi), see \`docs/CLIENTS/LIVE-VERIFICATION.md\`. That artifact is recorded separately so this document can continue to describe only the offline/CI run.
+This document is the offline/CI integration evidence artifact. For live-client evidence on a macOS host — M11 (Claude Code, Codex CLI, OpenCode, Kimi) plus the 2026-05-20 Cursor follow-up — see \`docs/CLIENTS/LIVE-VERIFICATION.md\`. That artifact is recorded separately so this document can continue to describe only the offline/CI run.
 
 - This evidence does not verify real-client UI/tool visibility.
 - This evidence does not verify client-specific environment inheritance in GUI/gateway/service modes.
