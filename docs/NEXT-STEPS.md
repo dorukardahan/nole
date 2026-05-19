@@ -113,6 +113,8 @@ Goals:
 
 ### 8. Agent install experience
 
+Status: implemented for agent-readable install docs, provider cost/overage checklist, client support matrix, status-label rules and exact local/VPS/PATH/env/MCP troubleshooting paths. Real-client verification remains Milestone 9.
+
 Goals:
 
 - Improve AGENTS.md and docs until an AI agent can install Nólë from a GitHub link.

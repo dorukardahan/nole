@@ -63,7 +63,7 @@ Leave `NOLE_QUOTA_LEDGER_PATH` unset, or set it to `memory`/`off`, for memory-on
 
 ## Verify core commands
 
-Run these before declaring success:
+Run these before declaring install success without requiring provider secrets:
 
 ```bash
 nole doctor
@@ -73,6 +73,11 @@ nole bench --json
 nole bench --evidence-md
 nole classify "OpenAI API docs pricing and latest changelog" --json
 nole route-plan "OpenAI API docs pricing and latest changelog" --json
+```
+
+Optional live/provider smoke after the user accepts any quota/cost implications and the selected policy allows a route:
+
+```bash
 nole search "Go net/http Client Timeout documentation" --task docs --json
 nole extract "https://go.dev/doc/" --json
 ```
@@ -104,6 +109,7 @@ Generic MCP command:
 
 Client docs:
 
+- `docs/CLIENTS/README.md` — support matrix and status-label rules.
 - `docs/CLIENTS/claude-code.md`
 - `docs/CLIENTS/codex.md`
 - `docs/CLIENTS/opencode.md`

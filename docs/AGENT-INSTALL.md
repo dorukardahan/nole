@@ -15,6 +15,89 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. It
 7. Verify MCP tool visibility.
 8. Run a first low-risk search.
 
+## M8 agent handoff checklist
+
+When an AI agent receives only the GitHub link and a user request to install Nólë, complete this checklist before declaring success:
+
+1. Confirm the target environment: local machine, SSH/VPS, container, GUI app, gateway or service process.
+2. Build from source and run `go test ./...`, `go vet ./...`, `./nole doctor` and `./nole doctor --mcp`.
+3. Install the binary to a user-local PATH directory or capture the absolute binary path for MCP config.
+4. Configure provider key variable names only if the user already owns the matching provider accounts; never ask the user to paste real values into chat.
+5. Keep default `NOLE_COST_POLICY=free-first` unless the user explicitly accepts premium-capable provider risk.
+6. Configure the selected client with `nole mcp` using a setup writer or manual config.
+7. Verify the client sees `search`, `extract`, `provider_status` and `budget_status`.
+8. Run one low-limit docs search and include only the compact `routing_insight` plus result URLs in the user-facing answer.
+9. Record unresolved client/env limitations truthfully; do not upgrade a client status label without real-client evidence.
+10. Scan changed configs/log snippets for key values, bearer tokens, auth headers, raw provider payloads, private paths and private URLs before sharing.
+
+## Agent copy/paste install block
+
+Use this block for a local install from a GitHub link. It avoids provider keys and live paid-provider calls:
+
+```bash
+set -euo pipefail
+NOLE_SRC="${NOLE_SRC:-$HOME/src/nole}"
+NOLE_BIN_DIR="${NOLE_BIN_DIR:-$HOME/.local/bin}"
+NOLE_BIN="$NOLE_BIN_DIR/nole"
+
+git clone https://github.com/dorukardahan/nole.git "$NOLE_SRC"
+cd "$NOLE_SRC"
+go test ./...
+go vet ./...
+go build -o nole .
+mkdir -p "$NOLE_BIN_DIR"
+cp ./nole "$NOLE_BIN"
+"$NOLE_BIN" doctor
+"$NOLE_BIN" doctor --mcp
+```
+
+After this succeeds, use `"$NOLE_BIN"` as the MCP command path if the client does not inherit PATH.
+
+## PATH and absolute binary discovery
+
+Prefer a user-local binary directory:
+
+```bash
+mkdir -p ~/.local/bin
+cp ./nole ~/.local/bin/nole
+export PATH="$HOME/.local/bin:$PATH"
+command -v nole
+nole doctor
+```
+
+For GUI clients, service managers and remote agents, assume PATH may differ from the interactive shell. Capture the absolute path and put that path in MCP config:
+
+```bash
+NOLE_BIN="$(command -v nole || true)"
+if [ -z "$NOLE_BIN" ]; then
+  NOLE_BIN="$HOME/.local/bin/nole"
+fi
+printf 'Use this MCP command path: %s\n' "$NOLE_BIN"
+```
+
+Do not publish machine-specific absolute paths in shared docs or PRs; replace them with `/absolute/path/to/nole` when documenting examples.
+
+## Cost-aware environment template
+
+Use this template locally. It intentionally uses variable names and policy controls, not real values:
+
+```bash
+# Optional provider keys. Set only in your local shell, service env or local-only env file.
+# export BRAVE_API_KEY="set-locally"
+# export TAVILY_API_KEY="set-locally"
+# export JINA_API_KEY="set-locally"
+# export FIRECRAWL_API_KEY="set-locally"
+
+# Default no-hidden-paid-spend mode.
+export NOLE_COST_POLICY="free-first"
+
+# Optional persistent local accounting and in-process cache for long-running MCP sessions.
+export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"
+export NOLE_CACHE_TTL="5m"
+```
+
+Use `NOLE_QUOTA_LEDGER_PATH=memory`, `off`, `none` or leave it unset for memory-only accounting. `NOLE_CACHE_TTL_SECONDS=300` is also accepted. Explicit `cost-capped` or `quality-first` settings can allow premium-capable providers, so do not promise absolute no-paid behavior when those policies are selected.
+
 ## Local machine install
 
 ```bash

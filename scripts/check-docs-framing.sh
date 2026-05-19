@@ -21,6 +21,9 @@ required=(
   docs/CLIENTS/openclaw.md
   docs/CLIENTS/hermes.md
   docs/CLIENTS/generic-mcp.md
+  docs/CLIENTS/cursor.md
+  docs/CLIENTS/kimi.md
+  docs/CLIENTS/README.md
 )
 
 for path in "${required[@]}"; do
@@ -68,6 +71,36 @@ grep -Fq "free-first" docs/PRODUCT.md \
   || fail "product docs must include free-first policy"
 grep -Fq "premium-capable" docs/PRODUCT.md \
   || fail "product docs must include premium-capable provider philosophy"
+
+grep -Fq "M8 agent handoff checklist" docs/AGENT-INSTALL.md \
+  || fail "agent install docs must include the M8 handoff checklist"
+grep -Fq "Agent copy/paste install block" docs/AGENT-INSTALL.md \
+  || fail "agent install docs must include a copy/paste install block"
+grep -Fq "PATH and absolute binary discovery" docs/AGENT-INSTALL.md \
+  || fail "agent install docs must explain PATH and absolute binary discovery"
+grep -Fq "Cost-aware environment template" docs/AGENT-INSTALL.md \
+  || fail "agent install docs must include cost-aware env template"
+grep -Fq "Client support matrix" docs/CLIENTS/README.md \
+  || fail "client docs index must include support matrix"
+grep -Fq "Do not upgrade a status label without evidence" docs/CLIENTS/README.md \
+  || fail "client docs index must preserve status-label truthfulness rule"
+grep -Fq 'export PATH="$HOME/.local/bin:$PATH"' README.md \
+  || fail "README install snippet must be PATH-safe"
+grep -Fq "Optional live/provider smoke" AGENTS.md \
+  || fail "AGENTS install verification must make live/provider smoke optional"
+grep -Fq "| Cursor | repo-tested |" docs/CLIENTS/README.md \
+  || fail "client support matrix must align Cursor setup-writer status"
+grep -Fq "Status: repo-tested, live client verification pending." docs/CLIENTS/cursor.md \
+  || fail "Cursor client doc must use repo-tested status"
+grep -Fq 'Codex CLI lists or can call Nólë MCP tools `search`, `extract`, `provider_status`, `budget_status`' docs/CLIENTS/codex.md \
+  || fail "Codex verification checklist must name all required MCP tools"
+grep -Fq 'Nólë tools `search`, `extract`, `provider_status`, `budget_status` are visible in Cursor' docs/CLIENTS/cursor.md \
+  || fail "Cursor verification checklist must name all required MCP tools"
+
+for path_doc in docs/CLIENTS/claude-code.md docs/CLIENTS/codex.md docs/CLIENTS/opencode.md docs/CLIENTS/cursor.md; do
+  grep -Fq 'export PATH="$HOME/.local/bin:$PATH"' "$path_doc" \
+    || fail "$path_doc setup snippet must be PATH-safe"
+done
 
 for client in docs/CLIENTS/*.md; do
   grep -Eq "Status: (verified|repo-tested|generic/unverified)" "$client" \

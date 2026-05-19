@@ -52,7 +52,7 @@ Priority v0.1 agent targets:
 
 Also documented as secondary/generic paths: Cursor CLI, Kimi and generic MCP clients. A client is only called verified after config path, tool visibility and `doctor --mcp` behavior are checked without printing credentials.
 
-See `docs/CLIENTS/` and `docs/AGENT-INSTALL.md`.
+See `docs/CLIENTS/README.md` for the client support matrix and `docs/AGENT-INSTALL.md` for an agent-readable install/handoff checklist.
 
 ## Providers
 
@@ -99,13 +99,17 @@ Try the CLI:
 
 Search, extract, classify and route-plan JSON responses include a short `routing_insight` by default; search, extract and route-plan keep detailed `route_trace` for debugging where available. Human search/extract output prints the same one-line insight before results. Use `--insight off` to omit the user-facing insight, or `--insight verbose` to print the compact line plus route trace lines in human output. The insight is deterministic and sanitized; it should not contain API keys, auth headers, raw provider payloads or private URLs.
 
-Install the binary somewhere on PATH:
+Install the binary somewhere on PATH, or keep the absolute path for MCP configs:
 
 ```bash
 mkdir -p ~/.local/bin
 cp ./nole ~/.local/bin/nole
+export PATH="$HOME/.local/bin:$PATH"
+command -v nole
 nole doctor
 ```
+
+If the agent/client process does not inherit PATH, use `/absolute/path/to/nole` in the MCP config.
 
 Configure an agent when the setup writer is available:
 

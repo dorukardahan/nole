@@ -23,6 +23,8 @@ go test ./...
 go build -o nole .
 mkdir -p ~/.local/bin
 cp ./nole ~/.local/bin/nole
+export PATH="$HOME/.local/bin:$PATH"
+command -v nole
 ```
 
 Run:
@@ -31,6 +33,8 @@ Run:
 nole setup --claude
 nole doctor --mcp
 ```
+
+If Claude Code does not inherit PATH, configure the MCP entry with `/absolute/path/to/nole` instead of relying on the `nole` command name.
 
 The setup writer targets the user's Claude MCP config and adds a server named `nole` with command `nole` or the absolute current executable path.
 
