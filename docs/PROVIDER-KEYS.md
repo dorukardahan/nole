@@ -89,6 +89,37 @@ Do not commit real values.
 
 Codex setup sources `~/.config/nole/.env` before launching `nole mcp`. Other clients may need a wrapper command such as `/bin/sh -lc 'set -a; [ -f "$HOME/.config/nole/.env" ] && . "$HOME/.config/nole/.env"; set +a; exec /absolute/path/to/nole mcp'`.
 
+### Recommended wrapper script
+
+For non-Codex clients, the cleanest pattern is a tiny env-sourcing wrapper at `~/.local/bin/nole-mcp` (`chmod 700`):
+
+```sh
+#!/bin/sh
+set -a
+[ -f "$HOME/.config/nole/.env" ] && . "$HOME/.config/nole/.env"
+set +a
+if [ -n "${NOLE_BIN:-}" ] && [ -x "$NOLE_BIN" ]; then exec "$NOLE_BIN" mcp; fi
+if command -v nole >/dev/null 2>&1; then exec nole mcp; fi
+if [ -x "$HOME/.local/bin/nole" ]; then exec "$HOME/.local/bin/nole" mcp; fi
+echo "nole binary not found. Install nole to PATH or set NOLE_BIN." >&2
+exit 127
+```
+
+The wrapper is local-only; do not commit it. Then register the MCP server with the wrapper as the command and empty args:
+
+```json
+{
+  "mcpServers": {
+    "nole": {
+      "command": "/absolute/path/to/nole-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+The wrapper keeps provider keys out of each per-client config file and ensures `nole mcp` always launches with the same env regardless of how the client is started.
+
 ## Brave Search API
 
 Use for: broad search, docs, news/freshness, pricing and fallback routes.

@@ -124,13 +124,23 @@ Goals:
 
 ### 9. Integration verification
 
-Status: implemented for local-offline integration evidence, MCP stdio smoke evidence, no-secret deterministic command verification, and truthful client status labels. Real client UI/tool visibility remains pending until each client is actually launched and tested.
+Status: implemented for local-offline integration evidence, MCP stdio smoke evidence, no-secret deterministic command verification, and truthful client status labels. Real client UI/tool visibility is partially recorded: M11 added live-client evidence for Claude Code, Codex CLI, OpenCode and Kimi on a macOS host. Cursor, Hermes Agent and OpenClaw remain `generic/unverified` until they are exercised on a host where those clients are installed.
 
 Goals:
 
 - Verify priority agents when installed/available: Claude Code, Codex, OpenCode, Hermes, OpenClaw.
 - Record config path, setup command, tool visibility, doctor output and failure notes.
 - Keep unavailable clients labeled generic/unverified with future checklist.
+
+M11 live-client evidence: see `docs/CLIENTS/LIVE-VERIFICATION.md`.
+
+M11 follow-ups for the setup writers (intentionally not changed in M11; tracked here for follow-up PRs):
+
+- `nole setup --claude` should write to a Claude MCP config path that the installed Claude Code release actually reads for user-scope MCP servers, or point users at `claude mcp add`. The current writer location is not picked up by recent Claude Code releases.
+- `nole setup --opencode` should match the installed OpenCode release: config location `~/.config/opencode/opencode.json` with schema `{type, command:[…], enabled, environment}`. The current writer targets a different path and a different schema.
+- Consider adding a `nole setup --kimi` writer that produces the same `~/.kimi/mcp.json` shape that `kimi mcp add` writes.
+- Consider supporting an optional env-sourcing wrapper mode in setup writers so non-Codex clients can launch via the wrapper without each writer embedding a shell line.
+- Live verification for Cursor, Hermes Agent and OpenClaw is still pending.
 
 ### 10. v0.1 private-prep polish
 

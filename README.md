@@ -44,15 +44,17 @@ Priority v0.1 agent targets:
 
 | Client | Status in this repo | Notes |
 | --- | --- | --- |
-| Claude Code | Setup writer present; config merge tested; live client verification pending | Uses MCP stdio config. |
-| Codex CLI | Setup writer present; TOML merge tested; live client verification pending | Codex setup can source `~/.config/nole/.env` without writing secrets into config. |
-| OpenCode | Setup writer present; config merge path tested; live client verification pending | Uses OpenCode MCP config shape. |
-| OpenClaw | Generic MCP documentation present; live verification pending | Marked unverified until tested against the real client. |
-| Hermes Agent | Generic MCP documentation present; live verification pending | Marked unverified until tested against a local Hermes config. |
+| Claude Code | Verified on macOS via `claude mcp list/get` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | Uses MCP stdio. Prefer `claude mcp add nole -s user -- /absolute/path/to/nole-mcp` until the `nole setup --claude` writer location is fixed. |
+| Codex CLI | Verified on macOS via `codex mcp list/get` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --codex` inlines `~/.config/nole/.env` sourcing in its TOML output. |
+| OpenCode | Verified on macOS via `opencode mcp list` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | Until the `nole setup --opencode` writer is fixed, write the entry directly with the OpenCode `{type, command, enabled, environment}` schema. |
+| Kimi | Verified on macOS via `kimi mcp list` and `kimi mcp test` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | No `nole setup --kimi` writer yet; use `kimi mcp add nole -- /absolute/path/to/nole-mcp`. |
+| OpenClaw | Generic MCP documentation present; live verification pending | Not installed on the M11 verification host. |
+| Hermes Agent | Generic MCP documentation present; live verification pending | Not installed on the M11 verification host. |
+| Cursor | Setup writer present; repo-tested; live verification pending | Not installed on the M11 verification host. |
 
-Also documented as secondary/generic paths: Cursor CLI, Kimi and generic MCP clients. A client is only called verified after config path, tool visibility and `doctor --mcp` behavior are checked without printing credentials.
+A client is only called verified after config path, tool visibility and `doctor --mcp` behavior are checked without printing credentials.
 
-See `docs/CLIENTS/README.md` for the client support matrix, `docs/AGENT-INSTALL.md` for an agent-readable install/handoff checklist, and `docs/INTEGRATION-VERIFICATION.md` for the latest truthful local/offline integration evidence.
+See `docs/CLIENTS/README.md` for the client support matrix, `docs/AGENT-INSTALL.md` for an agent-readable install/handoff checklist, `docs/CLIENTS/LIVE-VERIFICATION.md` for M11 live-client evidence and `docs/INTEGRATION-VERIFICATION.md` for the offline/CI integration evidence record.
 
 ## Providers
 

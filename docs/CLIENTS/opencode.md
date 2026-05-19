@@ -1,18 +1,26 @@
 # OpenCode client
 
-Status: repo-tested, live client verification pending.
+Status: verified (CLI MCP manager). Live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md`.
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. OpenCode can use Nólë through MCP stdio by launching `nole mcp`.
+Nólë is a free, local web search router for AI agents and coding CLI tools. OpenCode can use Nólë through MCP stdio by launching `nole mcp` (or an env-sourcing wrapper around it).
 
-## What is tested in this repo
+## What is verified
+
+- Real OpenCode release was exercised on macOS (M11 live verification).
+- A `nole` MCP entry written directly into `~/.config/opencode/opencode.json` with the OpenCode-native schema is read by `opencode mcp list` and reports `nole connected`.
+- Tools observable through the same wrapper command path: `search`, `extract`, `provider_status`, `budget_status`.
+- One low-limit docs smoke search succeeded under `free-first` policy via the keyless DDGS fallback.
+- No key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths appear in the OpenCode entry; provider keys are loaded only by the wrapper at launch.
+
+## What is also tested in this repo
 
 - Nólë has an OpenCode setup writer.
-- The writer upserts a `nole` MCP server entry into the OpenCode JSON config shape while preserving existing data.
+- The writer upserts a `nole` MCP server entry into a JSON config while preserving existing data.
 - `nole doctor --mcp` verifies Nólë's own MCP stdio behavior.
 
-Not yet claimed:
+## Known limitation in this run
 
-- End-to-end OpenCode client tool visibility on this machine.
+`nole setup --opencode` writes to `~/opencode.json` using a `{command, args}` schema, but the installed OpenCode release reads `~/.config/opencode/opencode.json` and uses a `{type, command:[…], enabled, environment}` schema. Until the writer is updated, write the entry directly or use `opencode mcp add`. Tracked as a follow-up in `docs/NEXT-STEPS.md`.
 
 ## Setup
 
@@ -23,15 +31,36 @@ mkdir -p ~/.local/bin
 cp ./nole ~/.local/bin/nole
 export PATH="$HOME/.local/bin:$PATH"
 command -v nole
-nole setup --opencode
 nole doctor --mcp
 ```
 
-If OpenCode does not inherit PATH, use an absolute binary path in manual config.
+Recommended path against the installed OpenCode release (direct config entry, OpenCode-native schema):
 
-## Generic config template
+```json
+// inside ~/.config/opencode/opencode.json
+{
+  "mcp": {
+    "nole": {
+      "type": "local",
+      "command": ["/absolute/path/to/nole-mcp"],
+      "enabled": true,
+      "environment": {}
+    }
+  }
+}
+```
 
-If manual config is needed:
+After editing, run:
+
+```bash
+opencode mcp list
+```
+
+and confirm `nole` is listed as connected.
+
+## Generic config template (older OpenCode schema)
+
+If manual config is needed for an older OpenCode build that still reads `{command, args}`:
 
 ```json
 {

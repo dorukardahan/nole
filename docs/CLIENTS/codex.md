@@ -1,19 +1,24 @@
 # Codex CLI client
 
-Status: repo-tested, live client verification pending.
+Status: verified (CLI MCP manager). Live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md`.
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Codex CLI can use Nólë through MCP stdio by launching `nole mcp`.
+Nólë is a free, local web search router for AI agents and coding CLI tools. Codex CLI can use Nólë through MCP stdio by launching `nole mcp`. Codex is the easiest target because its setup writer already inlines `~/.config/nole/.env` sourcing in the generated TOML.
 
-## What is tested in this repo
+## What is verified
+
+- Real Codex CLI release was exercised on macOS (M11 live verification).
+- `nole setup --codex` produced a working `[mcp_servers.nole]` block in `~/.codex/config.toml`.
+- `codex mcp list` reports `nole` enabled; `codex mcp get nole` reports `transport: stdio` with the env-sourcing shell line.
+- Tools observable through the same wrapper command path: `search`, `extract`, `provider_status`, `budget_status`.
+- One low-limit docs smoke search succeeded under `free-first` policy via the keyless DDGS fallback.
+- No key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths appear in the TOML entry; the entry sources `~/.config/nole/.env` at launch only.
+
+## What is also tested in this repo
 
 - Nólë has a Codex TOML setup writer.
 - Tests cover preserving existing config while replacing/upserting `[mcp_servers.nole]`.
 - The generated command launches through `/bin/sh -lc`, sources `~/.config/nole/.env` if present, then executes `nole mcp`.
 - `nole doctor --mcp` verifies Nólë's MCP stdio behavior.
-
-Not yet claimed:
-
-- End-to-end Codex CLI tool visibility on this machine after setup.
 
 ## Setup
 
