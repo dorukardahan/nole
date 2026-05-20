@@ -1,53 +1,66 @@
 # Hermes Agent client
 
-Status: generic/unverified.
+Status: verified (Hermes Agent MCP profile path + chat-agent tool dispatch).
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Hermes Agent is a priority v0.1 target, but this repository does not yet include a verified Hermes setup writer or a documented local Hermes MCP config test.
+Nólë is a free, local web search router for AI agents and coding CLI tools. Hermes Agent live verification is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` from a 2026-05-20 run on an Ubuntu x86_64 host with Hermes Agent installed.
 
-Use the generic MCP stdio template until Hermes-specific config is verified.
+The verified path used a disposable Hermes profile, not the active default gateway profile. The Nólë MCP server was registered as `nole` with a direct absolute Nólë binary command and `args: ["mcp"]`; committed docs use placeholder paths only.
 
-## Generic MCP template
+## Verified setup shape
 
-```json
-{
-  "mcpServers": {
-    "nole": {
-      "command": "/absolute/path/to/nole",
-      "args": ["mcp"]
-    }
-  }
-}
+Use Hermes Agent's MCP manager with an absolute binary path unless you have confirmed the Hermes process inherits the right PATH and provider environment:
+
+```bash
+hermes mcp add nole --command /absolute/path/to/nole --args mcp
+hermes mcp list
+hermes mcp test nole
 ```
 
-If Hermes uses a YAML/TOML config, map the same command/args into that schema.
+Sanitized config shape:
+
+```yaml
+mcp_servers:
+  nole:
+    command: /absolute/path/to/nole
+    args:
+      - mcp
+```
+
+If the Hermes runtime that will launch MCP tools does not inherit provider keys, use a local-only wrapper that sources `~/.config/nole/.env` and execs `nole mcp`, then point Hermes at the wrapper instead. Do not put key values in Hermes config.
 
 ## Install Nólë first
 
 ```bash
 git clone https://github.com/dorukardahan/nole.git
 cd nole
+export PATH="$HOME/.local/go/bin:$PATH"  # if Go is installed under ~/.local/go
 go test ./...
 go build -o nole .
 ./nole doctor
 ./nole doctor --mcp
 ```
 
-## Provider keys
+## Provider keys and cost policy
 
-Hermes launch environments may differ between CLI, gateway and service modes. Keep provider keys in the process environment or a local env file/wrapper. Do not print values.
+Hermes launch environments may differ between CLI, gateway, service and profile modes. Keep provider keys in the process environment, Hermes profile `.env`, or a local wrapper/env file. Never print values.
 
-## Verification checklist for future support
+Default Nólë policy is `free-first`. In the recorded Hermes verification, no keyed paid providers were available to the Nólë MCP subprocess, so Brave, Firecrawl, Jina and Tavily were skipped as `disabled_no_key`; DDGS was used as the keyless-free fallback. This is acceptable for live smoke verification but is not a claim that DDGS is the benchmark-primary docs provider.
 
-Upgrade status to `verified` only after recording:
+## Recorded verification checklist
 
-- Hermes version/config mode tested;
-- config path and schema;
-- exact Nólë MCP entry;
-- `nole doctor --mcp` result;
-- Hermes tool visibility for `search`, `extract`, `provider_status`, `budget_status`;
-- one successful low-limit docs search;
-- confirmation no provider keys or auth headers appear in logs;
-- troubleshooting notes for gateway/service environment inheritance.
+The 2026-05-20 Hermes Agent run recorded:
+
+- Hermes Agent version/config mode tested: Hermes Agent v0.14.0, disposable cloned profile, gateway stopped for that profile.
+- Active default gateway profile: left untouched.
+- Config surface: `hermes -p <temporary-profile> mcp add/list/test`.
+- MCP entry: server name `nole`, direct absolute Nólë binary command, args `["mcp"]`.
+- `nole doctor --mcp`: startup stdout clean; initialize/tools/list succeeded; tools `[budget_status extract provider_status search]`.
+- Hermes MCP tools visible: `mcp_nole_search`, `mcp_nole_extract`, `mcp_nole_provider_status`, `mcp_nole_budget_status`.
+- Hermes chat-agent dispatch: `provider_status` succeeded, then exactly one `search` succeeded with query `Go net/http Client Timeout documentation`, task `docs`, limit `1`.
+- Search provider used: `ddgs` keyless-free fallback.
+- Result URL: `https://pkg.go.dev/net/http`.
+- Paid spend: none.
+- Committed evidence: sanitized; no provider key values, bearer tokens, auth headers, raw provider payloads, private URLs, machine-specific absolute paths or chat transcripts are included.
 
 ## Suggested first prompt
 
@@ -58,6 +71,7 @@ Use Nólë to search for Go net/http Client Timeout documentation. Include one c
 ## Troubleshooting
 
 - Use absolute paths if the Hermes process cannot find `nole`.
-- Restart the relevant Hermes process after MCP config changes.
-- If keys are missing, check the environment of the process that launches MCP tools, not just the interactive shell.
+- Use a dedicated Hermes profile for verification or experiments so active gateway profiles are not disturbed.
+- Start a new Hermes session after MCP config changes; tool schemas are loaded at session start.
+- If keys are missing, check the environment/profile of the process that launches MCP tools, not just the interactive shell.
 - Do not enable hosted/proxy behavior unless the user explicitly requests it.

@@ -1,9 +1,9 @@
 # Live client verification evidence (M11)
 
-Scope: M11 live client verification, plus 2026-05-20 Cursor and OpenClaw follow-up runs.
+Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs.
 Run kind: local maintainer run, real clients launched.
-Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up).
-Host description: macOS arm64 workstation with Go toolchain installed for M11/Cursor, and an Ubuntu x86_64 VPS with OpenClaw installed for the OpenClaw follow-up.
+Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up).
+Host description: macOS arm64 workstation with Go toolchain installed for M11/Cursor, and Ubuntu x86_64 VPS hosts with OpenClaw or Hermes Agent installed for the follow-up runs.
 Cost policy: free-first (default; no policy change during the run).
 Live provider calls: low-limit keyless smoke searches via DDGS only; each follow-up run records its own single search where applicable.
 Provider keys: presence-only via `nole doctor`; key values never printed, logged or committed.
@@ -16,7 +16,7 @@ This document records real-client verification for installable agents/CLIs that 
 
 1. Provider keys are read from a local-only `~/.config/nole/.env` file; values are not surfaced. `nole doctor` reports presence only.
 2. A local env-sourcing MCP wrapper at `~/.local/bin/nole-mcp` loads `~/.config/nole/.env` and execs `nole mcp`, so client configs do not have to embed key values or shell snippets.
-3. For each available client, the MCP server entry is registered with the client's first-class CLI (e.g. `claude mcp add`, `codex mcp` via `nole setup --codex`, `kimi mcp add`) or written directly into the client's documented config file. The MCP command always points at the wrapper or at a wrapper-equivalent env-sourcing shell line.
+3. For each available client, the MCP server entry is registered with the client's first-class CLI (e.g. `claude mcp add`, `codex mcp` via `nole setup --codex`, `kimi mcp add`, `hermes mcp add`) or written directly into the client's documented config file. The MCP command points at the wrapper, at a wrapper-equivalent env-sourcing shell line, or at a direct absolute Nólë binary path when the verified client/profile already owns the safe launch environment.
 4. The client's own MCP management surface is then used to confirm the MCP server connects and exposes the four expected tools.
 5. For each live-search smoke recorded here, the run uses `limit=1`, `free-first`, and DDGS/keyless routing, then records only the compact `routing_insight` plus result URL.
 
@@ -25,10 +25,10 @@ The verification is conservative. A client is only labeled `verified` when its r
 ## Versions and binaries
 
 - Nólë built from this branch; `nole doctor --mcp` reports `mcp: ok`, `stdout: startup-clean (0 bytes before protocol input)`, `protocol: initialize/tools/list (… non-json stdout lines: 0)`, `tools: [budget_status extract provider_status search]`.
-- Clients available on the verification hosts (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run); OpenClaw 2026.5.18 (2026-05-20 follow-up run).
-- Clients absent on the verification hosts (not exercised): Hermes Agent.
+- Clients available on the verification hosts (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run); OpenClaw 2026.5.18 (2026-05-20 follow-up run); Hermes Agent v0.14.0 (2026-05-20 follow-up run).
+- Clients absent on the verification hosts (not exercised): generic MCP clients beyond the named clients above.
 
-## Wrapper used in all client configs
+## Wrapper and launch patterns used by verified clients
 
 The wrapper sources the local env file and execs `nole mcp`. It is local-only and not committed.
 
@@ -50,7 +50,7 @@ Recommended permissions: `chmod 700 ~/.local/bin/nole-mcp`.
 
 ## Shared low-limit smoke search
 
-A single search smoke is recorded at the Nólë binary layer because all MCP clients route to the same Nólë `search` code path. Under `free-first` policy only `ddgs` is policy-allowed, so the smoke incurs no paid spend.
+A shared search smoke is recorded at the Nólë binary/wrapper layer because the wrapper-based MCP clients route to the same Nólë `search` code path. The shared smoke ran in no-key/free-first conditions; keyed providers were not used, and DDGS was the keyless fallback, so the smoke incurred no paid spend. Follow-up client runs that performed their own live search record those details in the client-specific sections below.
 
 - Query: `Go net/http Client Timeout documentation`
 - Task: `docs`
@@ -135,7 +135,7 @@ In addition, a single MCP stdio JSON-RPC round trip was performed against the wr
 - An unrelated MCP server already present in the user's Cursor config was preserved unchanged by the writer; a writer-managed backup was written at `~/.cursor/mcp.json.bak`.
 - Resulting Nólë MCP entry shape (sanitized): keys `[args, command]`, `command_basename=nole-mcp`, 0 args, 0 env keys (wrapper-direct launch).
 - After a full Cursor restart, Cursor's chat agent successfully dispatched Nólë MCP tools by name end-to-end:
-  - `provider_status` returned the same 5-provider table that `nole doctor --mcp` and the CLI `providers --json` produce — brave / ddgs / firecrawl / jina / tavily, each with availability, capabilities, cost class, and a `free-first` policy reason. Under `free-first` only `ddgs` was policy-allowed; the other four providers were correctly reported as `premium_blocked_free_first`.
+  - `provider_status` returned the same 5-provider table that `nole doctor --mcp` and the CLI `providers --json` produce — brave / ddgs / firecrawl / jina / tavily, each with availability, capabilities, cost class, and a `free-first` policy reason. For that Cursor smoke, DDGS was the only route allowed by the configured `free-first` policy; the other four providers were correctly reported as `premium_blocked_free_first`.
   - `search` returned a single result through Nólë's `ddgs` provider under the `free-first` policy.
 - MCP tools observed: `search`, `extract`, `provider_status`, `budget_status`. Successful dispatch of `provider_status` and `search` by name through Cursor's MCP client proves Cursor loaded the full `tools/list` schema; `extract` and `budget_status` are published by that same `tools/list` (confirmed independently by `nole doctor --mcp`).
 - Smoke search through Cursor (sanitized):
@@ -171,17 +171,40 @@ In addition, a single MCP stdio JSON-RPC round trip was performed against the wr
 - Secret-safety: no key values, bearer tokens, auth headers, raw provider payloads, private URLs or machine-specific absolute paths are recorded. The OpenClaw MCP entry contains no key values; the wrapper sources `~/.config/nole/.env` at launch only.
 - Paid spend: none.
 
+### Hermes Agent (2026-05-20 follow-up run)
+
+- Status: verified (Hermes Agent MCP profile path + chat-agent tool dispatch).
+- Client version: Hermes Agent v0.14.0.
+- Config surface verified from the installed CLI: `hermes profile create`, `hermes -p <temporary-profile> mcp add`, `hermes -p <temporary-profile> mcp list`, `hermes -p <temporary-profile> mcp test nole`, and a fresh `hermes -p <temporary-profile> chat` turn.
+- Verification profile: disposable cloned Hermes profile; its gateway was stopped. The active default gateway profile was not modified and continued to show no configured MCP servers.
+- Setup command shape:
+  - `hermes -p <temporary-profile> mcp add nole --command /absolute/path/to/nole --args mcp`
+- Resulting Nólë MCP entry shape (sanitized): direct absolute Nólë binary path with args `["mcp"]`; no key values embedded in Hermes config.
+- `hermes -p <temporary-profile> mcp test nole` connected over stdio and discovered 4 tools.
+- A fresh Hermes Agent chat turn loaded the Nólë MCP server and dispatched Nólë tools by name:
+  - `mcp_nole_provider_status` succeeded.
+  - `mcp_nole_search` succeeded once with `limit=1`.
+- MCP tools observed through the Hermes Agent runtime: `search`, `extract`, `provider_status`, `budget_status` (exposed to Hermes as `mcp_nole_search`, `mcp_nole_extract`, `mcp_nole_provider_status`, `mcp_nole_budget_status`).
+- Smoke search through Hermes Agent (sanitized):
+  - Query: `Go net/http Client Timeout documentation`
+  - Task: `docs`
+  - Limit: `1`
+  - Provider used: `ddgs`
+  - Compact routing insight: `Nólë: search docs via ddgs (free-first, 4/5 attempts, 1 result)`
+  - Route interpretation: Brave, Firecrawl, Jina and Tavily were unavailable to the Nólë MCP subprocess as disabled/no-key providers; DDGS was the keyless-free fallback under `free-first`. This is not a claim that DDGS is the benchmark-primary docs provider.
+  - Result URL: `https://pkg.go.dev/net/http`
+- Secret-safety: no provider key values, bearer tokens, auth headers, raw provider payloads, private URLs, machine-specific absolute paths or chat transcripts are recorded. Local runtime logs/transcripts were not committed.
+- Paid spend: none.
+
 ## Pending clients on these hosts
 
-These clients were not installed on the verification hosts and remain `generic/unverified` per the matrix in `docs/CLIENTS/README.md`. Each requires its own host-side test before status upgrade:
+These clients remain `generic/unverified` per the matrix in `docs/CLIENTS/README.md`. Each requires its own host-side test before status upgrade:
 
-- Hermes Agent: not installed.
+- Generic MCP clients beyond the named clients above.
 
 ## Findings and follow-ups
 
-Earlier M11 setup-writer follow-ups were addressed in follow-up PRs. Remaining live-client coverage:
-
-1. Add live verification for Hermes Agent on a host where the client is installed.
+Earlier M11 setup-writer follow-ups were addressed in follow-up PRs. Priority named-client live coverage is now recorded for Claude Code, Codex CLI, OpenCode, Kimi, Cursor, OpenClaw and Hermes Agent. Generic MCP clients remain template-only until a specific client/runtime is named and tested.
 
 ## Public-safety statement
 

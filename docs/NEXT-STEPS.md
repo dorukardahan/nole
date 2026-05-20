@@ -124,7 +124,7 @@ Goals:
 
 ### 9. Integration verification
 
-Status: implemented for local-offline integration evidence, MCP stdio smoke evidence, no-secret deterministic command verification, and truthful client status labels. Real client UI/tool visibility is partially recorded: M11 added live-client evidence for Claude Code, Codex CLI, OpenCode and Kimi on a macOS host; a 2026-05-20 follow-up run added Cursor live-client evidence (Cursor 3.4.20 GUI MCP path) on the same host; and a separate 2026-05-20 follow-up run added OpenClaw live-client evidence (OpenClaw 2026.5.18 Gateway/agent MCP path) on a VPS. Hermes Agent remains `generic/unverified` until it is exercised on a host where that client is installed.
+Status: implemented for local-offline integration evidence, MCP stdio smoke evidence, no-secret deterministic command verification, and truthful client status labels. Real client UI/tool visibility is recorded for Claude Code, Codex CLI, OpenCode and Kimi on a macOS host; 2026-05-20 follow-up runs added Cursor live-client evidence (Cursor 3.4.20 GUI MCP path), OpenClaw live-client evidence (OpenClaw 2026.5.18 Gateway/agent MCP path), and Hermes Agent live-client evidence (Hermes Agent v0.14.0 disposable profile MCP path + chat-agent tool dispatch).
 
 Goals:
 
@@ -141,7 +141,8 @@ M11 follow-ups for the setup writers (most fixed in the follow-up PR after M11 â
 - **Done.** `nole setup --kimi` exists and writes the same `{"mcpServers":{"nole":{"command": <path>, "args"?:[...]}}}` shape Kimi's own `kimi mcp add` produces.
 - **Done.** A consistent `--mcp-wrapper /absolute/path/to/nole-mcp` flag is supported across setup writers. Non-Codex writers emit `command = <wrapper>`, `args = []` when the flag is given; the Codex writer drops its inline `/bin/sh -lc` env-sourcing line and emits a wrapper-direct launch entry. The flag is rejected unless it is an absolute path.
 - **Done.** Cursor live verification recorded on macOS (Cursor 3.4.20, GUI MCP path + chat-agent tool dispatch) in the 2026-05-20 follow-up run logged in `docs/CLIENTS/LIVE-VERIFICATION.md`.
-- Still pending: live verification for Hermes Agent on a host where that client is installed.
+- **Done.** Hermes Agent live verification recorded on an Ubuntu x86_64 host (Hermes Agent v0.14.0, disposable profile MCP path + chat-agent tool dispatch) in the 2026-05-20 follow-up run logged in `docs/CLIENTS/LIVE-VERIFICATION.md`.
+- Still pending: generic MCP clients remain template-only until a specific client/runtime is named and tested.
 
 ### 10. v0.1 private-prep polish
 

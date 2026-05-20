@@ -108,6 +108,10 @@ grep -Fq "| OpenClaw | verified (OpenClaw Gateway/agent MCP path) |" docs/CLIENT
   || fail "client support matrix must align OpenClaw live verification status"
 grep -Fq "Status: verified (OpenClaw Gateway/agent MCP path)." docs/CLIENTS/openclaw.md \
   || fail "OpenClaw client doc must use the recorded verified status"
+grep -Fq "| Hermes Agent | verified (Hermes Agent MCP profile path) |" docs/CLIENTS/README.md \
+  || fail "client support matrix must align Hermes Agent live verification status"
+grep -Fq "Status: verified (Hermes Agent MCP profile path + chat-agent tool dispatch)." docs/CLIENTS/hermes.md \
+  || fail "Hermes Agent client doc must use the recorded verified status"
 grep -Fq 'Codex CLI lists or can call Nólë MCP tools `search`, `extract`, `provider_status`, `budget_status`' docs/CLIENTS/codex.md \
   || fail "Codex verification checklist must name all required MCP tools"
 grep -Fq 'Nólë tools `search`, `extract`, `provider_status`, `budget_status` are visible in Cursor' docs/CLIENTS/cursor.md \
