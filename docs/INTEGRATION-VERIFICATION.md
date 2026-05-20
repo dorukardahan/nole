@@ -19,7 +19,7 @@ Provider key handling: presence/status only; keys unset during this run
 - Provider status JSON: providers --json generated with provider keys unset.
 - Deterministic benchmark JSON and Markdown evidence generation complete without live provider calls.
 - Repo-tested setup writers: Claude Code, Codex CLI, OpenCode, Cursor, Kimi.
-- Generic/unverified clients: Hermes Agent, OpenClaw, generic MCP clients.
+- Generic/unverified clients in this offline artifact: Hermes Agent, generic MCP clients.
 
 ## Commands represented
 
@@ -36,18 +36,18 @@ All commands above ran with provider key environment variables unset and with lo
 
 | Client | Evidence in this run | Status label |
 | --- | --- | --- |
-| Claude Code | setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
-| Codex CLI | TOML setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
-| OpenCode | setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
+| Claude Code | setup writer/config merge covered by repo tests; real client not launched in this offline run | repo-tested; live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md` |
+| Codex CLI | TOML setup writer/config merge covered by repo tests; real client not launched in this offline run | repo-tested; live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md` |
+| OpenCode | setup writer/config merge covered by repo tests; real client not launched in this offline run | repo-tested; live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md` |
 | Cursor | shared MCP JSON setup path covered by repo tests; real client not launched in this offline run | repo-tested; live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md` |
-| Kimi | `~/.kimi/mcp.json` setup writer/config merge covered by repo tests; real client not launched | repo-tested, live verification pending |
+| Kimi | `~/.kimi/mcp.json` setup writer/config merge covered by repo tests; real client not launched in this offline run | repo-tested; live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md` |
 | Hermes Agent | generic MCP template only; no local Hermes config/tool visibility test recorded | generic/unverified |
-| OpenClaw | generic MCP template only; no real client config/tool visibility test recorded | generic/unverified |
+| OpenClaw | real client not launched in this offline run; live evidence is recorded separately in `docs/CLIENTS/LIVE-VERIFICATION.md` | verified via live OpenClaw follow-up |
 | generic MCP clients | generic stdio command template only | generic/unverified |
 
 ## Limitations
 
-This document is the offline/CI integration evidence artifact. For live-client evidence on a macOS host — M11 (Claude Code, Codex CLI, OpenCode, Kimi) plus the 2026-05-20 Cursor follow-up — see `docs/CLIENTS/LIVE-VERIFICATION.md`. That artifact is recorded separately so this document can continue to describe only the offline/CI run.
+This document is the offline/CI integration evidence artifact. For live-client evidence — M11 (Claude Code, Codex CLI, OpenCode, Kimi), the 2026-05-20 Cursor follow-up, and the 2026-05-20 OpenClaw follow-up — see `docs/CLIENTS/LIVE-VERIFICATION.md`. That artifact is recorded separately so this document can continue to describe only the offline/CI run.
 
 - This evidence does not verify real-client UI/tool visibility.
 - This evidence does not verify client-specific environment inheritance in GUI/gateway/service modes.

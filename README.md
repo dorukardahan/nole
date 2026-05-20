@@ -44,13 +44,13 @@ Priority v0.1 agent targets:
 
 | Client | Status in this repo | Notes |
 | --- | --- | --- |
-| Claude Code | Verified on macOS via `claude mcp list/get` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | Uses MCP stdio. Prefer `claude mcp add nole -s user -- /absolute/path/to/nole-mcp` until the `nole setup --claude` writer location is fixed. |
-| Codex CLI | Verified on macOS via `codex mcp list/get` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --codex` inlines `~/.config/nole/.env` sourcing in its TOML output. |
-| OpenCode | Verified on macOS via `opencode mcp list` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | Until the `nole setup --opencode` writer is fixed, write the entry directly with the OpenCode `{type, command, enabled, environment}` schema. |
-| Kimi | Verified on macOS via `kimi mcp list` and `kimi mcp test` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | No `nole setup --kimi` writer yet; use `kimi mcp add nole -- /absolute/path/to/nole-mcp`. |
-| OpenClaw | Generic MCP documentation present; live verification pending | Not installed on the M11 verification host. |
-| Hermes Agent | Generic MCP documentation present; live verification pending | Not installed on the M11 verification host. |
-| Cursor | Setup writer present; repo-tested; live verification pending | Not installed on the M11 verification host. |
+| Claude Code | Verified on macOS via `claude mcp list/get` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --claude` prints the official `claude mcp add` command, including wrapper mode when requested. |
+| Codex CLI | Verified on macOS via `codex mcp list/get` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --codex` inlines `~/.config/nole/.env` sourcing in TOML output, or emits wrapper-direct config with `--mcp-wrapper`. |
+| OpenCode | Verified on macOS via `opencode mcp list` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --opencode` writes OpenCode's native `{type, command, enabled, environment}` schema. |
+| Kimi | Verified on macOS via `kimi mcp list` and `kimi mcp test` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --kimi` writes the same shape that `kimi mcp add` produces. |
+| OpenClaw | Verified on OpenClaw 2026.5.18 via the Gateway/agent MCP path; see `docs/CLIENTS/LIVE-VERIFICATION.md` | Configured with `openclaw mcp set` and an env-sourcing wrapper. A fresh OpenClaw agent turn dispatched `provider_status` and one `limit=1` DDGS search through Nólë. |
+| Hermes Agent | Generic MCP documentation present; live verification pending | Not installed on the recorded verification hosts. |
+| Cursor | Verified on macOS Cursor 3.4.20 via GUI MCP path and chat-agent dispatch; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --cursor --mcp-wrapper /absolute/path/to/nole-mcp` preserves unrelated MCP servers and emits wrapper-direct config. |
 
 A client is only called verified after config path, tool visibility and `doctor --mcp` behavior are checked without printing credentials.
 

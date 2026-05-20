@@ -104,6 +104,10 @@ grep -Fq "| Cursor | verified (GUI MCP path) |" docs/CLIENTS/README.md \
   || fail "client support matrix must align Cursor setup-writer status"
 grep -Fq "Status: verified (GUI MCP path + chat-agent tool dispatch)." docs/CLIENTS/cursor.md \
   || fail "Cursor client doc must use the recorded verified status"
+grep -Fq "| OpenClaw | verified (OpenClaw Gateway/agent MCP path) |" docs/CLIENTS/README.md \
+  || fail "client support matrix must align OpenClaw live verification status"
+grep -Fq "Status: verified (OpenClaw Gateway/agent MCP path)." docs/CLIENTS/openclaw.md \
+  || fail "OpenClaw client doc must use the recorded verified status"
 grep -Fq 'Codex CLI lists or can call Nólë MCP tools `search`, `extract`, `provider_status`, `budget_status`' docs/CLIENTS/codex.md \
   || fail "Codex verification checklist must name all required MCP tools"
 grep -Fq 'Nólë tools `search`, `extract`, `provider_status`, `budget_status` are visible in Cursor' docs/CLIENTS/cursor.md \

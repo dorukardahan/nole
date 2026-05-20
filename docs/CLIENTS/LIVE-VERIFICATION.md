@@ -1,16 +1,16 @@
 # Live client verification evidence (M11)
 
-Scope: M11 live client verification, plus a 2026-05-20 Cursor follow-up run.
+Scope: M11 live client verification, plus 2026-05-20 Cursor and OpenClaw follow-up runs.
 Run kind: local maintainer run, real clients launched.
-Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up).
-Host description: macOS arm64 workstation with Go toolchain installed.
+Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up).
+Host description: macOS arm64 workstation with Go toolchain installed for M11/Cursor, and an Ubuntu x86_64 VPS with OpenClaw installed for the OpenClaw follow-up.
 Cost policy: free-first (default; no policy change during the run).
-Live provider calls: one low-limit keyless smoke search via DDGS.
+Live provider calls: low-limit keyless smoke searches via DDGS only; each follow-up run records its own single search where applicable.
 Provider keys: presence-only via `nole doctor`; key values never printed, logged or committed.
-Network required: yes (single low-limit smoke).
+Network required: yes (low-limit smoke searches only).
 Secrets required: presence only; values not surfaced.
 
-This document records real-client verification for installable agents/CLIs that could be exercised on the verification host. It is intentionally a separate artifact from `docs/INTEGRATION-VERIFICATION.md`, which remains an offline/CI integration evidence document.
+This document records real-client verification for installable agents/CLIs that could be exercised on the verification hosts. It is intentionally a separate artifact from `docs/INTEGRATION-VERIFICATION.md`, which remains an offline/CI integration evidence document.
 
 ## Method
 
@@ -18,15 +18,15 @@ This document records real-client verification for installable agents/CLIs that 
 2. A local env-sourcing MCP wrapper at `~/.local/bin/nole-mcp` loads `~/.config/nole/.env` and execs `nole mcp`, so client configs do not have to embed key values or shell snippets.
 3. For each available client, the MCP server entry is registered with the client's first-class CLI (e.g. `claude mcp add`, `codex mcp` via `nole setup --codex`, `kimi mcp add`) or written directly into the client's documented config file. The MCP command always points at the wrapper or at a wrapper-equivalent env-sourcing shell line.
 4. The client's own MCP management surface is then used to confirm the MCP server connects and exposes the four expected tools.
-5. A single low-limit docs search is performed once at the Nólë layer (same code path that MCP `search` uses), and the compact `routing_insight` plus result URL is recorded.
+5. For each live-search smoke recorded here, the run uses `limit=1`, `free-first`, and DDGS/keyless routing, then records only the compact `routing_insight` plus result URL.
 
-The verification is conservative. A client is only labeled `verified` when its real CLI MCP manager reported a connected Nólë MCP server and the four expected tools were observable.
+The verification is conservative. A client is only labeled `verified` when its real MCP client path reported or invoked a connected Nólë MCP server and the four expected tools were observable.
 
 ## Versions and binaries
 
 - Nólë built from this branch; `nole doctor --mcp` reports `mcp: ok`, `stdout: startup-clean (0 bytes before protocol input)`, `protocol: initialize/tools/list (… non-json stdout lines: 0)`, `tools: [budget_status extract provider_status search]`.
-- Clients available on the verification host (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run).
-- Clients absent on the verification host (not exercised): Hermes Agent, OpenClaw.
+- Clients available on the verification hosts (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run); OpenClaw 2026.5.18 (2026-05-20 follow-up run).
+- Clients absent on the verification hosts (not exercised): Hermes Agent.
 
 ## Wrapper used in all client configs
 
@@ -147,22 +147,41 @@ In addition, a single MCP stdio JSON-RPC round trip was performed against the wr
   - Result URL: `https://pkg.go.dev/net/http`
 - Secret-safety: no key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths were printed by Cursor or by Nólë during this verification. The Cursor MCP entry contains no key values; the wrapper sources `~/.config/nole/.env` at launch only.
 
-## Pending clients on this host
+### OpenClaw (2026-05-20 follow-up run)
 
-These clients were not installed on the verification host and remain `generic/unverified` per the matrix in `docs/CLIENTS/README.md`. Each requires its own host-side test before status upgrade:
+- Status: verified (OpenClaw Gateway/agent MCP path).
+- Client version: OpenClaw 2026.5.18 (`50a2481`).
+- Config surface verified from the installed CLI: `openclaw mcp list`, `openclaw mcp show`, and `openclaw mcp set`.
+- Config schema used by OpenClaw: `mcp.servers.nole`.
+- Setup command shape:
+  - `openclaw mcp set nole '{"command":"/absolute/path/to/nole-mcp","args":[]}'`
+- Resulting Nólë MCP entry shape (sanitized): `command_basename=nole-mcp`, 0 args, 0 env keys.
+- `nole doctor --mcp` passed before OpenClaw verification: startup stdout clean, `initialize` and `tools/list` ok, tools `[budget_status extract provider_status search]`.
+- A fresh Gateway-backed `openclaw agent` turn loaded the Nólë MCP server and dispatched Nólë tools by name:
+  - `nole.provider_status` succeeded.
+  - `nole.search` succeeded once with `limit=1`.
+- MCP tools observed through the OpenClaw runtime: `search`, `extract`, `provider_status`, `budget_status`.
+- Smoke search through OpenClaw (sanitized):
+  - Query: `Go net/http Client Timeout documentation`
+  - Task: `docs`
+  - Limit: `1`
+  - Provider used: `ddgs`
+  - Compact routing insight: free-first route; paid/keyed providers skipped; DDGS keyless-free succeeded.
+  - Result URL: `https://pkg.go.dev/net/http`
+- Secret-safety: no key values, bearer tokens, auth headers, raw provider payloads, private URLs or machine-specific absolute paths are recorded. The OpenClaw MCP entry contains no key values; the wrapper sources `~/.config/nole/.env` at launch only.
+- Paid spend: none.
+
+## Pending clients on these hosts
+
+These clients were not installed on the verification hosts and remain `generic/unverified` per the matrix in `docs/CLIENTS/README.md`. Each requires its own host-side test before status upgrade:
 
 - Hermes Agent: not installed.
-- OpenClaw: not installed.
 
 ## Findings and follow-ups
 
-These follow-ups are recorded for future PRs; they were intentionally not changed in this M11 evidence pass.
+Earlier M11 setup-writer follow-ups were addressed in follow-up PRs. Remaining live-client coverage:
 
-1. `nole setup --claude` writes to a Claude MCP config path that the current Claude Code release does not read for user-scope MCP servers; the official `claude mcp add` path is the working install path. The Claude Code writer should be updated to either write to the configuration file Claude Code actually reads or to print clear instructions that recommend `claude mcp add`.
-2. `nole setup --opencode` writes to `~/opencode.json` with a `{command, args}` schema; the current OpenCode release reads `~/.config/opencode/opencode.json` and uses a `{type, command:[…], enabled, environment}` schema. The OpenCode writer should be updated to match the installed schema/location or instructed to use `opencode mcp add`.
-3. Consider shipping the `~/.local/bin/nole-mcp` env-sourcing wrapper pattern as a documented (not committed) install step so non-Codex clients can reliably load `~/.config/nole/.env` without each writer embedding a shell launch line.
-4. Add a `nole setup --kimi` writer or document the `kimi mcp add` path in `docs/CLIENTS/kimi.md` so Kimi setup has the same self-serve experience as Codex.
-5. Add live verification for Hermes Agent and OpenClaw on hosts where those clients are installed.
+1. Add live verification for Hermes Agent on a host where the client is installed.
 
 ## Public-safety statement
 
@@ -171,7 +190,7 @@ This document and the underlying run do not include:
 - API key values, bearer tokens or Authorization headers;
 - raw provider responses or fetched page bodies;
 - private URLs;
-- machine-specific absolute paths (e.g. paths under `/home`, `/Users`, `/opt`) for the verifying user;
+- machine-specific absolute paths for the verifying user;
 - chat transcripts or other personal content.
 
 Placeholder paths used: `~/.config/nole/.env`, `~/.local/bin/nole-mcp`, `/absolute/path/to/nole`, `/absolute/path/to/nole-mcp`.
