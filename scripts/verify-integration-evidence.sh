@@ -86,7 +86,7 @@ All commands above ran with provider key environment variables unset and with lo
 | Cursor | shared MCP JSON setup path covered by repo tests; real client not launched in this offline run | repo-tested; live evidence in \`docs/CLIENTS/LIVE-VERIFICATION.md\` |
 | Kimi | \`~/.kimi/mcp.json\` setup writer/config merge covered by repo tests; real client not launched in this offline run | repo-tested; live evidence in \`docs/CLIENTS/LIVE-VERIFICATION.md\` |
 | Hermes Agent | generic MCP template only; no local Hermes config/tool visibility test recorded | generic/unverified |
-| OpenClaw | real client not launched in this offline run; live evidence is recorded separately in \`docs/CLIENTS/LIVE-VERIFICATION.md\` | verified via live OpenClaw follow-up |
+| OpenClaw | real client not launched in this offline run; live evidence is recorded separately in \`docs/CLIENTS/LIVE-VERIFICATION.md\` | live evidence in \`docs/CLIENTS/LIVE-VERIFICATION.md\` |
 | generic MCP clients | generic stdio command template only | generic/unverified |
 
 ## Limitations
