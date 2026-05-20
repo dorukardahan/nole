@@ -30,8 +30,10 @@ grep -Fq "Tools observed: search, extract, provider_status, budget_status" "$tar
   || fail "must record required MCP tools"
 grep -Fq "Repo-tested setup writers: Claude Code, Codex CLI, OpenCode, Cursor, Kimi" "$target" \
   || fail "must distinguish repo-tested setup writers"
-grep -Fq "Generic/unverified clients in this offline artifact: Hermes Agent, generic MCP clients" "$target" \
-  || fail "must keep unavailable clients generic/unverified"
+grep -Fq "Generic/unverified clients in this offline artifact: generic MCP clients" "$target" \
+  || fail "must keep generic MCP clients generic/unverified"
+grep -Fq '| Hermes Agent | real client not launched in this offline run; live evidence is recorded separately in `docs/CLIENTS/LIVE-VERIFICATION.md` | live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md` |' "$target" \
+  || fail "must point Hermes Agent offline row to live verification evidence"
 grep -Fq '| OpenClaw | real client not launched in this offline run; live evidence is recorded separately in `docs/CLIENTS/LIVE-VERIFICATION.md` | live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md` |' "$target" \
   || fail "must point OpenClaw offline row to live verification evidence"
 grep -Fq "This evidence does not verify real-client UI/tool visibility" "$target" \
