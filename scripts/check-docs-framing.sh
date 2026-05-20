@@ -17,6 +17,10 @@ required=(
   docs/INTEGRATION-VERIFICATION.md
   docs/NEXT-STEPS.md
   docs/RELEASE-GATES.md
+  docs/PUBLIC-RELEASE-CHECKLIST.md
+  docs/RELEASE-NOTES-v0.1-DRAFT.md
+  docs/PACKAGING.md
+  docs/COST-QUOTA-CACHE-QUALITY.md
   docs/CLIENTS/claude-code.md
   docs/CLIENTS/codex.md
   docs/CLIENTS/opencode.md
@@ -78,6 +82,22 @@ grep -Fq "nole search" docs/RELEASE-GATES.md \
   || fail "release gates must include search smoke expectations"
 grep -Fq "nole extract" docs/RELEASE-GATES.md \
   || fail "release gates must include extract smoke expectations"
+grep -Fq "docs/PUBLIC-RELEASE-CHECKLIST.md" docs/RELEASE-GATES.md \
+  || fail "release gates must link the public release checklist"
+grep -Fq "docs/PACKAGING.md" README.md \
+  || fail "README must link packaging prep docs"
+grep -Fq "Public repository visibility" docs/PUBLIC-RELEASE-CHECKLIST.md \
+  || fail "public release checklist must gate repository visibility"
+grep -Fq "GitHub Release publication approved" docs/PUBLIC-RELEASE-CHECKLIST.md \
+  || fail "public release checklist must gate GitHub Release publication"
+grep -Fq "Release asset upload approved" docs/PUBLIC-RELEASE-CHECKLIST.md \
+  || fail "public release checklist must gate release assets"
+grep -Fq "This is a draft" docs/RELEASE-NOTES-v0.1-DRAFT.md \
+  || fail "release notes draft must state it is a draft"
+grep -Fq "does not create tags" docs/PACKAGING.md \
+  || fail "packaging docs must preserve non-publishing scope"
+grep -Fq "local accounting only" docs/COST-QUOTA-CACHE-QUALITY.md \
+  || fail "cost/quota/cache audit must avoid provider-dashboard claims"
 
 grep -Fq "free-first" docs/PRODUCT.md \
   || fail "product docs must include free-first policy"

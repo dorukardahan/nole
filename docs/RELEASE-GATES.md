@@ -4,6 +4,17 @@ Nólë is not publishing a public release from this repository yet. Public relea
 
 This document defines the v0.1 private-prep gates used by CI and local maintainers.
 
+For future public-release decisions, also use:
+
+- `docs/PUBLIC-RELEASE-CHECKLIST.md` for approval gates and private-to-public checks;
+- `docs/RELEASE-NOTES-v0.1-DRAFT.md` for the draft release announcement;
+- `docs/PACKAGING.md` for non-publishing artifact dry-runs and optional package channels;
+- `docs/COST-QUOTA-CACHE-QUALITY.md` for the cost/quota/cache/output-quality audit.
+
+Those documents are preparation artifacts only. They do not publish releases,
+upload assets, publish packages, deploy endpoints, run live benchmarks, use
+provider keys or change repository visibility.
+
 ## CI workflow
 
 `.github/workflows/private-prep.yml` runs on pull requests and pushes to `main` with read-only repository permissions.
@@ -76,3 +87,6 @@ nole extract "https://example.com" --json
 - No secrets, tokens, auth headers, `.env` values, raw provider payloads, personal paths, or private URLs should appear in docs, fixtures, workflow logs, or reports.
 - CI must not require real provider credentials.
 - Build/checksum checks are private-prep validation only; they do not publish releases.
+- Public release, tag creation, release asset upload, package publication,
+  deployment and repository visibility changes require explicit maintainer
+  approval separate from these gates.
