@@ -216,6 +216,17 @@ Experimental:
 - Mark client integrations unverified until tested against the real client.
 - Do not change provider route ordering without sanitized benchmark/evidence.
 
+## Release and packaging prep
+
+Nólë is private/internal v0.1 ready, but public release is a separate approval-gated step. See:
+
+- `docs/PUBLIC-RELEASE-CHECKLIST.md` for the public-release decision checklist.
+- `docs/RELEASE-NOTES-v0.1-DRAFT.md` for draft release notes.
+- `docs/PACKAGING.md` for non-publishing build/checksum dry-runs and future package channels.
+- `docs/COST-QUOTA-CACHE-QUALITY.md` for the cost/quota/cache/output-quality audit.
+
+These documents do not publish a release, upload assets, publish packages, deploy endpoints or change repository visibility by themselves.
+
 ## Roadmap
 
 Near-term v0.1 private-prep:

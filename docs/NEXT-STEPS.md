@@ -24,17 +24,20 @@ Completed technical MVP hardening:
 - provider error redaction;
 - core checks passing on main.
 
-Remaining work is product/release-policy work, not a private-prep blocker:
-controlled keyed-provider live-routing benchmarks, public-release or
-packaging preparation, optional additional named-client verification, and
-future cost/quota/cache/output-quality refinements.
+Remaining work is product/release-policy work, not a private-prep blocker.
+Public-release checklist docs, draft release notes, non-publishing packaging
+prep and the cost/quota/cache/output-quality audit are now documented. The
+remaining execution steps are approval-gated: controlled live benchmark runs,
+release tags, GitHub Release publication, release assets, package publication,
+deployments and repo visibility changes.
 
 ## Roadmap order
 
 ### 1. Product framing and docs
 
-Status: implemented for private-prep; keep refining only when public-release
-or packaging scope is explicitly selected.
+Status: implemented for private-prep and public-release preparation docs; keep
+refining only when actual publication or package-channel scope is explicitly
+selected.
 
 Goals:
 
@@ -111,7 +114,7 @@ Goals:
 
 ### 7. Cache and quota ledger
 
-Status: implemented for in-process normalized search/extract TTL cache, cache hit/miss trace/insight fields, file-backed local quota/cost ledger, fail-closed corrupt-ledger recovery and persistence tests.
+Status: implemented for in-process normalized search/extract TTL cache, cache hit/miss trace/insight fields, file-backed local quota/cost ledger, fail-closed corrupt-ledger recovery and persistence tests. The approval-free follow-up audit is documented in `docs/COST-QUOTA-CACHE-QUALITY.md`; further changes should be driven by controlled live benchmark evidence or real usage reports.
 
 Goals:
 
@@ -156,7 +159,7 @@ M11 follow-ups for the setup writers (most fixed in the follow-up PR after M11 â
 
 ### 10. v0.1 private-prep polish
 
-Status: implemented for release-gate alignment, integration-evidence gate documentation, public-safe local search/extract smoke expectations, and the final private-prep readiness report. Public release/repo visibility changes remain separate approval-gated work.
+Status: implemented for release-gate alignment, integration-evidence gate documentation, public-safe local search/extract smoke expectations, final private-prep readiness reporting, public-release checklist docs, draft v0.1 notes and non-publishing packaging prep. Public release/repo visibility changes remain separate approval-gated work.
 
 Goals:
 
