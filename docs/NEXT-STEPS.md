@@ -1,8 +1,14 @@
-# Next steps toward v0.1 private-prep
+# Next steps after v0.1 private-prep
 
 Nólë is now positioned as a free, local web search router for AI agents and coding CLI tools. The goal is not to build a hosted search SaaS or replace an agent's research workflow. The goal is to improve the internet/search/extract layer used by Claude Code, Codex, OpenClaw, Hermes, OpenCode and similar tools.
 
 ## Current baseline
+
+v0.1 private-prep is ready on `main`: priority named-client live
+verification is recorded, private-prep gates are green, and the final
+readiness report is available as the local sanitized artifact produced by
+the maintainer run. Public release, release assets, deployments and repo
+visibility changes still require explicit maintainer approval.
 
 Completed technical MVP hardening:
 
@@ -16,15 +22,19 @@ Completed technical MVP hardening:
 - compact `routing_insight` output for search/extract/classify/route-plan and CLI/MCP error envelopes;
 - config merge/backup safety for supported setup writers;
 - provider error redaction;
-- core checks passing on main after PR #1.
+- core checks passing on main after PR #17.
 
-Remaining product gap: v0.1 private-prep needs clearer docs, CI gates, agent install experience and truthfully labeled client support.
+Remaining work is product/release-policy work, not a private-prep blocker:
+controlled keyed-provider live-routing benchmarks, public-release or
+packaging preparation, optional additional named-client verification, and
+future cost/quota/cache/output-quality refinements.
 
 ## Roadmap order
 
 ### 1. Product framing and docs
 
-Status: in progress.
+Status: implemented for private-prep; keep refining only when public-release
+or packaging scope is explicitly selected.
 
 Goals:
 
@@ -113,7 +123,7 @@ Goals:
 
 ### 8. Agent install experience
 
-Status: implemented for agent-readable install docs, provider cost/overage checklist, client support matrix, status-label rules and exact local/VPS/PATH/env/MCP troubleshooting paths. Real-client verification remains Milestone 9.
+Status: implemented for agent-readable install docs, provider cost/overage checklist, client support matrix, status-label rules and exact local/VPS/PATH/env/MCP troubleshooting paths. Priority real-client verification is recorded in Milestone 9.
 
 Goals:
 
@@ -146,7 +156,7 @@ M11 follow-ups for the setup writers (most fixed in the follow-up PR after M11 �
 
 ### 10. v0.1 private-prep polish
 
-Status: implemented for release-gate alignment, integration-evidence gate documentation, and public-safe local search/extract smoke expectations. Final private-prep report is produced after this milestone merges and post-merge verification passes.
+Status: implemented for release-gate alignment, integration-evidence gate documentation, public-safe local search/extract smoke expectations, and the final private-prep readiness report. Public release/repo visibility changes remain separate approval-gated work.
 
 Goals:
 
