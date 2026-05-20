@@ -32,6 +32,8 @@ grep -Fq "Repo-tested setup writers: Claude Code, Codex CLI, OpenCode, Cursor, K
   || fail "must distinguish repo-tested setup writers"
 grep -Fq "Generic/unverified clients in this offline artifact: Hermes Agent, generic MCP clients" "$target" \
   || fail "must keep unavailable clients generic/unverified"
+grep -Fq '| OpenClaw | real client not launched in this offline run; live evidence is recorded separately in `docs/CLIENTS/LIVE-VERIFICATION.md` | live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md` |' "$target" \
+  || fail "must point OpenClaw offline row to live verification evidence"
 grep -Fq "This evidence does not verify real-client UI/tool visibility" "$target" \
   || fail "must state real-client visibility limitation"
 grep -Fq "This evidence does not measure live web result quality" "$target" \
