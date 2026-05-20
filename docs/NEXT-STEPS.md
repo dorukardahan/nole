@@ -22,7 +22,7 @@ Completed technical MVP hardening:
 - compact `routing_insight` output for search/extract/classify/route-plan and CLI/MCP error envelopes;
 - config merge/backup safety for supported setup writers;
 - provider error redaction;
-- core checks passing on main after PR #17.
+- core checks passing on main.
 
 Remaining work is product/release-policy work, not a private-prep blocker:
 controlled keyed-provider live-routing benchmarks, public-release or
@@ -99,7 +99,7 @@ Goals:
 
 ### 6. Benchmark and route evidence
 
-Status: implemented for deterministic fixture metadata, public-safe Markdown summaries, `docs/ROUTE-EVIDENCE.md`, and docs/claim checks. Optional live summaries remain explicit low-limit smoke artifacts, not CI defaults.
+Status: implemented for deterministic fixture metadata, public-safe Markdown summaries, `docs/ROUTE-EVIDENCE.md`, and docs/claim checks. The controlled live benchmark plan and summary template are documented in `docs/LIVE-BENCHMARK-PLAN.md` and `docs/LIVE-BENCHMARK-SUMMARY-TEMPLATE.md`; execution remains explicit-approval-only and is not a CI default.
 
 Goals:
 

@@ -16,27 +16,42 @@ func TestBenchmarkClaimsGuardRejectsUnsupportedClaims(t *testing.T) {
 		"Brave is the best provider for benchmark routing.",
 		"Brave outperforms Tavily for benchmark routing.",
 		"Brave has guaranteed benchmark routing results.",
+		"Brave is the global top choice for benchmark routing.",
+		"Brave is the lowest-latency option for benchmark routing.",
+		"Brave is the lowest-cost option for benchmark routing.",
+		"Brave is categorically preferable for benchmark routing.",
+		"Brave always works for benchmark routing.",
+		"DDGS is the benchmark-primary docs provider.",
+		"DDGS is the primary docs benchmark provider.",
 	}
-	for _, claim := range cases {
-		t.Run(claim, func(t *testing.T) {
-			root := copyBenchmarkClaimsGuardFixture(t, repoRoot)
-			f, err := os.OpenFile(filepath.Join(root, "docs", "ROUTE-EVIDENCE.md"), os.O_APPEND|os.O_WRONLY, 0)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := f.WriteString("\n" + claim + "\n"); err != nil {
-				_ = f.Close()
-				t.Fatal(err)
-			}
-			if err := f.Close(); err != nil {
-				t.Fatal(err)
-			}
-			cmd := exec.Command("bash", "scripts/check-benchmark-claims.sh")
-			cmd.Dir = root
-			if err := cmd.Run(); err == nil {
-				t.Fatalf("claims guard accepted unsupported claim %q", claim)
-			}
-		})
+	targets := []string{
+		filepath.Join("docs", "BENCHMARKS.md"),
+		filepath.Join("docs", "ROUTE-EVIDENCE.md"),
+		filepath.Join("docs", "LIVE-BENCHMARK-PLAN.md"),
+		filepath.Join("docs", "LIVE-BENCHMARK-SUMMARY-TEMPLATE.md"),
+	}
+	for _, target := range targets {
+		for _, claim := range cases {
+			t.Run(target+"/"+claim, func(t *testing.T) {
+				root := copyBenchmarkClaimsGuardFixture(t, repoRoot)
+				f, err := os.OpenFile(filepath.Join(root, target), os.O_APPEND|os.O_WRONLY, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := f.WriteString("\n" + claim + "\n"); err != nil {
+					_ = f.Close()
+					t.Fatal(err)
+				}
+				if err := f.Close(); err != nil {
+					t.Fatal(err)
+				}
+				cmd := exec.Command("bash", "scripts/check-benchmark-claims.sh")
+				cmd.Dir = root
+				if err := cmd.Run(); err == nil {
+					t.Fatalf("claims guard accepted unsupported claim %q in %s", claim, target)
+				}
+			})
+		}
 	}
 }
 
@@ -83,6 +98,8 @@ Deterministic offline harness
 The deterministic offline harness does not measure live web quality.
 
 Route matrix changes require evidence.
+
+See docs/LIVE-BENCHMARK-PLAN.md and docs/LIVE-BENCHMARK-SUMMARY-TEMPLATE.md.
 `)
 	if err := os.WriteFile(filepath.Join(root, "docs", "BENCHMARKS.md"), benchDoc, 0o644); err != nil {
 		t.Fatal(err)
@@ -98,6 +115,34 @@ Private data: none included
 No raw provider payloads exist in offline mode.
 `)
 	if err := os.WriteFile(filepath.Join(root, "docs", "ROUTE-EVIDENCE.md"), evidenceDoc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	livePlanDoc := []byte(`# Controlled live benchmark plan
+
+Live calls require explicit maintainer approval.
+
+## Provider-key inventory rules
+
+Presence-only; never values.
+
+## Stop conditions
+
+Stop on quota, cost, secret-like output or raw payload leakage risk.
+
+Do not claim one provider is always the top choice or lowest-latency option.
+`)
+	if err := os.WriteFile(filepath.Join(root, "docs", "LIVE-BENCHMARK-PLAN.md"), livePlanDoc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	liveTemplateDoc := []byte(`# Live benchmark summary template
+
+## Redaction checklist
+
+- [ ] No raw provider payloads.
+
+Do not claim DDGS is a primary docs benchmark provider.
+`)
+	if err := os.WriteFile(filepath.Join(root, "docs", "LIVE-BENCHMARK-SUMMARY-TEMPLATE.md"), liveTemplateDoc, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return root

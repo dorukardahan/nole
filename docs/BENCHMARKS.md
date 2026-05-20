@@ -33,6 +33,11 @@ The JSON report includes an `evidence` object with methodology, data source, rep
 
 ### Optional live benchmark summaries
 
+Before running any live benchmark, follow `docs/LIVE-BENCHMARK-PLAN.md`
+and use `docs/LIVE-BENCHMARK-SUMMARY-TEMPLATE.md` for the public-safe
+summary. Those docs are planning/template artifacts only; they do not run
+live provider calls, use provider keys or create evidence by themselves.
+
 Command:
 
 ```bash
@@ -51,6 +56,9 @@ Purpose:
 Rules:
 
 - Live runs are explicit only.
+- Live/keyed provider calls require explicit maintainer approval before execution.
+- Keep each run low-limit and record the approved maximum case count before it starts.
+- Do not run live benchmarks in CI.
 - Do not require secrets in CI.
 - Do not commit raw provider payloads, headers, private queries, private URLs or credentials.
 - Sanitize before sharing.
