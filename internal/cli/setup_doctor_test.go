@@ -139,6 +139,9 @@ func TestWriteOpenCodeConfigPreservesUnknownMCPFieldsAndPermissions(t *testing.T
 	if err := os.WriteFile(path, []byte(existing), 0640); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(path, 0640); err != nil {
+		t.Fatal(err)
+	}
 	if err := writeOpenCodeConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
 		t.Fatalf("write opencode config: %v", err)
 	}
