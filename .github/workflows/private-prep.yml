@@ -32,49 +32,8 @@ jobs:
       - name: Go version
         run: go version
 
-      - name: Product framing docs guard
-        run: ./scripts/check-docs-framing.sh
-
-      - name: Benchmark evidence claims guard
-        run: ./scripts/check-benchmark-claims.sh
-
-      - name: Integration evidence guard
-        run: ./scripts/check-integration-evidence.sh
-
-      - name: Go tests
-        run: go test ./...
-
-      - name: Go vet
-        run: go vet ./...
-
-      - name: Doctor
-        run: go run . doctor
-
-      - name: MCP doctor smoke
-        run: go run . doctor --mcp
-
-      - name: Deterministic benchmark JSON
-        run: go run . bench --json > /tmp/nole-bench.json
-
-      - name: Deterministic benchmark evidence summary
-        run: go run . bench --evidence-md > /tmp/nole-route-evidence.md
-
-      - name: Provider status JSON
-        run: go run . providers --json > /tmp/nole-providers.json
-
-      - name: Generate integration evidence summary
-        run: |
-          ./scripts/verify-integration-evidence.sh > /tmp/nole-integration-verification.md
-          ./scripts/check-integration-evidence.sh /tmp/nole-integration-verification.md
-
-      - name: Whitespace check
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git diff --check "origin/${{ github.base_ref }}...HEAD"
-          else
-            git show --check --format=fuller --no-renames HEAD >/dev/null
-          fi
+      - name: Unified audit gate
+        run: bash scripts/audit.sh --ci
 
   public-safety:
     name: public-safety secret scan
