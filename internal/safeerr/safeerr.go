@@ -11,7 +11,7 @@ import (
 var sensitivePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)authorization\s*:\s*bearer\s+[^\s,;]+`),
 	regexp.MustCompile(`(?i)bearer\s+[^\s,;]+`),
-	regexp.MustCompile(`(?i)(api[_-]?key|token|secret|password)\s*[=:]\s*[^\s,;]+`),
+	regexp.MustCompile(`(?i)["']?(api[_-]?key|token|secret|password)["']?\s*[=:]\s*["']?[^"'\s,;}]+["']?`),
 	regexp.MustCompile(`https?://[^\s,)]+`),
 }
 
