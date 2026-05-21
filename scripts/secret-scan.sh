@@ -24,7 +24,7 @@ ASSIGNMENT_RE = re.compile(
     r"(?i)(?:^|\b|export\s+)([A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|AUTHORIZATION|BEARER)[A-Z0-9_]*)\s*[:=]\s*([\"']?)([^\"'\s#`]+)\2"
 )
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----")
-AUTH_HEADER_RE = re.compile(r"(?i)" + "Author" + r"ization:\s*(?:" + "Bearer" + r"|token)\s+([^\s`]+)")
+AUTH_HEADER_RE = re.compile(r"(?i)" + "Author" + r"ization:\s*(?:" + "Bearer" + r"|token)\s+([^\s`\"',}]+)")
 PRIVATE_PATH_RE = re.compile(r"/(?:home|Users|opt)/(?!USER\b|user\b|example\b|path\b|absolute\b)[A-Za-z0-9._-]+")
 RAW_ENV_RE = re.compile(r"(?i)^\s*[A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD)\s*=")
 
