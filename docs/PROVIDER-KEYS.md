@@ -2,16 +2,18 @@
 
 Nólë is BYOK-first: you use your own provider accounts and keys. It should never print key values, auth headers or raw provider payloads. It should only report whether a key is present.
 
-Default policy is `free-first`. That means no hidden paid usage by default: a provider key by itself does not make a premium-capable provider eligible for live calls. Premium-capable providers can be used when the user explicitly chooses a policy that permits them, local cost controls are explicit, and routing evidence supports the choice.
+Default policy is `free-first` and each supported BYOK provider is classified as `free-tier-BYOK` when its key is set. Nólë seeds a hardcoded monthly free quota per provider (currently 1000 calls/month each), tracks it in the local ledger and refills it at the start of each UTC calendar month. Premium-capable behavior is opt-in via `NOLE_<PROVIDER>_PAID=1`; in that mode the cost-capped or quality-first policies decide eligibility for paid calls.
 
 ## Provider cost/overage checklist
 
-| Provider | Key variable(s) | Current role | Cost/overage note |
-| --- | --- | --- | --- |
-| Brave Search API | `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` | Search for broad/docs/news/pricing routes when policy allows | Review plan limits and disable overage or set request caps where the dashboard supports it. |
-| Tavily | `TAVILY_API_KEY` | Search/extract for semantic, people/company, fact-check and pricing routes when evidence and policy allow | Can be premium-capable depending on account plan; do not enable only because a key exists. |
-| Firecrawl | `FIRECRAWL_API_KEY` | Search/extract for docs/code/social scenarios when evidence and policy allow | Can consume quota quickly during extraction; keep live tests low-limit. |
-| DDGS | none | Keyless fallback search | Keyless does not mean guaranteed availability, SLA or unlimited use. |
+| Provider | Key variable(s) | Free-tier default | Paid opt-in | Cost/overage note |
+| --- | --- | --- | --- | --- |
+| Brave Search API | `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` | 1000 calls/month, monthly reset | `NOLE_BRAVE_PAID=1` | Brave's free tier runs on a subscription with credit card on file. Nólë caps usage at the local monthly quota, but any overage outside Nólë (concurrent process, ledger desync) will bill the CC. `nole doctor` surfaces this when the key is set. |
+| Tavily | `TAVILY_API_KEY` | 1000 calls/month, monthly reset | `NOLE_TAVILY_PAID=1` | Free Researcher tier; no card required. Paid plans charge per credit; review the dashboard before flipping the opt-in. |
+| Firecrawl | `FIRECRAWL_API_KEY` | 1000 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Free quota refill semantics shifted in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume use. |
+| DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
+
+The free-tier numbers above are conservative anchors verified 2026-05. They are encoded in `internal/cli/app.go` as `byokFreeDefaults`; bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
 
 Use `nole doctor`, `nole providers --json` and MCP `provider_status`/`budget_status` to inspect status safely. These surfaces should report presence/status and local policy decisions, never key values.
 
@@ -36,7 +38,15 @@ export FIRECRAWL_API_KEY="..."
 
 DDGS is keyless and does not need a key.
 
-Optional cost policy controls:
+Per-provider paid opt-in (default: free-tier-BYOK). Use only when the user has a paid plan and wants Nólë to treat the provider as premium-capable so cost-capped or quality-first policies apply:
+
+```bash
+export NOLE_BRAVE_PAID="1"
+export NOLE_TAVILY_PAID="1"
+export NOLE_FIRECRAWL_PAID="1"
+```
+
+Optional cost policy controls (only relevant once a provider is in paid mode):
 
 ```bash
 # Default if unset: free-first.
@@ -130,51 +140,55 @@ The wrapper keeps provider keys out of each per-client config file and ensures `
 
 Use for: broad search, docs, news/freshness, pricing and fallback routes.
 
+Default classification: `free-tier-BYOK`, 1000 calls/month, refilled at the start of each UTC month.
+
 Setup:
 
 1. Create a Brave Search API key in the Brave dashboard.
-2. Choose a plan appropriate for your expected usage.
-3. If the dashboard supports request caps or overage controls, set them before live use.
-4. Export `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` locally.
-5. Run `nole doctor` and confirm presence only.
+2. Choose the free subscription plan unless you already need a paid tier.
+3. Export `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` locally.
+4. Run `nole doctor` and confirm presence only.
 
 Notes:
 
-- Do not assume unlimited free usage.
+- Brave's free tier rides a subscription model with credit card on file. Nólë's monthly ledger caps usage at the local free quota, but any usage outside Nólë (concurrent process, ledger desync, dashboard test calls) will bill the CC. `nole doctor` surfaces a `brave_note:` line whenever the key is set.
+- Set `NOLE_BRAVE_PAID=1` only when you intentionally want Nólë to treat Brave as premium-capable (e.g. you are on a paid plan and want cost-capped routing).
 - Route matrix changes involving Brave should be evidence-backed.
 
 ## Tavily
 
 Use for: search, extract, semantic/people/fact-check/pricing tasks depending on evidence and policy.
 
+Default classification: `free-tier-BYOK`, 1000 calls/month (Researcher free tier), refilled at the start of each UTC month. No credit card on file.
+
 Setup:
 
 1. Create a Tavily API key in the provider dashboard.
-2. Review free-tier and paid usage limits.
-3. Disable overage or set limits if the account allows it.
-4. Export `TAVILY_API_KEY` locally.
-5. Run `nole doctor`.
+2. Export `TAVILY_API_KEY` locally.
+3. Run `nole doctor`.
 
 Notes:
 
-- Tavily can be premium-capable depending on account plan.
-- Nólë should not prefer it merely because a key exists.
+- Set `NOLE_TAVILY_PAID=1` only when on a paid Tavily plan and you want Nólë to treat the provider as premium-capable.
+- Tavily's "advanced" search and extract endpoints consume more credits per call than basic search; the local counter treats every call as one unit.
 
 ## Firecrawl
 
 Use for: search and extraction, especially code/social/docs scenarios when evidence supports it.
 
+Default classification: `free-tier-BYOK`, 1000 calls/month, refilled at the start of each UTC month. No credit card on file.
+
 Setup:
 
 1. Create a Firecrawl API key.
-2. Review plan limits, rate limits and overage settings.
-3. Export `FIRECRAWL_API_KEY` locally.
-4. Run `nole doctor`.
+2. Export `FIRECRAWL_API_KEY` locally.
+3. Run `nole doctor`.
 
 Notes:
 
-- Firecrawl can be premium-capable depending on account plan.
-- Live extraction may consume quota; keep tests low-limit.
+- Firecrawl's free quota semantics changed in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume use, and bump the hardcoded default if the provider raises it.
+- Set `NOLE_FIRECRAWL_PAID=1` to treat Firecrawl as premium-capable when on a paid plan.
+- Live extraction may consume the local counter quickly; keep dry-run experiments small.
 
 ## DDGS
 
@@ -220,15 +234,20 @@ Nólë exposes cost policy/status in `nole providers --json`, `nole doctor`, MCP
 Cost classes:
 
 - `keyless-free`: no provider key required; DDGS search fallback is the current example.
-- `free-tier-BYOK`: a user-keyed provider with known local free quota remaining.
-- `premium-capable`: a keyed provider that may incur paid usage depending on the user's account/plan.
+- `free-tier-BYOK`: a user-keyed provider with a known local free quota tracked in the ledger. Default for keyed Brave / Tavily / Firecrawl.
+- `premium-capable`: a keyed provider that may incur paid usage depending on the user's account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost`: cost cannot be safely classified; fail closed except under explicit `quality-first`.
 - `disabled-no-key`: provider exists but no key is configured.
 
 Policy modes:
 
-- `free-first`: default; allows keyless/free-tier routes and blocks premium-capable routes. This is the no-hidden-paid-spend mode.
+- `free-first`: default; allows keyless and free-tier-BYOK routes and blocks premium-capable routes. This is the no-hidden-paid-spend mode.
 - `cost-capped`: allows premium-capable providers only if `NOLE_HARD_CAP_CENTS`, persisted local ledger spend when configured and explicit per-provider estimated cost env vars keep the call inside the local cap. Without an explicit local estimate, it fails closed with `unknown_cost_blocked`.
 - `quality-first`: explicitly allows premium-capable providers when quality/evidence justifies it and the user accepts provider-account cost risk.
+
+Quota refresh:
+
+- Free-tier-BYOK entries carry a `refresh_window` and `period_start` in the ledger. With `refresh_window=monthly`, `FreeRemaining` is automatically refilled to the hardcoded `FreeQuota` (1000) at the start of each UTC calendar month, both on ledger reload and on the next `Record` call.
+- The ledger uses schema version 2. v1 ledgers from prior nole versions are migrated forward on first load. Cost-class transitions (e.g. v1 BYOK keys that were premium-capable becoming free-tier-BYOK) use the seed's fresh `FreeRemaining` instead of the stale on-disk counter.
 
 Important: this is a conservative local policy model, not a live provider billing oracle. Check provider dashboards for real balances, plan limits and overage settings before live use.
