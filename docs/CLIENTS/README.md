@@ -82,7 +82,7 @@ $EDITOR ~/.config/nole/.env
 chmod 600 ~/.config/nole/.env
 ```
 
-The file may contain provider variable names such as `BRAVE_API_KEY`, `TAVILY_API_KEY`, `JINA_API_KEY` and `FIRECRAWL_API_KEY` when the user owns those accounts. Do not paste real values into docs, PRs, issues or chat.
+The file may contain provider variable names such as `BRAVE_API_KEY`, `TAVILY_API_KEY` and `FIRECRAWL_API_KEY` when the user owns those accounts. Do not paste real values into docs, PRs, issues or chat.
 
 Default cost policy is `free-first`. Explicit `cost-capped` or `quality-first` settings can allow premium-capable providers, so client docs must not make absolute “no paid requests” claims.
 

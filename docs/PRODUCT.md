@@ -110,7 +110,7 @@ The planner should start LLM-free and deterministic: keyword/regex/phrase signal
 When Nólë is used by an agent, user-facing output should include at most one compact insight line when useful, for example:
 
 - `Nólë: search docs via ddgs (1/1 attempts, 3 results)`
-- `Nólë: extract page via jina (1/1 attempts, content extracted)`
+- `Nólë: extract page via firecrawl (1/1 attempts, content extracted)`
 - `Nólë: route-plan planned docs via brave, pricing via tavily (2 intents, 4 provider slots)`
 
 Detailed `route_trace` should remain in JSON/debug surfaces, not dumped into normal chat unless the user is debugging. `routing_insight` is the compact user-facing field; `--insight off` suppresses it and `--insight verbose` may print route trace lines for troubleshooting. Insights must remain deterministic and sanitized: no API keys, auth headers, raw provider payloads or private URLs.

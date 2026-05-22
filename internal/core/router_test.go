@@ -59,11 +59,9 @@ func TestRouterExtractPrefersTavilyThenFirecrawl(t *testing.T) {
 	registry := NewRegistry()
 	_ = registry.Register(fakeProvider{name: "tavily"})
 	_ = registry.Register(fakeProvider{name: "firecrawl"})
-	_ = registry.Register(fakeProvider{name: "jina"})
 	ledger := NewMemoryQuotaLedger()
 	ledger.Set(QuotaEntry{Provider: "tavily", FreeRemaining: 1})
 	ledger.Set(QuotaEntry{Provider: "firecrawl", FreeRemaining: 1})
-	ledger.Set(QuotaEntry{Provider: "jina", FreeRemaining: 1})
 	router := NewRouter(registry, ledger, DefaultRouteMatrix())
 	provider, _, err := router.Select(TaskExtract, CapabilityExtract)
 	if err != nil {

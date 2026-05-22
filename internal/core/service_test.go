@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +34,18 @@ func (p emptyExtractProvider) Extract(ctx context.Context, req ExtractRequest) (
 
 func (p whitespaceExtractProvider) Extract(ctx context.Context, req ExtractRequest) (ExtractResponse, error) {
 	return ExtractResponse{URL: req.URL, Provider: p.name, Content: " \n\t "}, nil
+}
+
+// recordFailingLedger wraps a MemoryQuotaLedger but forces Record() to fail.
+// Simulates the TOCTOU race where another process consumed the last free
+// slot between Decide() and Record(), or the ledger went unavailable
+// mid-call. Used by the round-7 regression tests.
+type recordFailingLedger struct {
+	*MemoryQuotaLedger
+}
+
+func (r *recordFailingLedger) Record(_ string) error {
+	return errors.New("simulated record failure")
 }
 
 func TestServiceSearchCallsSelectedProvider(t *testing.T) {
@@ -128,7 +141,11 @@ func TestServiceSearchTraceExplainsPremiumBlockedByFreeFirst(t *testing.T) {
 	}
 }
 
-func TestServiceRecordsPremiumAttemptBeforeProviderError(t *testing.T) {
+func TestServiceDoesNotRecordPremiumSpendOnProviderError(t *testing.T) {
+	// Regression for codex P1 (PR #21 round 5): the prior shape recorded
+	// quota before the provider call, which burned premium SpentCents on
+	// transient outages and free-tier FreeRemaining on bad keys / 5xx /
+	// empty responses. Quota should only debit on a successful response.
 	registry := NewRegistry()
 	_ = registry.Register(failingProvider{fakeProvider{name: "tavily"}})
 	ledger := NewMemoryQuotaLedgerWithPolicy(QuotaPolicy{Policy: CostPolicyCostCapped, HardCapCents: 5})
@@ -140,8 +157,116 @@ func TestServiceRecordsPremiumAttemptBeforeProviderError(t *testing.T) {
 		t.Fatal("expected provider error")
 	}
 	budget := ledger.BudgetStatus()
-	if budget.SpentCents != 2 {
-		t.Fatalf("premium attempt should be recorded before provider call, spent=%d", budget.SpentCents)
+	if budget.SpentCents != 0 {
+		t.Fatalf("provider error must not record premium spend, spent=%d", budget.SpentCents)
+	}
+}
+
+func TestServiceDoesNotDecrementFreeTierOnProviderError(t *testing.T) {
+	// Same guard for the free-tier-BYOK class: a transient failure should
+	// leave FreeRemaining intact so users don't burn their monthly quota
+	// on outages.
+	registry := NewRegistry()
+	_ = registry.Register(failingProvider{fakeProvider{name: "tavily"}})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "tavily", CostClass: CostClassFreeTierBYOK, FreeRemaining: 5, FreeQuota: 5, RefreshWindow: RefreshMonthly, PeriodStart: CurrentMonthISO()})
+	service := NewService(registry, ledger, RouteMatrix{TaskGeneral: {"tavily"}})
+
+	_, err := service.Search(context.Background(), SearchRequest{Query: "mcp", Task: TaskGeneral})
+	if err == nil {
+		t.Fatal("expected provider error")
+	}
+	got, _ := ledger.Get("tavily")
+	if got.FreeRemaining != 5 {
+		t.Fatalf("free-tier provider error must not debit FreeRemaining, got %d", got.FreeRemaining)
+	}
+}
+
+func TestServiceReturnsResponseEvenWhenRecordFails(t *testing.T) {
+	// Regression for codex P1 (PR #21 round 7): if the upstream provider call
+	// succeeded but Record() then fails (TOCTOU race, ledger unavailable,
+	// persist error), the user must still receive the response. Discarding
+	// it would waste the upstream call AND deny the user value.
+	registry := NewRegistry()
+	_ = registry.Register(fakeProvider{name: "tavily"})
+	inner := NewMemoryQuotaLedger()
+	inner.Set(QuotaEntry{
+		Provider:      "tavily",
+		CostClass:     CostClassFreeTierBYOK,
+		FreeRemaining: 1,
+		FreeQuota:     1,
+		RefreshWindow: RefreshMonthly,
+		PeriodStart:   CurrentMonthISO(),
+	})
+	ledger := &recordFailingLedger{MemoryQuotaLedger: inner}
+	service := NewService(registry, ledger, RouteMatrix{TaskGeneral: {"tavily"}})
+
+	resp, err := service.Search(context.Background(), SearchRequest{Query: "mcp", Task: TaskGeneral})
+	if err != nil {
+		t.Fatalf("expected no error since provider succeeded, got %v", err)
+	}
+	if resp.Provider != "tavily" || len(resp.Results) == 0 {
+		t.Fatalf("expected successful response despite record failure, got %#v", resp)
+	}
+	// Trace should signal that Record failed so observability picks it up.
+	if len(resp.RouteTrace) == 0 {
+		t.Fatalf("expected route trace, got empty")
+	}
+	last := resp.RouteTrace[len(resp.RouteTrace)-1]
+	if last.Status != "success" {
+		t.Fatalf("trace status should be success, got %q", last.Status)
+	}
+	if !strings.HasPrefix(last.Reason, "success_") {
+		t.Fatalf("trace reason should start with success_ to flag record failure, got %q", last.Reason)
+	}
+}
+
+func TestServiceExtractReturnsResponseEvenWhenRecordFails(t *testing.T) {
+	// Mirror of TestServiceReturnsResponseEvenWhenRecordFails for the
+	// Extract path.
+	registry := NewRegistry()
+	_ = registry.Register(fakeProvider{name: "tavily"})
+	inner := NewMemoryQuotaLedger()
+	inner.Set(QuotaEntry{
+		Provider:      "tavily",
+		CostClass:     CostClassFreeTierBYOK,
+		FreeRemaining: 1,
+		FreeQuota:     1,
+		RefreshWindow: RefreshMonthly,
+		PeriodStart:   CurrentMonthISO(),
+	})
+	ledger := &recordFailingLedger{MemoryQuotaLedger: inner}
+	service := NewService(registry, ledger, RouteMatrix{TaskExtract: {"tavily"}})
+
+	resp, err := service.Extract(context.Background(), ExtractRequest{URL: "https://example.com"})
+	if err != nil {
+		t.Fatalf("expected no error since extract succeeded, got %v", err)
+	}
+	if resp.Provider != "tavily" || strings.TrimSpace(resp.Content) == "" {
+		t.Fatalf("expected successful extract despite record failure, got %#v", resp)
+	}
+	if len(resp.RouteTrace) == 0 {
+		t.Fatalf("expected route trace, got empty")
+	}
+	last := resp.RouteTrace[len(resp.RouteTrace)-1]
+	if last.Status != "success" || !strings.HasPrefix(last.Reason, "success_") {
+		t.Fatalf("extract trace should flag record failure, got %+v", last)
+	}
+}
+
+func TestServiceDoesNotDecrementFreeTierOnEmptyResults(t *testing.T) {
+	// Empty-result responses are a soft failure: the provider technically
+	// answered, but the user didn't get value. Don't burn quota either.
+	registry := NewRegistry()
+	_ = registry.Register(emptySearchProvider{fakeProvider{name: "empty"}})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "empty", CostClass: CostClassFreeTierBYOK, FreeRemaining: 5, FreeQuota: 5, RefreshWindow: RefreshMonthly, PeriodStart: CurrentMonthISO()})
+	service := NewService(registry, ledger, RouteMatrix{TaskGeneral: {"empty"}})
+
+	_, _ = service.Search(context.Background(), SearchRequest{Query: "mcp", Task: TaskGeneral})
+	got, _ := ledger.Get("empty")
+	if got.FreeRemaining != 5 {
+		t.Fatalf("empty-results response must not debit FreeRemaining, got %d", got.FreeRemaining)
 	}
 }
 
@@ -188,7 +313,9 @@ func TestServiceExtractUsesExtractRoute(t *testing.T) {
 	}
 }
 
-func TestServiceRecordsPremiumExtractAttemptBeforeProviderError(t *testing.T) {
+func TestServiceDoesNotRecordPremiumExtractSpendOnProviderError(t *testing.T) {
+	// Mirror of TestServiceDoesNotRecordPremiumSpendOnProviderError for the
+	// Extract path.
 	registry := NewRegistry()
 	_ = registry.Register(failingExtractProvider{fakeProvider{name: "tavily"}})
 	ledger := NewMemoryQuotaLedgerWithPolicy(QuotaPolicy{Policy: CostPolicyCostCapped, HardCapCents: 5})
@@ -200,8 +327,8 @@ func TestServiceRecordsPremiumExtractAttemptBeforeProviderError(t *testing.T) {
 		t.Fatal("expected provider error")
 	}
 	budget := ledger.BudgetStatus()
-	if budget.SpentCents != 2 {
-		t.Fatalf("premium extract attempt should be recorded before provider call, spent=%d", budget.SpentCents)
+	if budget.SpentCents != 0 {
+		t.Fatalf("extract provider error must not record premium spend, spent=%d", budget.SpentCents)
 	}
 }
 

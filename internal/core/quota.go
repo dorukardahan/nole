@@ -34,10 +34,25 @@ type QuotaPolicy struct {
 	HardCapCents int        `json:"hard_cap_cents"`
 }
 
+type RefreshWindow string
+
+const (
+	// RefreshNone means FreeRemaining is never auto-refilled. Suitable for
+	// one-time trial quotas or for any entry whose refresh policy is unknown.
+	RefreshNone RefreshWindow = ""
+	// RefreshMonthly refills FreeRemaining to FreeQuota at the start of each
+	// calendar UTC month. PeriodStart is compared lexicographically against
+	// the current YYYY-MM stamp.
+	RefreshMonthly RefreshWindow = "monthly"
+)
+
 type QuotaEntry struct {
 	Provider           string            `json:"provider"`
 	CostClass          ProviderCostClass `json:"cost_class,omitempty"`
 	FreeRemaining      int               `json:"free_remaining"`
+	FreeQuota          int               `json:"free_quota,omitempty"`
+	RefreshWindow      RefreshWindow     `json:"refresh_window,omitempty"`
+	PeriodStart        string            `json:"period_start,omitempty"`
 	KeylessFree        bool              `json:"keyless_free"`
 	Unknown            bool              `json:"unknown"`
 	EstimatedCostCents int               `json:"estimated_cost_cents,omitempty"`
@@ -74,7 +89,15 @@ const (
 	LedgerStateUnavailable      LedgerState = "unavailable"
 )
 
-const quotaLedgerSchemaVersion = 1
+const quotaLedgerSchemaVersion = 2
+
+// CurrentMonthISO returns the current UTC calendar month in YYYY-MM form.
+// Used by quota refresh logic and free-tier seed timestamps.
+var nowUTC = func() time.Time { return time.Now().UTC() }
+
+func CurrentMonthISO() string {
+	return nowUTC().Format("2006-01")
+}
 
 type quotaLedgerFile struct {
 	SchemaVersion int          `json:"schema_version"`
@@ -155,6 +178,15 @@ func (l *MemoryQuotaLedger) Allow(provider string) bool {
 func (l *MemoryQuotaLedger) Decide(provider string) QuotaDecision {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	// Refresh expired monthly quotas before any policy decision so callers that
+	// only ever Decide() (e.g. the router probing every provider when all are
+	// blocked) still cross month boundaries correctly. We skip refresh when
+	// the ledger is in fail-closed mode since we don't trust the on-disk state
+	// there. In-memory refresh isn't persisted from this path; the next
+	// Record/Set/reload writes it back.
+	if l.failClosedReason == "" {
+		l.refreshExpiredEntriesLocked(CurrentMonthISO())
+	}
 	return l.decideLocked(provider)
 }
 
@@ -278,8 +310,14 @@ func (l *MemoryQuotaLedger) Record(provider string) error {
 }
 
 func (l *MemoryQuotaLedger) recordLocked(provider string) error {
+	refreshed := l.refreshExpiredEntriesLocked(CurrentMonthISO())
 	decision := l.decideLocked(provider)
 	if !decision.Allowed {
+		if refreshed {
+			if err := l.persistLocked(); err != nil {
+				l.markUnavailableLocked(err)
+			}
+		}
 		return fmt.Errorf("provider %q is blocked by %s policy: %s", provider, decision.Policy, decision.Reason)
 	}
 	entry, ok := l.entries[provider]
@@ -288,7 +326,7 @@ func (l *MemoryQuotaLedger) recordLocked(provider string) error {
 	}
 	entry = normalizeQuotaEntry(entry)
 	oldEntry := entry
-	changed := false
+	changed := refreshed
 	switch entry.CostClass {
 	case CostClassKeylessFree:
 		return nil
@@ -407,11 +445,13 @@ func (l *MemoryQuotaLedger) reloadFromDiskLocked() error {
 	}
 
 	var disk quotaLedgerFile
-	if err := json.Unmarshal(data, &disk); err != nil || disk.SchemaVersion != quotaLedgerSchemaVersion {
+	if err := json.Unmarshal(data, &disk); err != nil || disk.SchemaVersion < 1 || disk.SchemaVersion > quotaLedgerSchemaVersion {
 		return l.recoverCorruptLedgerLocked(err)
 	}
 
 	l.entries = mergeLedgerEntries(l.entries, disk.Entries)
+	refreshed := l.refreshExpiredEntriesLocked(CurrentMonthISO())
+	migrated := disk.SchemaVersion < quotaLedgerSchemaVersion
 	if disk.FailClosed {
 		l.failClosedReason = "ledger_corrupt_fail_closed"
 	} else if l.failClosedReason == "ledger_corrupt_fail_closed" || l.failClosedReason == "ledger_unavailable_fail_closed" {
@@ -423,6 +463,9 @@ func (l *MemoryQuotaLedger) reloadFromDiskLocked() error {
 		l.ledgerState = LedgerStateFileOK
 	}
 	l.ledgerWarning = disk.Warning
+	if refreshed || migrated {
+		return l.persistLocked()
+	}
 	return nil
 }
 
@@ -478,23 +521,89 @@ func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[st
 	for provider, seed := range seeds {
 		entries[provider] = normalizeQuotaEntry(seed)
 	}
+	hasSeeds := len(seeds) > 0
 	for _, loadedEntry := range loaded {
 		loadedEntry = normalizeQuotaEntry(loadedEntry)
 		if loadedEntry.Provider == "" {
 			continue
 		}
-		if seed, ok := entries[loadedEntry.Provider]; ok {
-			merged := seed
-			merged.FreeRemaining = loadedEntry.FreeRemaining
-			if loadedEntry.SpentCents > merged.SpentCents {
-				merged.SpentCents = loadedEntry.SpentCents
+		seed, ok := entries[loadedEntry.Provider]
+		if !ok {
+			// Orphan: a provider on disk that the current build no longer
+			// seeds (e.g. jina after removal). Drop it when we have seeds,
+			// since keeping it would surface a no-longer-routable provider
+			// in budget output. Without seeds we preserve the entry — this
+			// path is exercised by direct in-memory Set() calls.
+			if hasSeeds {
+				continue
 			}
-			entries[loadedEntry.Provider] = normalizeQuotaEntry(merged)
+			entries[loadedEntry.Provider] = loadedEntry
 			continue
 		}
-		entries[loadedEntry.Provider] = loadedEntry
+		merged := seed
+		// Free-tier accounting (FreeRemaining + FreeQuota + RefreshWindow +
+		// PeriodStart) is provider-level state, not cost-class-level. Carry
+		// it across cost-class transitions whenever the loaded entry already
+		// had a free-tier counter (loaded.FreeQuota > 0). Without this, a
+		// user could oscillate NOLE_<PROVIDER>_PAID on/off to reset their
+		// monthly free quota and bypass the guard.
+		//
+		// Two cases that DO take the seed instead:
+		//   1. Same cost class: existing behavior. Inherit FreeRemaining and
+		//      PeriodStart from disk; let the seed contribute the rest
+		//      (which is identical to disk in normal operation).
+		//   2. v1 migration where the disk entry has FreeQuota=0 (the field
+		//      didn't exist in v1, so we treat it as "no prior free-tier
+		//      counter"). Use the seed's fresh FreeRemaining.
+		if loadedEntry.CostClass == seed.CostClass {
+			merged.FreeRemaining = loadedEntry.FreeRemaining
+			if strings.TrimSpace(loadedEntry.PeriodStart) != "" {
+				merged.PeriodStart = loadedEntry.PeriodStart
+			}
+		} else if loadedEntry.FreeQuota > 0 {
+			merged.FreeRemaining = loadedEntry.FreeRemaining
+			merged.FreeQuota = loadedEntry.FreeQuota
+			if loadedEntry.RefreshWindow != "" {
+				merged.RefreshWindow = loadedEntry.RefreshWindow
+			}
+			if strings.TrimSpace(loadedEntry.PeriodStart) != "" {
+				merged.PeriodStart = loadedEntry.PeriodStart
+			}
+		}
+		if loadedEntry.SpentCents > merged.SpentCents {
+			merged.SpentCents = loadedEntry.SpentCents
+		}
+		entries[loadedEntry.Provider] = normalizeQuotaEntry(merged)
 	}
 	return entries
+}
+
+// refreshExpiredEntriesLocked refills FreeRemaining for any entry whose
+// RefreshWindow has elapsed since PeriodStart. Returns true when any entry was
+// refreshed (so callers can decide whether to persist).
+//
+// The function assumes the mutex is held by the caller. It does NOT itself
+// take the file lock or persist; the caller chooses whether to persist based
+// on its execution path (reloadFromDiskLocked persists, recordLocked persists
+// via its existing changed flag).
+func (l *MemoryQuotaLedger) refreshExpiredEntriesLocked(now string) bool {
+	changed := false
+	for provider, entry := range l.entries {
+		if entry.RefreshWindow != RefreshMonthly {
+			continue
+		}
+		if entry.FreeQuota <= 0 {
+			continue
+		}
+		if entry.PeriodStart == "" || entry.PeriodStart >= now {
+			continue
+		}
+		entry.FreeRemaining = entry.FreeQuota
+		entry.PeriodStart = now
+		l.entries[provider] = entry
+		changed = true
+	}
+	return changed
 }
 
 func (l *MemoryQuotaLedger) persistLocked() error {

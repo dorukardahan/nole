@@ -84,25 +84,6 @@ class BenchmarkSecretHandlingTest(unittest.TestCase):
         self.assertEqual(req.method, "GET")
         self.assertEqual(request_header(req, "X-subscription-token"), "brave-secret-value")
 
-    def test_jina_api_key_is_not_passed_in_process_argv(self):
-        req = self.assert_provider_uses_urlopen_without_subprocess(
-            lambda: bench_main.run_jina_search(
-                "nole research",
-                {"JINA_API_KEY": "jina-secret-value"},
-                timeout=3,
-            ),
-            {
-                "data": [
-                    {"title": "Nólë", "url": "https://example.com", "description": "deep research"}
-                ]
-            },
-        )
-
-        self.assertEqual(req.full_url, "https://s.jina.ai/")
-        self.assertEqual(req.method, "POST")
-        self.assertEqual(request_header(req, "Authorization"), "Bearer jina-secret-value")
-        self.assertNotIn(b"jina-secret-value", req.data or b"")
-
     def test_firecrawl_api_key_is_not_passed_in_process_argv(self):
         req = self.assert_provider_uses_urlopen_without_subprocess(
             lambda: bench_main.run_firecrawl_search(

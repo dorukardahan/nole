@@ -118,7 +118,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 }
 
 func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
-	return core.ExtractResponse{}, fmt.Errorf("brave: extract not supported; use jina or firecrawl")
+	return core.ExtractResponse{}, fmt.Errorf("brave: extract not supported; use tavily or firecrawl")
 }
 
 func (p Provider) Status(ctx context.Context) core.ProviderStatus {

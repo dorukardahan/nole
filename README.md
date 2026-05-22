@@ -62,7 +62,6 @@ Nólë currently supports these provider adapters:
 
 - Brave Search API: search, BYOK/free-tier capable.
 - Tavily: search + extract, BYOK/free-tier/premium-capable depending on your account.
-- Jina: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - Firecrawl: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - DDGS: keyless search fallback.
 
@@ -75,7 +74,7 @@ See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 Prerequisites:
 
 - Go 1.23+ for building from source.
-- Optional provider keys for Brave, Tavily, Jina and Firecrawl.
+- Optional provider keys for Brave, Tavily and Firecrawl.
 - No provider key is required for the deterministic benchmark or DDGS keyless fallback.
 
 Build and run locally:
@@ -136,19 +135,21 @@ For unverified or generic clients, use the MCP command template:
 
 ## Provider keys and cost control
 
-Default stance: `free-first`. Nólë should not create hidden paid usage by default. If you add premium-capable provider accounts, a key by itself does not make that provider eligible for live calls under the default policy. Nólë classifies provider cost status and uses policy decisions before provider selection.
+Default stance: `free-first`. Nólë treats each supported BYOK provider as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, Tavily and Firecrawl, reset at the start of each UTC calendar month). DDGS is always keyless-free. No hidden paid usage is created without an explicit opt-in.
+
+A key by itself is enough to start using a provider under the default policy; you only have to flip `NOLE_<PROVIDER>_PAID=1` when you want Nólë to treat that provider as premium-capable (e.g. you are on a paid plan and the cost-capped or quality-first policy should apply). See `docs/PROVIDER-KEYS.md` for per-provider free-tier sourcing and the Brave subscription/CC caveat.
 
 Cost status classes exposed in `provider_status`, `budget_status`, `route_trace` and JSON CLI/MCP surfaces are:
 
 - `keyless-free` — no key required, currently used for DDGS search fallback.
-- `free-tier-BYOK` — user-keyed provider with known local free quota remaining.
-- `premium-capable` — keyed provider that may incur paid usage depending on account/plan.
+- `free-tier-BYOK` — user-keyed provider running against the local free-tier quota. Default for keyed Brave / Tavily / Firecrawl.
+- `premium-capable` — keyed provider that may incur paid usage depending on account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost` — fail-closed unless an explicit quality-first policy is selected.
 - `disabled-no-key` — provider is present but no key is configured.
 
 Cost policy modes:
 
-- `free-first` (default): allow keyless/free-tier routes; block premium-capable providers so there is no hidden paid spend.
+- `free-first` (default): allow keyless and free-tier-BYOK routes; block premium-capable providers so there is no hidden paid spend.
 - `cost-capped`: allow premium-capable providers only when a local hard cap, persisted ledger state when configured and explicit per-provider estimated cost keep the call inside the cap.
 - `quality-first`: explicitly allow premium-capable providers when the user accepts provider-account cost risk for quality/task fit.
 
@@ -157,20 +158,28 @@ Environment variables:
 ```bash
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
-export JINA_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
+
+# Opt into paid mode for a specific provider (default: free-tier-BYOK).
+# Use only when you actively want Nólë to bill the provider account.
+export NOLE_BRAVE_PAID="1"
+export NOLE_TAVILY_PAID="1"
+export NOLE_FIRECRAWL_PAID="1"
 
 # Optional policy controls; omit for no-hidden-paid-spend default.
 export NOLE_COST_POLICY="free-first"        # free-first | cost-capped | quality-first
 export NOLE_HARD_CAP_CENTS="0"              # used by cost-capped
 export NOLE_TAVILY_ESTIMATED_COST_CENTS=""  # set explicitly before cost-capped live use
 
-# Optional local state controls.
+# Optional local state controls. The ledger is file-backed by default at
+# $XDG_STATE_HOME/nole/quota-ledger.json (or ~/.local/state/nole/quota-ledger.json
+# when XDG_STATE_HOME is unset); set NOLE_QUOTA_LEDGER_PATH only if you want a
+# different location, or "memory"/"off"/"none" to disable file persistence.
 export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"
 export NOLE_CACHE_TTL="5m"                  # or NOLE_CACHE_TTL_SECONDS="300"
 ```
 
-`NOLE_QUOTA_LEDGER_PATH` enables a file-backed quota/cost ledger. Use `memory`, `off` or leave it unset for memory-only accounting. The ledger stores provider names, cost classes, local free-quota counters and local estimated spend; it does not store provider keys or raw provider payloads. If a configured ledger is corrupt, Nólë backs it up and fails closed for paid/quota-tracked providers while still allowing keyless-free providers. `NOLE_CACHE_TTL` enables an in-memory TTL cache for normalized search/extract responses inside a running process, such as `nole mcp`; cache hit/miss status appears in `route_trace` and compact `routing_insight`.
+Nólë's quota ledger is **file-backed by default** at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json` when `XDG_STATE_HOME` is unset). Durability is required for the monthly free-tier cap to be meaningful: an in-memory ledger resets to the full free quota on every process restart, which defeats the cap when nole is spawned per session (the typical MCP client pattern). Set `NOLE_QUOTA_LEDGER_PATH` to override the default location, or to `memory`/`off`/`none` to explicitly disable file persistence — only do that if you understand the per-restart reset implication. The ledger stores provider names, cost classes, local free-quota counters and local estimated spend; it does not store provider keys or raw provider payloads. If a configured ledger is corrupt, Nólë backs it up and fails closed for paid/quota-tracked providers while still allowing keyless-free providers. `NOLE_CACHE_TTL` enables an in-memory TTL cache for normalized search/extract responses inside a running process, such as `nole mcp`; cache hit/miss status appears in `route_trace` and compact `routing_insight`.
 
 Do not paste real keys into chat, GitHub issues, docs, PRs or logs. If a GUI agent does not inherit your shell environment, put keys in a local-only env file such as `~/.config/nole/.env` and configure the client launcher to source it. Keep that file out of git and restrict permissions.
 

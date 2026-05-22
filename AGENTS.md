@@ -44,7 +44,6 @@ Nólë reads provider keys from environment variables:
 ```bash
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
-export JINA_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
 ```
 
@@ -59,7 +58,7 @@ export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"  # loc
 export NOLE_CACHE_TTL="5m"                                                # in-process normalized search/extract cache
 ```
 
-Leave `NOLE_QUOTA_LEDGER_PATH` unset, or set it to `memory`/`off`, for memory-only accounting. The ledger and cache must not contain provider keys, auth headers or raw provider payloads.
+The quota ledger is file-backed by default at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json`). Override `NOLE_QUOTA_LEDGER_PATH` to point at a different path, or set it to `memory`/`off`/`none` to opt out of persistence (per-restart reset). The ledger and cache must not contain provider keys, auth headers or raw provider payloads.
 
 ## Verify core commands
 

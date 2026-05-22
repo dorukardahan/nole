@@ -90,9 +90,9 @@ func TestCLIErrorEnvelopePreservesRouteTraceAndRedactsSecrets(t *testing.T) {
 }
 
 func TestHTTPJSONErrorEnvelopePreservesTraceAndRedactsSecrets(t *testing.T) {
-	payload := buildCLIError("extract", errors.New("provider echoed api_key=SECRET_TOKEN Authorization: Bearer *** https://private.example/path"), []string{"tavily", "jina"}, []core.RouteAttempt{
+	payload := buildCLIError("extract", errors.New("provider echoed api_key=SECRET_TOKEN Authorization: Bearer *** https://private.example/path"), []string{"tavily", "firecrawl"}, []core.RouteAttempt{
 		{Provider: "tavily", Status: "failed", Reason: "provider_error"},
-		{Provider: "jina", Status: "failed", Reason: "empty_content"},
+		{Provider: "firecrawl", Status: "failed", Reason: "empty_content"},
 	})
 
 	recorder := httptest.NewRecorder()
@@ -138,7 +138,7 @@ func TestInsightOffSuppressesUserFacingRoutingInsight(t *testing.T) {
 	if search.RoutingInsight != "" {
 		t.Fatalf("search routing insight = %q, want empty", search.RoutingInsight)
 	}
-	extract := applyExtractInsightMode(core.ExtractResponse{RoutingInsight: "Nólë: extract page via jina"}, core.InsightOff)
+	extract := applyExtractInsightMode(core.ExtractResponse{RoutingInsight: "Nólë: extract page via firecrawl"}, core.InsightOff)
 	if extract.RoutingInsight != "" {
 		t.Fatalf("extract routing insight = %q, want empty", extract.RoutingInsight)
 	}

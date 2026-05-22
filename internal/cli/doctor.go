@@ -18,6 +18,35 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// writePaidModeWarnings emits any provider-specific safety warnings to the
+// doctor output. Two surfaces today:
+//
+//   - any provider with NOLE_<PROVIDER>_PAID=1 is flagged so the user is
+//     reminded the free-tier safety net is off for that provider;
+//   - Brave's free tier is itself a $5/month credit on a subscription model
+//     with credit card on file. The wording differs by mode: in free mode
+//     nole's ledger caps usage at the monthly free quota, but in paid mode
+//     the cap is gone and the user's chosen cost policy is the only guard
+//     against runaway billing.
+func writePaidModeWarnings(w io.Writer) {
+	paid := []string{}
+	for _, p := range []string{"brave", "tavily", "firecrawl"} {
+		if isProviderPaidMode(p) {
+			paid = append(paid, p)
+		}
+	}
+	if len(paid) > 0 {
+		fmt.Fprintf(w, "  paid_mode_active: %s (free-tier safety off; check provider dashboards)\n", strings.Join(paid, ", "))
+	}
+	if os.Getenv("BRAVE_API_KEY") != "" || os.Getenv("BRAVE_SEARCH_API_KEY") != "" {
+		if isProviderPaidMode("brave") {
+			fmt.Fprintln(w, "  brave_note: Brave Search API uses a subscription with CC on file; NOLE_BRAVE_PAID=1 disables nole's monthly free-quota cap, so every call may bill the CC subject to your cost policy.")
+		} else {
+			fmt.Fprintln(w, "  brave_note: Brave Search API uses a subscription with CC on file; nole caps usage at the monthly free quota but overage outside nole's ledger will bill the CC.")
+		}
+	}
+}
+
 func newDoctorCommand() *cobra.Command {
 	var checkMCP bool
 	cmd := &cobra.Command{
@@ -65,7 +94,6 @@ func newDoctorCommand() *cobra.Command {
 				env  string
 				name string
 			}{
-				{"JINA_API_KEY", "jina"},
 				{"FIRECRAWL_API_KEY", "firecrawl"},
 				{"BRAVE_API_KEY", "brave"},
 				{"BRAVE_SEARCH_API_KEY", "brave (alt)"},
@@ -78,6 +106,8 @@ func newDoctorCommand() *cobra.Command {
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "  %-22s %s\n", k.env, set)
 			}
+
+			writePaidModeWarnings(cmd.OutOrStdout())
 
 			budget := svc.BudgetStatus()
 			fmt.Fprintln(cmd.OutOrStdout(), "")

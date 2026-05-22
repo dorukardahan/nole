@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/brave"
 	"github.com/dorukardahan/nole/internal/providers/ddgs"
 	"github.com/dorukardahan/nole/internal/providers/firecrawl"
-	"github.com/dorukardahan/nole/internal/providers/jina"
 	"github.com/dorukardahan/nole/internal/providers/mock"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
 	"github.com/dorukardahan/nole/internal/safeerr"
@@ -23,20 +23,12 @@ import (
 func defaultService() *core.Service {
 	registry := core.NewRegistry()
 
-	jinaKey := os.Getenv("JINA_API_KEY")
 	firecrawlKey := os.Getenv("FIRECRAWL_API_KEY")
 	braveKey := os.Getenv("BRAVE_API_KEY")
 	if braveKey == "" {
 		braveKey = os.Getenv("BRAVE_SEARCH_API_KEY")
 	}
 	tavilyKey := os.Getenv("TAVILY_API_KEY")
-
-	// Jina — real adapter (search + extract)
-	if jinaKey != "" {
-		_ = registry.Register(jina.New(jina.WithAPIKey(jinaKey)))
-	} else {
-		_ = registry.Register(mock.NewUnavailable("jina"))
-	}
 
 	// Firecrawl — real adapter (search + extract)
 	if firecrawlKey != "" {
@@ -62,7 +54,7 @@ func defaultService() *core.Service {
 	// DDGS — keyless free, always available
 	_ = registry.Register(ddgs.New())
 
-	entries := defaultQuotaEntries(braveKey, tavilyKey, jinaKey, firecrawlKey)
+	entries := defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey)
 	ledger := defaultQuotaLedger(defaultQuotaPolicyFromEnv(), entries)
 
 	opts := []core.ServiceOption{}
@@ -72,25 +64,51 @@ func defaultService() *core.Service {
 	return core.NewService(registry, ledger, core.DefaultRouteMatrix(), opts...)
 }
 
-func defaultQuotaEntries(braveKey, tavilyKey, jinaKey, firecrawlKey string) []core.QuotaEntry {
+func defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey string) []core.QuotaEntry {
 	return []core.QuotaEntry{
 		providerQuotaEntry("brave", braveKey != ""),
 		providerQuotaEntry("tavily", tavilyKey != ""),
-		providerQuotaEntry("jina", jinaKey != ""),
 		providerQuotaEntry("firecrawl", firecrawlKey != ""),
 		{Provider: "ddgs", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 	}
 }
 
 func defaultQuotaLedger(policy core.QuotaPolicy, entries []core.QuotaEntry) core.QuotaLedger {
-	path := strings.TrimSpace(os.Getenv("NOLE_QUOTA_LEDGER_PATH"))
-	if path == "" || strings.EqualFold(path, "memory") || strings.EqualFold(path, "off") || strings.EqualFold(path, "none") {
+	raw := strings.TrimSpace(os.Getenv("NOLE_QUOTA_LEDGER_PATH"))
+
+	// Explicit opt-out into memory-only mode. The monthly free-tier guard is
+	// not durable across process restarts in this mode, so per-session spawn
+	// patterns (e.g. an MCP client that re-launches nole per turn) will reset
+	// the counter. Only honour the opt-out when the user typed it.
+	if strings.EqualFold(raw, "memory") || strings.EqualFold(raw, "off") || strings.EqualFold(raw, "none") {
 		ledger := core.NewMemoryQuotaLedgerWithPolicy(policy)
 		for _, entry := range entries {
 			ledger.Set(entry)
 		}
 		return ledger
 	}
+
+	// Default: file-backed ledger at $XDG_STATE_HOME/nole/quota-ledger.json
+	// (or ~/.local/state/nole/quota-ledger.json on platforms that don't set
+	// XDG_STATE_HOME). This makes the "caps usage at the monthly free quota"
+	// claim true in brave_note and other surfaces: the counter actually
+	// survives process restarts.
+	path := raw
+	if path == "" {
+		path = defaultQuotaLedgerPath()
+	}
+
+	if path == "" {
+		// Could not resolve a writable default path. Fall back to memory and
+		// rely on doctor surfaces to flag the lack of durability if/when the
+		// user inspects ledger state. Better than crashing on every startup.
+		fallback := core.NewMemoryQuotaLedgerWithPolicy(policy)
+		for _, entry := range entries {
+			fallback.Set(entry)
+		}
+		return fallback
+	}
+
 	ledger, err := core.NewFileQuotaLedgerWithPolicy(path, policy, entries)
 	if err != nil && ledger != nil {
 		return ledger
@@ -103,6 +121,28 @@ func defaultQuotaLedger(policy core.QuotaPolicy, entries []core.QuotaEntry) core
 		fallback.Set(entry)
 	}
 	return fallback
+}
+
+// defaultQuotaLedgerPath resolves the on-disk location for the BYOK quota
+// ledger when the user has not set NOLE_QUOTA_LEDGER_PATH. Honours XDG when
+// available AND absolute; otherwise falls back to
+// ~/.local/state/nole/quota-ledger.json per the de-facto Linux/macOS
+// convention. Returns "" when no home directory can be resolved; callers
+// handle that by falling back to memory mode.
+//
+// XDG_STATE_HOME is required by spec to be an absolute path; users sometimes
+// set it to "~/.local/state" or other relative strings that would resolve
+// against the process cwd and leak ledger state into project trees. Reject
+// non-absolute values rather than honour them.
+func defaultQuotaLedgerPath() string {
+	if state := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); state != "" && filepath.IsAbs(state) {
+		return filepath.Join(state, "nole", "quota-ledger.json")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return ""
+	}
+	return filepath.Join(home, ".local", "state", "nole", "quota-ledger.json")
 }
 
 func defaultResponseCacheFromEnv() core.ResponseCache {
@@ -142,11 +182,61 @@ func defaultQuotaPolicyFromEnv() core.QuotaPolicy {
 	return policy
 }
 
+// byokFreeDefaults is the canonical per-provider free-tier seed used when a
+// BYOK key is present and the user has not explicitly opted into paid usage.
+// Numbers are conservative anchors matching each provider's current monthly
+// free tier; see docs/PROVIDER-KEYS.md for sourcing.
+var byokFreeDefaults = map[string]struct {
+	Quota  int
+	Window core.RefreshWindow
+}{
+	"brave":     {Quota: 1000, Window: core.RefreshMonthly},
+	"tavily":    {Quota: 1000, Window: core.RefreshMonthly},
+	"firecrawl": {Quota: 1000, Window: core.RefreshMonthly},
+}
+
+// isProviderPaidMode reports whether the user has explicitly opted into paid
+// usage for a provider via NOLE_<PROVIDER>_PAID=1/true/yes. In paid mode the
+// provider is treated as premium-capable; the policy gate then decides whether
+// free-first blocks it.
+func isProviderPaidMode(provider string) bool {
+	raw := strings.TrimSpace(os.Getenv("NOLE_" + strings.ToUpper(provider) + "_PAID"))
+	switch strings.ToLower(raw) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
+}
+
 func providerQuotaEntry(provider string, keyPresent bool) core.QuotaEntry {
 	if !keyPresent {
 		return core.QuotaEntry{Provider: provider, CostClass: core.CostClassDisabledNoKey}
 	}
-	return core.QuotaEntry{Provider: provider, CostClass: core.CostClassPremiumCapable, EstimatedCostCents: providerEstimatedCostCents(provider)}
+	if isProviderPaidMode(provider) {
+		return core.QuotaEntry{
+			Provider:           provider,
+			CostClass:          core.CostClassPremiumCapable,
+			EstimatedCostCents: providerEstimatedCostCents(provider),
+		}
+	}
+	if def, ok := byokFreeDefaults[provider]; ok {
+		return core.QuotaEntry{
+			Provider:      provider,
+			CostClass:     core.CostClassFreeTierBYOK,
+			FreeRemaining: def.Quota,
+			FreeQuota:     def.Quota,
+			RefreshWindow: def.Window,
+			PeriodStart:   core.CurrentMonthISO(),
+		}
+	}
+	// Unknown provider with a key — fall back to premium-capable (legacy
+	// behavior). Keeps the door open for future BYOK adapters whose free tier
+	// hasn't been characterised yet.
+	return core.QuotaEntry{
+		Provider:           provider,
+		CostClass:          core.CostClassPremiumCapable,
+		EstimatedCostCents: providerEstimatedCostCents(provider),
+	}
 }
 
 func providerEstimatedCostCents(provider string) int {
