@@ -232,6 +232,11 @@ func TestDoctorCommandMCPFlagReportsStdioSmoke(t *testing.T) {
 
 func TestDoctorCommandReportsCostPolicyWithoutSecrets(t *testing.T) {
 	t.Setenv("TAVILY_API_KEY", "placeholder-test-key")
+	// Opt into paid mode so doctor surfaces the premium-capable formatting
+	// path. Default behavior post-Phase-B is free-tier-BYOK; the premium path
+	// is what this test verifies (the default-BYOK path is exercised by
+	// TestDoctorCommandFreeTierBYOKByDefault below).
+	t.Setenv("NOLE_TAVILY_PAID", "1")
 	cmd := NewRootCommand()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
@@ -248,6 +253,57 @@ func TestDoctorCommandReportsCostPolicyWithoutSecrets(t *testing.T) {
 	}
 	if strings.Contains(text, "placeholder-test-key") {
 		t.Fatalf("doctor output leaked provider key:\n%s", text)
+	}
+}
+
+func TestDoctorCommandFreeTierBYOKByDefault(t *testing.T) {
+	t.Setenv("TAVILY_API_KEY", "placeholder-test-key")
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("doctor failed: %v", err)
+	}
+	text := out.String()
+	for _, want := range []string{"cost=free-tier-BYOK", "reason=free_tier_available", "free_remaining=1000"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("doctor output missing %q (BYOK default behavior):\n%s", want, text)
+		}
+	}
+}
+
+func TestDoctorCommandSurfacesBraveCCWarning(t *testing.T) {
+	t.Setenv("BRAVE_API_KEY", "placeholder-test-key")
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("doctor failed: %v", err)
+	}
+	text := out.String()
+	if !strings.Contains(text, "brave_note:") || !strings.Contains(text, "CC on file") {
+		t.Fatalf("doctor should surface Brave CC warning when key is set:\n%s", text)
+	}
+}
+
+func TestDoctorCommandSurfacesPaidModeWarning(t *testing.T) {
+	t.Setenv("TAVILY_API_KEY", "placeholder-test-key")
+	t.Setenv("NOLE_TAVILY_PAID", "1")
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("doctor failed: %v", err)
+	}
+	text := out.String()
+	if !strings.Contains(text, "paid_mode_active:") || !strings.Contains(text, "tavily") {
+		t.Fatalf("doctor should list paid-mode providers:\n%s", text)
 	}
 }
 

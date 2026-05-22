@@ -45,7 +45,7 @@ func TestProvidersCommandJSONIncludesCostPolicyWithoutSecrets(t *testing.T) {
 	}
 }
 
-func TestProvidersCommandFreeFirstDoesNotAllowPremiumJustBecauseKeyExists(t *testing.T) {
+func TestProvidersCommandFreeFirstAllowsBYOKFreeTierByDefault(t *testing.T) {
 	clearProviderPolicyEnv(t)
 	t.Setenv("TAVILY_API_KEY", "placeholder-test-key")
 
@@ -54,37 +54,53 @@ func TestProvidersCommandFreeFirstDoesNotAllowPremiumJustBecauseKeyExists(t *tes
 	if !got.Available {
 		t.Fatalf("test setup expected tavily adapter to be available when key is present: %#v", got)
 	}
-	if got.CostPolicy != core.CostPolicyFreeFirst || got.CostClass != core.CostClassPremiumCapable || got.AllowedByPolicy || got.PolicyReason != "premium_blocked_free_first" {
-		t.Fatalf("free-first must block premium-capable provider even with a key, got %#v", got)
+	if got.CostPolicy != core.CostPolicyFreeFirst || got.CostClass != core.CostClassFreeTierBYOK || !got.AllowedByPolicy || got.PolicyReason != "free_tier_available" {
+		t.Fatalf("free-first should allow BYOK key as free-tier by default, got %#v", got)
+	}
+	if got.FreeRemaining != 1000 {
+		t.Fatalf("free-tier-BYOK should seed FreeRemaining=1000 from hardcoded defaults, got %d", got.FreeRemaining)
 	}
 }
 
-func TestProvidersCommandCostCappedRequiresExplicitEstimate(t *testing.T) {
+func TestProvidersCommandPaidModeUsesPremiumCapable(t *testing.T) {
 	clearProviderPolicyEnv(t)
 	t.Setenv("TAVILY_API_KEY", "placeholder-test-key")
+	t.Setenv("NOLE_TAVILY_PAID", "1")
+
+	got := decodeProvidersJSON(t)["tavily"]
+	if got.CostClass != core.CostClassPremiumCapable || got.AllowedByPolicy || got.PolicyReason != "premium_blocked_free_first" {
+		t.Fatalf("paid mode under free-first should mark provider premium-capable and block, got %#v", got)
+	}
+}
+
+func TestProvidersCommandPaidModeCostCappedRequiresExplicitEstimate(t *testing.T) {
+	clearProviderPolicyEnv(t)
+	t.Setenv("TAVILY_API_KEY", "placeholder-test-key")
+	t.Setenv("NOLE_TAVILY_PAID", "1")
 	t.Setenv("NOLE_COST_POLICY", string(core.CostPolicyCostCapped))
 	t.Setenv("NOLE_HARD_CAP_CENTS", "5")
 
 	withoutEstimate := decodeProvidersJSON(t)["tavily"]
 	if withoutEstimate.AllowedByPolicy || withoutEstimate.PolicyReason != "unknown_cost_blocked" {
-		t.Fatalf("cost-capped should fail closed without an explicit local estimate, got %#v", withoutEstimate)
+		t.Fatalf("cost-capped paid should fail closed without an explicit local estimate, got %#v", withoutEstimate)
 	}
 
 	t.Setenv("NOLE_TAVILY_ESTIMATED_COST_CENTS", "2")
 	withEstimate := decodeProvidersJSON(t)["tavily"]
 	if !withEstimate.AllowedByPolicy || withEstimate.PolicyReason != "within_cost_cap" || withEstimate.EstimatedCostCents != 2 {
-		t.Fatalf("cost-capped should allow premium only with an explicit estimate inside cap, got %#v", withEstimate)
+		t.Fatalf("cost-capped paid should allow premium only with an explicit estimate inside cap, got %#v", withEstimate)
 	}
 }
 
-func TestProvidersCommandQualityFirstExplicitlyAllowsPremiumCapable(t *testing.T) {
+func TestProvidersCommandPaidModeQualityFirstExplicitlyAllows(t *testing.T) {
 	clearProviderPolicyEnv(t)
 	t.Setenv("TAVILY_API_KEY", "placeholder-test-key")
+	t.Setenv("NOLE_TAVILY_PAID", "1")
 	t.Setenv("NOLE_COST_POLICY", string(core.CostPolicyQualityFirst))
 
 	got := decodeProvidersJSON(t)["tavily"]
 	if got.CostPolicy != core.CostPolicyQualityFirst || got.CostClass != core.CostClassPremiumCapable || !got.AllowedByPolicy || got.PolicyReason != "quality_first_allows_premium" {
-		t.Fatalf("quality-first should explicitly allow premium-capable provider, got %#v", got)
+		t.Fatalf("quality-first paid mode should allow premium-capable, got %#v", got)
 	}
 }
 
@@ -115,6 +131,7 @@ func clearProviderPolicyEnv(t *testing.T) {
 		"BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY", "TAVILY_API_KEY", "FIRECRAWL_API_KEY",
 		"NOLE_COST_POLICY", "NOLE_HARD_CAP_CENTS", "NOLE_BRAVE_ESTIMATED_COST_CENTS", "NOLE_TAVILY_ESTIMATED_COST_CENTS",
 		"NOLE_FIRECRAWL_ESTIMATED_COST_CENTS",
+		"NOLE_BRAVE_PAID", "NOLE_TAVILY_PAID", "NOLE_FIRECRAWL_PAID",
 		"NOLE_QUOTA_LEDGER_PATH", "NOLE_CACHE_TTL", "NOLE_CACHE_TTL_SECONDS",
 	} {
 		t.Setenv(key, "")
