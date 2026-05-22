@@ -288,6 +288,36 @@ func TestDoctorCommandSurfacesBraveCCWarning(t *testing.T) {
 	if !strings.Contains(text, "brave_note:") || !strings.Contains(text, "CC on file") {
 		t.Fatalf("doctor should surface Brave CC warning when key is set:\n%s", text)
 	}
+	if !strings.Contains(text, "caps usage at the monthly free quota") {
+		t.Fatalf("free-mode brave_note should mention the monthly free-quota cap:\n%s", text)
+	}
+}
+
+func TestDoctorCommandBraveCCWarningInPaidModeDropsMonthlyCapClaim(t *testing.T) {
+	// Regression for codex P2 (PR #21 round 3): the doctor warning used to
+	// say "nole caps usage at the monthly free quota" regardless of mode,
+	// which is false when NOLE_BRAVE_PAID=1 is set. Verify the paid-mode
+	// wording acknowledges the cap is gone and points at the cost policy.
+	t.Setenv("BRAVE_API_KEY", "placeholder-test-key")
+	t.Setenv("NOLE_BRAVE_PAID", "1")
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("doctor failed: %v", err)
+	}
+	text := out.String()
+	if !strings.Contains(text, "brave_note:") || !strings.Contains(text, "CC on file") {
+		t.Fatalf("paid-mode brave_note should still surface the CC caution:\n%s", text)
+	}
+	if strings.Contains(text, "caps usage at the monthly free quota") {
+		t.Fatalf("paid-mode brave_note must NOT claim a monthly free-quota cap is active:\n%s", text)
+	}
+	if !strings.Contains(text, "NOLE_BRAVE_PAID=1") || !strings.Contains(text, "cost policy") {
+		t.Fatalf("paid-mode brave_note should name NOLE_BRAVE_PAID=1 and cost policy as the actual guard:\n%s", text)
+	}
 }
 
 func TestDoctorCommandSurfacesPaidModeWarning(t *testing.T) {

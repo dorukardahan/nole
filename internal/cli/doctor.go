@@ -24,9 +24,10 @@ import (
 //   - any provider with NOLE_<PROVIDER>_PAID=1 is flagged so the user is
 //     reminded the free-tier safety net is off for that provider;
 //   - Brave's free tier is itself a $5/month credit on a subscription model
-//     with credit card on file. Even in free mode an overage (concurrent
-//     process, ledger desync, manual policy switch) will silently bill, so
-//     surface a single-line caution whenever BRAVE_API_KEY is set.
+//     with credit card on file. The wording differs by mode: in free mode
+//     nole's ledger caps usage at the monthly free quota, but in paid mode
+//     the cap is gone and the user's chosen cost policy is the only guard
+//     against runaway billing.
 func writePaidModeWarnings(w io.Writer) {
 	paid := []string{}
 	for _, p := range []string{"brave", "tavily", "firecrawl"} {
@@ -38,7 +39,11 @@ func writePaidModeWarnings(w io.Writer) {
 		fmt.Fprintf(w, "  paid_mode_active: %s (free-tier safety off; check provider dashboards)\n", strings.Join(paid, ", "))
 	}
 	if os.Getenv("BRAVE_API_KEY") != "" || os.Getenv("BRAVE_SEARCH_API_KEY") != "" {
-		fmt.Fprintln(w, "  brave_note: Brave Search API uses a subscription with CC on file; nole caps usage at the monthly free quota but overage outside nole's ledger will bill the CC.")
+		if isProviderPaidMode("brave") {
+			fmt.Fprintln(w, "  brave_note: Brave Search API uses a subscription with CC on file; NOLE_BRAVE_PAID=1 disables nole's monthly free-quota cap, so every call may bill the CC subject to your cost policy.")
+		} else {
+			fmt.Fprintln(w, "  brave_note: Brave Search API uses a subscription with CC on file; nole caps usage at the monthly free quota but overage outside nole's ledger will bill the CC.")
+		}
 	}
 }
 
