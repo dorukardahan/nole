@@ -99,17 +99,25 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		// transient outages, 5xx responses, empty results and invalid keys,
 		// which became user-visible once BYOK keys started defaulting to
 		// free-tier-BYOK instead of premium-capable.
+		//
+		// If Record() itself fails here (TOCTOU race with another process
+		// consuming the last slot between Decide and Record, or the ledger
+		// becoming unavailable mid-call), the upstream provider request has
+		// already happened — discarding the response would deny the user a
+		// result they effectively paid for upstream. Return the response
+		// and surface the bookkeeping miss via the trace reason so
+		// observability sees it. Local quota may overshoot by one slot per
+		// race, bounded by the file lock taken inside Record.
+		traceReason := "success"
 		if err := s.ledger.Record(name); err != nil {
-			lastErr = err
 			refreshed := s.ledger.Decide(name)
-			reason := refreshed.Reason
-			if reason == "" {
-				reason = "quota_record_failed"
+			suffix := refreshed.Reason
+			if suffix == "" {
+				suffix = "quota_record_failed"
 			}
-			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, refreshed))
-			continue
+			traceReason = "success_" + suffix
 		}
-		trace = append(trace, attemptWithDecision(name, "success", "success", decision, latency, len(resp.Results)))
+		trace = append(trace, attemptWithDecision(name, "success", traceReason, decision, latency, len(resp.Results)))
 		resp.RouteTrace = trace
 		resp.RoutingInsight = BuildSearchRoutingInsight(resp)
 		if s.cache != nil {
@@ -191,18 +199,18 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 			continue
 		}
 		// Only debit quota on a successful extract. See the matching Search
-		// path above for the rationale.
+		// path above for the rationale, including why a failed Record() does
+		// not discard the response.
+		traceReason := "success"
 		if err := s.ledger.Record(name); err != nil {
-			lastErr = err
 			refreshed := s.ledger.Decide(name)
-			reason := refreshed.Reason
-			if reason == "" {
-				reason = "quota_record_failed"
+			suffix := refreshed.Reason
+			if suffix == "" {
+				suffix = "quota_record_failed"
 			}
-			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, refreshed))
-			continue
+			traceReason = "success_" + suffix
 		}
-		trace = append(trace, attemptWithDecision(name, "success", "success", decision, latency, resultCount))
+		trace = append(trace, attemptWithDecision(name, "success", traceReason, decision, latency, resultCount))
 		resp.RouteTrace = trace
 		resp.RoutingInsight = BuildExtractRoutingInsight(resp)
 		if s.cache != nil {
