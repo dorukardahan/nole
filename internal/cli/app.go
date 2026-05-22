@@ -125,11 +125,17 @@ func defaultQuotaLedger(policy core.QuotaPolicy, entries []core.QuotaEntry) core
 
 // defaultQuotaLedgerPath resolves the on-disk location for the BYOK quota
 // ledger when the user has not set NOLE_QUOTA_LEDGER_PATH. Honours XDG when
-// available; otherwise falls back to ~/.local/state/nole/quota-ledger.json
-// per the de-facto Linux/macOS convention. Returns "" when no home directory
-// can be resolved; callers handle that by falling back to memory mode.
+// available AND absolute; otherwise falls back to
+// ~/.local/state/nole/quota-ledger.json per the de-facto Linux/macOS
+// convention. Returns "" when no home directory can be resolved; callers
+// handle that by falling back to memory mode.
+//
+// XDG_STATE_HOME is required by spec to be an absolute path; users sometimes
+// set it to "~/.local/state" or other relative strings that would resolve
+// against the process cwd and leak ledger state into project trees. Reject
+// non-absolute values rather than honour them.
 func defaultQuotaLedgerPath() string {
-	if state := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); state != "" {
+	if state := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); state != "" && filepath.IsAbs(state) {
 		return filepath.Join(state, "nole", "quota-ledger.json")
 	}
 	home, err := os.UserHomeDir()

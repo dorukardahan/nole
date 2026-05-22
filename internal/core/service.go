@@ -77,16 +77,6 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, decision))
 			continue
 		}
-		if err := s.ledger.Record(name); err != nil {
-			lastErr = err
-			refreshed := s.ledger.Decide(name)
-			reason := refreshed.Reason
-			if reason == "" {
-				reason = "quota_record_failed"
-			}
-			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, refreshed))
-			continue
-		}
 		start := time.Now()
 		resp, err := provider.Search(ctx, req)
 		latency := time.Since(start).Milliseconds()
@@ -102,6 +92,21 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		if len(resp.Results) == 0 {
 			lastErr = fmt.Errorf("search provider %s returned empty results", name)
 			trace = append(trace, attemptWithDecision(name, "failed", "empty_results", decision, latency, 0))
+			continue
+		}
+		// Only debit quota on a successful response. Recording before the
+		// provider call (the prior shape) burned free-tier quota on
+		// transient outages, 5xx responses, empty results and invalid keys,
+		// which became user-visible once BYOK keys started defaulting to
+		// free-tier-BYOK instead of premium-capable.
+		if err := s.ledger.Record(name); err != nil {
+			lastErr = err
+			refreshed := s.ledger.Decide(name)
+			reason := refreshed.Reason
+			if reason == "" {
+				reason = "quota_record_failed"
+			}
+			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, refreshed))
 			continue
 		}
 		trace = append(trace, attemptWithDecision(name, "success", "success", decision, latency, len(resp.Results)))
@@ -168,16 +173,6 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, decision))
 			continue
 		}
-		if err := s.ledger.Record(name); err != nil {
-			lastErr = err
-			refreshed := s.ledger.Decide(name)
-			reason := refreshed.Reason
-			if reason == "" {
-				reason = "quota_record_failed"
-			}
-			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, refreshed))
-			continue
-		}
 		start := time.Now()
 		resp, err := provider.Extract(ctx, req)
 		latency := time.Since(start).Milliseconds()
@@ -193,6 +188,18 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 		if strings.TrimSpace(resp.Content) == "" {
 			lastErr = fmt.Errorf("extract provider %s returned empty content", name)
 			trace = append(trace, attemptWithDecision(name, "failed", "empty_content", decision, latency, resultCount))
+			continue
+		}
+		// Only debit quota on a successful extract. See the matching Search
+		// path above for the rationale.
+		if err := s.ledger.Record(name); err != nil {
+			lastErr = err
+			refreshed := s.ledger.Decide(name)
+			reason := refreshed.Reason
+			if reason == "" {
+				reason = "quota_record_failed"
+			}
+			trace = append(trace, skippedAttemptWithReasonAndDecision(name, reason, refreshed))
 			continue
 		}
 		trace = append(trace, attemptWithDecision(name, "success", "success", decision, latency, resultCount))

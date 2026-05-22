@@ -128,7 +128,11 @@ func TestServiceSearchTraceExplainsPremiumBlockedByFreeFirst(t *testing.T) {
 	}
 }
 
-func TestServiceRecordsPremiumAttemptBeforeProviderError(t *testing.T) {
+func TestServiceDoesNotRecordPremiumSpendOnProviderError(t *testing.T) {
+	// Regression for codex P1 (PR #21 round 5): the prior shape recorded
+	// quota before the provider call, which burned premium SpentCents on
+	// transient outages and free-tier FreeRemaining on bad keys / 5xx /
+	// empty responses. Quota should only debit on a successful response.
 	registry := NewRegistry()
 	_ = registry.Register(failingProvider{fakeProvider{name: "tavily"}})
 	ledger := NewMemoryQuotaLedgerWithPolicy(QuotaPolicy{Policy: CostPolicyCostCapped, HardCapCents: 5})
@@ -140,8 +144,44 @@ func TestServiceRecordsPremiumAttemptBeforeProviderError(t *testing.T) {
 		t.Fatal("expected provider error")
 	}
 	budget := ledger.BudgetStatus()
-	if budget.SpentCents != 2 {
-		t.Fatalf("premium attempt should be recorded before provider call, spent=%d", budget.SpentCents)
+	if budget.SpentCents != 0 {
+		t.Fatalf("provider error must not record premium spend, spent=%d", budget.SpentCents)
+	}
+}
+
+func TestServiceDoesNotDecrementFreeTierOnProviderError(t *testing.T) {
+	// Same guard for the free-tier-BYOK class: a transient failure should
+	// leave FreeRemaining intact so users don't burn their monthly quota
+	// on outages.
+	registry := NewRegistry()
+	_ = registry.Register(failingProvider{fakeProvider{name: "tavily"}})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "tavily", CostClass: CostClassFreeTierBYOK, FreeRemaining: 5, FreeQuota: 5, RefreshWindow: RefreshMonthly, PeriodStart: CurrentMonthISO()})
+	service := NewService(registry, ledger, RouteMatrix{TaskGeneral: {"tavily"}})
+
+	_, err := service.Search(context.Background(), SearchRequest{Query: "mcp", Task: TaskGeneral})
+	if err == nil {
+		t.Fatal("expected provider error")
+	}
+	got, _ := ledger.Get("tavily")
+	if got.FreeRemaining != 5 {
+		t.Fatalf("free-tier provider error must not debit FreeRemaining, got %d", got.FreeRemaining)
+	}
+}
+
+func TestServiceDoesNotDecrementFreeTierOnEmptyResults(t *testing.T) {
+	// Empty-result responses are a soft failure: the provider technically
+	// answered, but the user didn't get value. Don't burn quota either.
+	registry := NewRegistry()
+	_ = registry.Register(emptySearchProvider{fakeProvider{name: "empty"}})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "empty", CostClass: CostClassFreeTierBYOK, FreeRemaining: 5, FreeQuota: 5, RefreshWindow: RefreshMonthly, PeriodStart: CurrentMonthISO()})
+	service := NewService(registry, ledger, RouteMatrix{TaskGeneral: {"empty"}})
+
+	_, _ = service.Search(context.Background(), SearchRequest{Query: "mcp", Task: TaskGeneral})
+	got, _ := ledger.Get("empty")
+	if got.FreeRemaining != 5 {
+		t.Fatalf("empty-results response must not debit FreeRemaining, got %d", got.FreeRemaining)
 	}
 }
 
@@ -188,7 +228,9 @@ func TestServiceExtractUsesExtractRoute(t *testing.T) {
 	}
 }
 
-func TestServiceRecordsPremiumExtractAttemptBeforeProviderError(t *testing.T) {
+func TestServiceDoesNotRecordPremiumExtractSpendOnProviderError(t *testing.T) {
+	// Mirror of TestServiceDoesNotRecordPremiumSpendOnProviderError for the
+	// Extract path.
 	registry := NewRegistry()
 	_ = registry.Register(failingExtractProvider{fakeProvider{name: "tavily"}})
 	ledger := NewMemoryQuotaLedgerWithPolicy(QuotaPolicy{Policy: CostPolicyCostCapped, HardCapCents: 5})
@@ -200,8 +242,8 @@ func TestServiceRecordsPremiumExtractAttemptBeforeProviderError(t *testing.T) {
 		t.Fatal("expected provider error")
 	}
 	budget := ledger.BudgetStatus()
-	if budget.SpentCents != 2 {
-		t.Fatalf("premium extract attempt should be recorded before provider call, spent=%d", budget.SpentCents)
+	if budget.SpentCents != 0 {
+		t.Fatalf("extract provider error must not record premium spend, spent=%d", budget.SpentCents)
 	}
 }
 

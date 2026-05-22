@@ -126,6 +126,34 @@ func TestDefaultQuotaLedgerHonoursXDGStateHome(t *testing.T) {
 	}
 }
 
+func TestDefaultQuotaLedgerRejectsNonAbsoluteXDG(t *testing.T) {
+	// Regression for codex P2 (PR #21 round 5): XDG_STATE_HOME set to a
+	// non-absolute string (literal "~/.local/state" from a sloppy env file,
+	// or a relative path) must NOT be honoured — joining it would land the
+	// ledger under the process cwd. Fall back to the home-directory path
+	// instead.
+	clearProviderPolicyEnv(t)
+	t.Setenv("NOLE_QUOTA_LEDGER_PATH", "")
+	// Point HOME at a tempdir so the fallback writes there instead of the
+	// real user home during tests.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", "relative/state/dir")
+
+	ledger := defaultQuotaLedger(core.DefaultQuotaPolicy(), nil)
+	if status := ledger.BudgetStatus(); status.LedgerState != core.LedgerStateFileOK {
+		t.Fatalf("expected file-backed ledger via HOME fallback, got %#v", status)
+	}
+	homeFallback := filepath.Join(home, ".local", "state", "nole", "quota-ledger.json")
+	if _, err := os.Stat(homeFallback); err != nil {
+		t.Fatalf("ledger should fall back to HOME path %s, got stat err: %v", homeFallback, err)
+	}
+	// Ensure nothing got written to the relative XDG path under cwd.
+	if _, err := os.Stat(filepath.Join("relative", "state", "dir", "nole", "quota-ledger.json")); err == nil {
+		t.Fatalf("ledger must NOT have landed under relative XDG path")
+	}
+}
+
 func TestDefaultResponseCacheFromEnvUsesConfiguredTTL(t *testing.T) {
 	clearProviderPolicyEnv(t)
 	t.Setenv("NOLE_CACHE_TTL_SECONDS", "60")
