@@ -323,6 +323,45 @@ func TestFileQuotaLedgerSchemaV1MigratesToV2(t *testing.T) {
 	}
 }
 
+func TestQuotaLedgerDecideRefreshesAcrossMonthBoundary(t *testing.T) {
+	// Regression for codex P1 (PR #21): the router calls ledger.Decide() in a
+	// loop without ever reaching Record() when all providers are blocked. If
+	// refresh only triggered from recordLocked/reloadFromDiskLocked, a
+	// long-lived process that crosses a month boundary stays stuck at
+	// free_quota_exhausted until restart.
+	prevNow := nowUTC
+	defer func() { nowUTC = prevNow }()
+	nowUTC = func() time.Time {
+		t, _ := time.Parse("2006-01", "2026-04")
+		return t
+	}
+
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{
+		Provider:      "tavily",
+		CostClass:     CostClassFreeTierBYOK,
+		FreeRemaining: 0,
+		FreeQuota:     1000,
+		RefreshWindow: RefreshMonthly,
+		PeriodStart:   "2026-04",
+	})
+
+	if d := ledger.Decide("tavily"); d.Allowed {
+		t.Fatalf("baseline: provider should be blocked with FreeRemaining=0 in same month, got %#v", d)
+	}
+
+	// Cross into the next month without any Record() or reload in between.
+	nowUTC = func() time.Time {
+		t, _ := time.Parse("2006-01", "2026-05")
+		return t
+	}
+
+	d := ledger.Decide("tavily")
+	if !d.Allowed || d.Reason != "free_tier_available" || d.FreeRemaining != 1000 {
+		t.Fatalf("Decide() should refresh monthly quota even without Record()/reload, got %#v", d)
+	}
+}
+
 func TestFileQuotaLedgerCostClassTransitionResetsFreeRemaining(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "quota-ledger.json")
 	policy := QuotaPolicy{Policy: CostPolicyFreeFirst}

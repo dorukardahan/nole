@@ -178,6 +178,15 @@ func (l *MemoryQuotaLedger) Allow(provider string) bool {
 func (l *MemoryQuotaLedger) Decide(provider string) QuotaDecision {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	// Refresh expired monthly quotas before any policy decision so callers that
+	// only ever Decide() (e.g. the router probing every provider when all are
+	// blocked) still cross month boundaries correctly. We skip refresh when
+	// the ledger is in fail-closed mode since we don't trust the on-disk state
+	// there. In-memory refresh isn't persisted from this path; the next
+	// Record/Set/reload writes it back.
+	if l.failClosedReason == "" {
+		l.refreshExpiredEntriesLocked(CurrentMonthISO())
+	}
 	return l.decideLocked(provider)
 }
 
