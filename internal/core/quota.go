@@ -541,13 +541,31 @@ func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[st
 			continue
 		}
 		merged := seed
-		// Only inherit on-disk FreeRemaining / PeriodStart when the loaded
-		// entry's cost class matches the seed's. A class transition (e.g.
-		// the v1→v2 migration that flips BYOK keys from premium-capable to
-		// free-tier-BYOK) is treated as a fresh start for the new class,
-		// using the seed's hardcoded FreeQuota and current-month stamp.
+		// Free-tier accounting (FreeRemaining + FreeQuota + RefreshWindow +
+		// PeriodStart) is provider-level state, not cost-class-level. Carry
+		// it across cost-class transitions whenever the loaded entry already
+		// had a free-tier counter (loaded.FreeQuota > 0). Without this, a
+		// user could oscillate NOLE_<PROVIDER>_PAID on/off to reset their
+		// monthly free quota and bypass the guard.
+		//
+		// Two cases that DO take the seed instead:
+		//   1. Same cost class: existing behavior. Inherit FreeRemaining and
+		//      PeriodStart from disk; let the seed contribute the rest
+		//      (which is identical to disk in normal operation).
+		//   2. v1 migration where the disk entry has FreeQuota=0 (the field
+		//      didn't exist in v1, so we treat it as "no prior free-tier
+		//      counter"). Use the seed's fresh FreeRemaining.
 		if loadedEntry.CostClass == seed.CostClass {
 			merged.FreeRemaining = loadedEntry.FreeRemaining
+			if strings.TrimSpace(loadedEntry.PeriodStart) != "" {
+				merged.PeriodStart = loadedEntry.PeriodStart
+			}
+		} else if loadedEntry.FreeQuota > 0 {
+			merged.FreeRemaining = loadedEntry.FreeRemaining
+			merged.FreeQuota = loadedEntry.FreeQuota
+			if loadedEntry.RefreshWindow != "" {
+				merged.RefreshWindow = loadedEntry.RefreshWindow
+			}
 			if strings.TrimSpace(loadedEntry.PeriodStart) != "" {
 				merged.PeriodStart = loadedEntry.PeriodStart
 			}

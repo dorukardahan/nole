@@ -420,6 +420,82 @@ func TestFileQuotaLedgerCostClassTransitionResetsFreeRemaining(t *testing.T) {
 	}
 }
 
+func TestFileQuotaLedgerPaidToggleDoesNotResetFreeQuota(t *testing.T) {
+	// Regression for codex P1 (PR #21 round 2): cross-class merge previously
+	// dropped loaded.FreeRemaining, so a user could exhaust free quota, flip
+	// NOLE_<PROVIDER>_PAID=1 once (persisting premium-capable), flip the env
+	// off again, and the next reload would seed FreeRemaining=1000 fresh.
+	// The free-tier counter is provider-level state and must survive cost-
+	// class transitions whenever the disk entry already had free-tier
+	// accounting (FreeQuota > 0).
+	path := filepath.Join(t.TempDir(), "quota-ledger.json")
+	policy := QuotaPolicy{Policy: CostPolicyFreeFirst}
+
+	prevNow := nowUTC
+	defer func() { nowUTC = prevNow }()
+	nowUTC = func() time.Time {
+		t, _ := time.Parse("2006-01", "2026-05")
+		return t
+	}
+
+	// Round 1: default free mode. Drain a few calls so we can detect a reset.
+	freeSeed := []QuotaEntry{{
+		Provider:      "tavily",
+		CostClass:     CostClassFreeTierBYOK,
+		FreeRemaining: 1000,
+		FreeQuota:     1000,
+		RefreshWindow: RefreshMonthly,
+		PeriodStart:   "2026-05",
+	}}
+	ledger, err := NewFileQuotaLedgerWithPolicy(path, policy, freeSeed)
+	if err != nil {
+		t.Fatalf("round 1 create: %v", err)
+	}
+	for i := 0; i < 5; i++ {
+		if err := ledger.Record("tavily"); err != nil {
+			t.Fatalf("record %d: %v", i, err)
+		}
+	}
+	if got, _ := ledger.Get("tavily"); got.FreeRemaining != 995 {
+		t.Fatalf("baseline drain: FreeRemaining=%d, want 995", got.FreeRemaining)
+	}
+
+	// Round 2: simulate NOLE_TAVILY_PAID=1 flip. Seed becomes premium-capable.
+	paidSeed := []QuotaEntry{{
+		Provider:           "tavily",
+		CostClass:          CostClassPremiumCapable,
+		EstimatedCostCents: 0,
+	}}
+	paidLedger, err := NewFileQuotaLedgerWithPolicy(path, policy, paidSeed)
+	if err != nil {
+		t.Fatalf("round 2 create: %v", err)
+	}
+	paidGot, ok := paidLedger.Get("tavily")
+	if !ok {
+		t.Fatalf("tavily missing in paid mode")
+	}
+	if paidGot.CostClass != CostClassPremiumCapable {
+		t.Fatalf("paid mode CostClass=%s, want premium-capable", paidGot.CostClass)
+	}
+	if paidGot.FreeQuota != 1000 || paidGot.FreeRemaining != 995 {
+		t.Fatalf("paid mode should preserve free-tier state, got FreeRemaining=%d FreeQuota=%d", paidGot.FreeRemaining, paidGot.FreeQuota)
+	}
+
+	// Round 3: NOLE_TAVILY_PAID=1 toggled off. Back to the free seed.
+	backLedger, err := NewFileQuotaLedgerWithPolicy(path, policy, freeSeed)
+	if err != nil {
+		t.Fatalf("round 3 create: %v", err)
+	}
+	backGot, _ := backLedger.Get("tavily")
+	if backGot.CostClass != CostClassFreeTierBYOK {
+		t.Fatalf("free again CostClass=%s, want free-tier-BYOK", backGot.CostClass)
+	}
+	// Critical bypass assertion.
+	if backGot.FreeRemaining != 995 {
+		t.Fatalf("free again FreeRemaining=%d, want 995 (paid toggle must not reset)", backGot.FreeRemaining)
+	}
+}
+
 func TestFileQuotaLedgerRejectsFutureSchemaVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "quota-ledger.json")
 	policy := QuotaPolicy{Policy: CostPolicyFreeFirst}
