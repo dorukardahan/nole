@@ -14,7 +14,6 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/brave"
 	"github.com/dorukardahan/nole/internal/providers/ddgs"
 	"github.com/dorukardahan/nole/internal/providers/firecrawl"
-	"github.com/dorukardahan/nole/internal/providers/jina"
 	"github.com/dorukardahan/nole/internal/providers/mock"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
 	"github.com/dorukardahan/nole/internal/safeerr"
@@ -23,20 +22,12 @@ import (
 func defaultService() *core.Service {
 	registry := core.NewRegistry()
 
-	jinaKey := os.Getenv("JINA_API_KEY")
 	firecrawlKey := os.Getenv("FIRECRAWL_API_KEY")
 	braveKey := os.Getenv("BRAVE_API_KEY")
 	if braveKey == "" {
 		braveKey = os.Getenv("BRAVE_SEARCH_API_KEY")
 	}
 	tavilyKey := os.Getenv("TAVILY_API_KEY")
-
-	// Jina — real adapter (search + extract)
-	if jinaKey != "" {
-		_ = registry.Register(jina.New(jina.WithAPIKey(jinaKey)))
-	} else {
-		_ = registry.Register(mock.NewUnavailable("jina"))
-	}
 
 	// Firecrawl — real adapter (search + extract)
 	if firecrawlKey != "" {
@@ -62,7 +53,7 @@ func defaultService() *core.Service {
 	// DDGS — keyless free, always available
 	_ = registry.Register(ddgs.New())
 
-	entries := defaultQuotaEntries(braveKey, tavilyKey, jinaKey, firecrawlKey)
+	entries := defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey)
 	ledger := defaultQuotaLedger(defaultQuotaPolicyFromEnv(), entries)
 
 	opts := []core.ServiceOption{}
@@ -72,11 +63,10 @@ func defaultService() *core.Service {
 	return core.NewService(registry, ledger, core.DefaultRouteMatrix(), opts...)
 }
 
-func defaultQuotaEntries(braveKey, tavilyKey, jinaKey, firecrawlKey string) []core.QuotaEntry {
+func defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey string) []core.QuotaEntry {
 	return []core.QuotaEntry{
 		providerQuotaEntry("brave", braveKey != ""),
 		providerQuotaEntry("tavily", tavilyKey != ""),
-		providerQuotaEntry("jina", jinaKey != ""),
 		providerQuotaEntry("firecrawl", firecrawlKey != ""),
 		{Provider: "ddgs", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 	}

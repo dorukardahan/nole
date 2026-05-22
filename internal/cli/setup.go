@@ -128,7 +128,6 @@ func newSetupCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(out, "\n%d agent(s) configured. Set provider keys before starting:\n", configured)
-			fmt.Fprintln(out, "  export JINA_API_KEY=...")
 			fmt.Fprintln(out, "  export FIRECRAWL_API_KEY=...")
 			fmt.Fprintln(out, "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
 			fmt.Fprintln(out, "  export TAVILY_API_KEY=...")

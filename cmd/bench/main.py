@@ -100,8 +100,6 @@ def run_search(provider, query, timeout=15):
             r = run_brave(query, env, timeout)
         elif provider == "tavily":
             r = run_tavily(query, env, timeout)
-        elif provider == "jina":
-            r = run_jina_search(query, env, timeout)
         elif provider == "firecrawl":
             r = run_firecrawl_search(query, env, timeout)
         elif provider == "ddgs":
@@ -161,28 +159,6 @@ def run_tavily(query, env, timeout):
     return {
         "result_count": len(results),
         "has_snippets": all(r.get("content") for r in results[:3]),
-        "has_urls": all(r.get("url") for r in results[:3]),
-        "titles": [r.get("title", "")[:80] for r in results[:3]],
-    }
-
-
-def run_jina_search(query, env, timeout):
-    key = env.get("JINA_API_KEY")
-    if not key:
-        return {"error": "no key"}
-    d = _json_request(
-        "https://s.jina.ai/",
-        {"q": query, "num": 5},
-        timeout,
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Accept": "application/json",
-        },
-    )
-    results = d.get("data", [])
-    return {
-        "result_count": len(results),
-        "has_snippets": all(r.get("description") for r in results[:3]),
         "has_urls": all(r.get("url") for r in results[:3]),
         "titles": [r.get("title", "")[:80] for r in results[:3]],
     }
@@ -254,7 +230,7 @@ def score_result(result):
 
 
 def main():
-    providers = ["brave", "tavily", "jina", "firecrawl", "ddgs"]
+    providers = ["brave", "tavily", "firecrawl", "ddgs"]
 
     # Load env from optional env file (--env flag or NOLE_ENV).
     # SEARCHMCP_ENV remains as a deprecated migration alias only.

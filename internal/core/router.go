@@ -9,20 +9,20 @@ func DefaultRouteMatrix() RouteMatrix {
 	// docs/ROUTE-EVIDENCE.md; do not reorder providers without new evidence.
 	return RouteMatrix{
 		// Search tasks
-		TaskGeneral:   {"brave", "firecrawl", "ddgs", "tavily", "jina"},
-		TaskNews:      {"brave", "ddgs", "tavily", "firecrawl", "jina"},
-		TaskDocs:      {"brave", "firecrawl", "tavily", "ddgs", "jina"},
-		TaskAcademic:  {"brave", "tavily", "firecrawl", "ddgs", "jina"},
-		TaskFactcheck: {"brave", "tavily", "ddgs", "firecrawl", "jina"},
-		TaskSemantic:  {"tavily", "firecrawl", "brave", "ddgs", "jina"},
-		TaskCode:      {"brave", "firecrawl", "ddgs", "tavily", "jina"},
-		TaskSocial:    {"firecrawl", "ddgs", "brave", "tavily", "jina"},
-		TaskPeople:    {"tavily", "firecrawl", "brave", "ddgs", "jina"},
-		TaskPricing:   {"brave", "tavily", "firecrawl", "ddgs", "jina"},
-		TaskResearch:  {"brave", "firecrawl", "ddgs", "tavily", "jina"},
+		TaskGeneral:   {"brave", "firecrawl", "ddgs", "tavily"},
+		TaskNews:      {"brave", "ddgs", "tavily", "firecrawl"},
+		TaskDocs:      {"brave", "firecrawl", "tavily", "ddgs"},
+		TaskAcademic:  {"brave", "tavily", "firecrawl", "ddgs"},
+		TaskFactcheck: {"brave", "tavily", "ddgs", "firecrawl"},
+		TaskSemantic:  {"tavily", "firecrawl", "brave", "ddgs"},
+		TaskCode:      {"brave", "firecrawl", "ddgs", "tavily"},
+		TaskSocial:    {"firecrawl", "ddgs", "brave", "tavily"},
+		TaskPeople:    {"tavily", "firecrawl", "brave", "ddgs"},
+		TaskPricing:   {"brave", "tavily", "firecrawl", "ddgs"},
+		TaskResearch:  {"brave", "firecrawl", "ddgs", "tavily"},
 		// Extract tasks: only providers with extraction capability. Brave/DDGS are
 		// intentionally excluded even if URL-query benchmark scores are high.
-		TaskExtract: {"tavily", "firecrawl", "jina"},
+		TaskExtract: {"tavily", "firecrawl"},
 	}
 }
 

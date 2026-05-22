@@ -62,7 +62,6 @@ Nólë currently supports these provider adapters:
 
 - Brave Search API: search, BYOK/free-tier capable.
 - Tavily: search + extract, BYOK/free-tier/premium-capable depending on your account.
-- Jina: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - Firecrawl: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - DDGS: keyless search fallback.
 
@@ -75,7 +74,7 @@ See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 Prerequisites:
 
 - Go 1.23+ for building from source.
-- Optional provider keys for Brave, Tavily, Jina and Firecrawl.
+- Optional provider keys for Brave, Tavily and Firecrawl.
 - No provider key is required for the deterministic benchmark or DDGS keyless fallback.
 
 Build and run locally:
@@ -157,7 +156,6 @@ Environment variables:
 ```bash
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
-export JINA_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
 
 # Optional policy controls; omit for no-hidden-paid-spend default.

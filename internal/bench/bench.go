@@ -582,14 +582,6 @@ func defaultOfflineObservations() map[string]map[core.TaskType]Observation {
 			core.TaskPricing:   obs(5, .78, .80, .78, .72, 930),
 			core.TaskResearch:  obs(5, .76, .74, .76, .72, 940),
 		},
-		"jina": {
-			core.TaskGeneral:   obs(4, .70, .68, .72, .70, 1800),
-			core.TaskDocs:      obs(4, .74, .70, .74, .70, 1700),
-			core.TaskAcademic:  obs(4, .72, .68, .74, .70, 1750),
-			core.TaskFactcheck: obs(4, .70, .68, .72, .70, 1800),
-			core.TaskPricing:   obs(4, .70, .70, .72, .70, 1800),
-			core.TaskExtract:   extractObs(.86, .76, .86, .74, 900),
-		},
 	}
 }
 

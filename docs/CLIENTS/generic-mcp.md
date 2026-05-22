@@ -53,7 +53,6 @@ Set these variable names locally when you have the matching provider accounts:
 
 - `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY`
 - `TAVILY_API_KEY`
-- `JINA_API_KEY`
 - `FIRECRAWL_API_KEY`
 
 Do not print actual values. Use `nole doctor` to check presence only.

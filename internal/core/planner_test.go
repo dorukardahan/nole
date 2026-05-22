@@ -73,14 +73,14 @@ func TestBuildRoutePlanMultiIntentAndTrace(t *testing.T) {
 }
 
 func TestBuildRoutePlanOverrides(t *testing.T) {
-	plan := BuildRoutePlan("jaguar", DefaultRouteMatrix(), PlanOptions{TaskOverride: TaskDocs, ProviderOverride: []string{"ddgs", "jina"}})
+	plan := BuildRoutePlan("jaguar", DefaultRouteMatrix(), PlanOptions{TaskOverride: TaskDocs, ProviderOverride: []string{"ddgs", "firecrawl"}})
 	if plan.PrimaryTask != TaskDocs || plan.Ambiguous {
 		t.Fatalf("override should force docs and clear ambiguity: %#v", plan)
 	}
 	if len(plan.Routes) != 1 {
 		t.Fatalf("expected one override route: %#v", plan.Routes)
 	}
-	if got := plan.Routes[0].Route; len(got) != 2 || got[0] != "ddgs" || got[1] != "jina" {
+	if got := plan.Routes[0].Route; len(got) != 2 || got[0] != "ddgs" || got[1] != "firecrawl" {
 		t.Fatalf("provider override route = %#v", got)
 	}
 	for _, attempt := range plan.RouteTrace {

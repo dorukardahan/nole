@@ -44,7 +44,6 @@ Nólë reads provider keys from environment variables:
 ```bash
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
-export JINA_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
 ```
 

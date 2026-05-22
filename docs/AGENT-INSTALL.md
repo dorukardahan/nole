@@ -85,7 +85,6 @@ Use this template locally. It intentionally uses variable names and policy contr
 # Optional provider keys. Set only in your local shell, service env or local-only env file.
 # export BRAVE_API_KEY="set-locally"
 # export TAVILY_API_KEY="set-locally"
-# export JINA_API_KEY="set-locally"
 # export FIRECRAWL_API_KEY="set-locally"
 
 # Default no-hidden-paid-spend mode.
@@ -147,7 +146,6 @@ Environment variables:
 ```bash
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
-export JINA_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
 ```
 

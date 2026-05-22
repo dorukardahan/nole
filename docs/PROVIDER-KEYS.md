@@ -10,7 +10,6 @@ Default policy is `free-first`. That means no hidden paid usage by default: a pr
 | --- | --- | --- | --- |
 | Brave Search API | `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` | Search for broad/docs/news/pricing routes when policy allows | Review plan limits and disable overage or set request caps where the dashboard supports it. |
 | Tavily | `TAVILY_API_KEY` | Search/extract for semantic, people/company, fact-check and pricing routes when evidence and policy allow | Can be premium-capable depending on account plan; do not enable only because a key exists. |
-| Jina | `JINA_API_KEY` | Search and reader/extraction fallback | Review free quota and paid terms; keep fetched content and raw payloads out of shared logs. |
 | Firecrawl | `FIRECRAWL_API_KEY` | Search/extract for docs/code/social scenarios when evidence and policy allow | Can consume quota quickly during extraction; keep live tests low-limit. |
 | DDGS | none | Keyless fallback search | Keyless does not mean guaranteed availability, SLA or unlimited use. |
 
@@ -32,7 +31,6 @@ Nólë currently reads:
 ```bash
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
-export JINA_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
 ```
 
@@ -48,7 +46,6 @@ export NOLE_COST_POLICY="free-first"     # free-first | cost-capped | quality-fi
 export NOLE_HARD_CAP_CENTS="0"
 export NOLE_BRAVE_ESTIMATED_COST_CENTS=""
 export NOLE_TAVILY_ESTIMATED_COST_CENTS=""
-export NOLE_JINA_ESTIMATED_COST_CENTS=""
 export NOLE_FIRECRAWL_ESTIMATED_COST_CENTS=""
 ```
 
@@ -82,7 +79,6 @@ Variable names to set locally when you have the matching provider accounts:
 
 - `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY`
 - `TAVILY_API_KEY`
-- `JINA_API_KEY`
 - `FIRECRAWL_API_KEY`
 
 Do not commit real values.
@@ -163,22 +159,6 @@ Notes:
 
 - Tavily can be premium-capable depending on account plan.
 - Nólë should not prefer it merely because a key exists.
-
-## Jina
-
-Use for: search and page extraction/reader fallback.
-
-Setup:
-
-1. Create or locate the Jina key for the relevant service.
-2. Review free quota and paid usage terms.
-3. Export `JINA_API_KEY` locally.
-4. Run `nole doctor`.
-
-Notes:
-
-- Jina is useful as an extraction fallback.
-- Keep raw fetched content and provider payloads out of logs when they may contain private data.
 
 ## Firecrawl
 

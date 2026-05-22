@@ -102,9 +102,9 @@ func TestQuotaFreeFirstAllowsFreeTierWithRemainingQuota(t *testing.T) {
 
 func TestQuotaFreeFirstBlocksUnknownCost(t *testing.T) {
 	ledger := NewMemoryQuotaLedger()
-	ledger.Set(QuotaEntry{Provider: "jina", CostClass: CostClassUnknownCost})
+	ledger.Set(QuotaEntry{Provider: "tavily", CostClass: CostClassUnknownCost})
 
-	decision := ledger.Decide("jina")
+	decision := ledger.Decide("tavily")
 	if decision.Allowed || decision.Reason != "unknown_cost_blocked" {
 		t.Fatalf("expected unknown cost to fail closed under free-first, got %#v", decision)
 	}
