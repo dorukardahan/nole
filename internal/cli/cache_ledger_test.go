@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -79,6 +80,49 @@ func TestDefaultQuotaLedgerCanStayMemoryOnly(t *testing.T) {
 	ledger := defaultQuotaLedger(core.DefaultQuotaPolicy(), []core.QuotaEntry{{Provider: "ddgs", CostClass: core.CostClassKeylessFree}})
 	if status := ledger.BudgetStatus(); status.LedgerState != core.LedgerStateMemory {
 		t.Fatalf("expected memory ledger, got %#v", status)
+	}
+}
+
+func TestDefaultQuotaLedgerIsFileBackedByDefault(t *testing.T) {
+	// Regression for codex P1 (PR #21 round 4): the brave_note line claims
+	// nole caps usage at the monthly free quota. That claim is only true if
+	// the ledger survives process restarts. Verify the default ledger is
+	// file-backed when no env override is set.
+	clearProviderPolicyEnv(t)
+	t.Setenv("NOLE_QUOTA_LEDGER_PATH", "")
+	tmp := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", tmp)
+
+	ledger := defaultQuotaLedger(core.DefaultQuotaPolicy(), []core.QuotaEntry{
+		{Provider: "tavily", CostClass: core.CostClassFreeTierBYOK, FreeRemaining: 1000, FreeQuota: 1000, RefreshWindow: core.RefreshMonthly, PeriodStart: core.CurrentMonthISO()},
+	})
+	status := ledger.BudgetStatus()
+	if status.LedgerState != core.LedgerStateFileOK {
+		t.Fatalf("default ledger should be file-backed, got LedgerState=%s", status.LedgerState)
+	}
+
+	// Confirm the file actually landed under the XDG-resolved path.
+	expected := filepath.Join(tmp, "nole", "quota-ledger.json")
+	if _, err := os.Stat(expected); err != nil {
+		t.Fatalf("expected ledger at %s, got stat err: %v", expected, err)
+	}
+}
+
+func TestDefaultQuotaLedgerHonoursXDGStateHome(t *testing.T) {
+	// XDG_STATE_HOME wins over ~/.local/state. Verify the resolved path uses
+	// the user's XDG value when it's set.
+	clearProviderPolicyEnv(t)
+	t.Setenv("NOLE_QUOTA_LEDGER_PATH", "")
+	xdg := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", xdg)
+
+	ledger := defaultQuotaLedger(core.DefaultQuotaPolicy(), nil)
+	if status := ledger.BudgetStatus(); status.LedgerState != core.LedgerStateFileOK {
+		t.Fatalf("expected file-backed ledger under XDG_STATE_HOME, got %#v", status)
+	}
+	expected := filepath.Join(xdg, "nole", "quota-ledger.json")
+	if _, err := os.Stat(expected); err != nil {
+		t.Fatalf("ledger should land at XDG path %s, got stat err: %v", expected, err)
 	}
 }
 

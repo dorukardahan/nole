@@ -95,7 +95,7 @@ export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"
 export NOLE_CACHE_TTL="5m"
 ```
 
-Use `NOLE_QUOTA_LEDGER_PATH=memory`, `off`, `none` or leave it unset for memory-only accounting. `NOLE_CACHE_TTL_SECONDS=300` is also accepted. Explicit `cost-capped` or `quality-first` settings can allow premium-capable providers, so do not promise absolute no-paid behavior when those policies are selected.
+The quota ledger is file-backed by default at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json`). Set `NOLE_QUOTA_LEDGER_PATH` to override the path, or to `memory`/`off`/`none` to opt into per-restart reset. `NOLE_CACHE_TTL_SECONDS=300` is also accepted. Explicit `cost-capped` or `quality-first` settings can allow premium-capable providers, so do not promise absolute no-paid behavior when those policies are selected.
 
 ## Local machine install
 

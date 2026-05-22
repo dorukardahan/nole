@@ -171,12 +171,15 @@ export NOLE_COST_POLICY="free-first"        # free-first | cost-capped | quality
 export NOLE_HARD_CAP_CENTS="0"              # used by cost-capped
 export NOLE_TAVILY_ESTIMATED_COST_CENTS=""  # set explicitly before cost-capped live use
 
-# Optional local state controls.
+# Optional local state controls. The ledger is file-backed by default at
+# $XDG_STATE_HOME/nole/quota-ledger.json (or ~/.local/state/nole/quota-ledger.json
+# when XDG_STATE_HOME is unset); set NOLE_QUOTA_LEDGER_PATH only if you want a
+# different location, or "memory"/"off"/"none" to disable file persistence.
 export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"
 export NOLE_CACHE_TTL="5m"                  # or NOLE_CACHE_TTL_SECONDS="300"
 ```
 
-`NOLE_QUOTA_LEDGER_PATH` enables a file-backed quota/cost ledger. Use `memory`, `off` or leave it unset for memory-only accounting. The ledger stores provider names, cost classes, local free-quota counters and local estimated spend; it does not store provider keys or raw provider payloads. If a configured ledger is corrupt, Nólë backs it up and fails closed for paid/quota-tracked providers while still allowing keyless-free providers. `NOLE_CACHE_TTL` enables an in-memory TTL cache for normalized search/extract responses inside a running process, such as `nole mcp`; cache hit/miss status appears in `route_trace` and compact `routing_insight`.
+Nólë's quota ledger is **file-backed by default** at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json` when `XDG_STATE_HOME` is unset). Durability is required for the monthly free-tier cap to be meaningful: an in-memory ledger resets to the full free quota on every process restart, which defeats the cap when nole is spawned per session (the typical MCP client pattern). Set `NOLE_QUOTA_LEDGER_PATH` to override the default location, or to `memory`/`off`/`none` to explicitly disable file persistence — only do that if you understand the per-restart reset implication. The ledger stores provider names, cost classes, local free-quota counters and local estimated spend; it does not store provider keys or raw provider payloads. If a configured ledger is corrupt, Nólë backs it up and fails closed for paid/quota-tracked providers while still allowing keyless-free providers. `NOLE_CACHE_TTL` enables an in-memory TTL cache for normalized search/extract responses inside a running process, such as `nole mcp`; cache hit/miss status appears in `route_trace` and compact `routing_insight`.
 
 Do not paste real keys into chat, GitHub issues, docs, PRs or logs. If a GUI agent does not inherit your shell environment, put keys in a local-only env file such as `~/.config/nole/.env` and configure the client launcher to source it. Keep that file out of git and restrict permissions.
 

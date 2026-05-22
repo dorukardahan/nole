@@ -64,7 +64,10 @@ Do not set `quality-first` or non-zero cost estimates unless you intentionally a
 Optional local state controls:
 
 ```bash
-# Enable a file-backed local quota/cost ledger. Leave unset, or use memory/off/none, for memory-only accounting.
+# File-backed local quota/cost ledger. Defaults to $XDG_STATE_HOME/nole/quota-ledger.json
+# (or ~/.local/state/nole/quota-ledger.json). Override only if you need a
+# different path, or set to memory/off/none to opt out of persistence —
+# memory mode resets the free-tier counter on every restart.
 export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"
 
 # Enable in-process TTL cache for normalized search/extract responses, useful for long-running MCP sessions.

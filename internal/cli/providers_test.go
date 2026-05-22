@@ -132,8 +132,12 @@ func clearProviderPolicyEnv(t *testing.T) {
 		"NOLE_COST_POLICY", "NOLE_HARD_CAP_CENTS", "NOLE_BRAVE_ESTIMATED_COST_CENTS", "NOLE_TAVILY_ESTIMATED_COST_CENTS",
 		"NOLE_FIRECRAWL_ESTIMATED_COST_CENTS",
 		"NOLE_BRAVE_PAID", "NOLE_TAVILY_PAID", "NOLE_FIRECRAWL_PAID",
-		"NOLE_QUOTA_LEDGER_PATH", "NOLE_CACHE_TTL", "NOLE_CACHE_TTL_SECONDS",
+		"NOLE_CACHE_TTL", "NOLE_CACHE_TTL_SECONDS",
 	} {
 		t.Setenv(key, "")
 	}
+	// Force memory-mode ledger for provider/doctor command tests so no test
+	// run writes to ~/.local/state/nole/. The file-backed default path is
+	// exercised by TestDefaultLedgerIsFileBacked in cache_ledger_test.go.
+	t.Setenv("NOLE_QUOTA_LEDGER_PATH", "memory")
 }

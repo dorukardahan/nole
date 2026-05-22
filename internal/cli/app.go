@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -73,14 +74,41 @@ func defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey string) []core.QuotaE
 }
 
 func defaultQuotaLedger(policy core.QuotaPolicy, entries []core.QuotaEntry) core.QuotaLedger {
-	path := strings.TrimSpace(os.Getenv("NOLE_QUOTA_LEDGER_PATH"))
-	if path == "" || strings.EqualFold(path, "memory") || strings.EqualFold(path, "off") || strings.EqualFold(path, "none") {
+	raw := strings.TrimSpace(os.Getenv("NOLE_QUOTA_LEDGER_PATH"))
+
+	// Explicit opt-out into memory-only mode. The monthly free-tier guard is
+	// not durable across process restarts in this mode, so per-session spawn
+	// patterns (e.g. an MCP client that re-launches nole per turn) will reset
+	// the counter. Only honour the opt-out when the user typed it.
+	if strings.EqualFold(raw, "memory") || strings.EqualFold(raw, "off") || strings.EqualFold(raw, "none") {
 		ledger := core.NewMemoryQuotaLedgerWithPolicy(policy)
 		for _, entry := range entries {
 			ledger.Set(entry)
 		}
 		return ledger
 	}
+
+	// Default: file-backed ledger at $XDG_STATE_HOME/nole/quota-ledger.json
+	// (or ~/.local/state/nole/quota-ledger.json on platforms that don't set
+	// XDG_STATE_HOME). This makes the "caps usage at the monthly free quota"
+	// claim true in brave_note and other surfaces: the counter actually
+	// survives process restarts.
+	path := raw
+	if path == "" {
+		path = defaultQuotaLedgerPath()
+	}
+
+	if path == "" {
+		// Could not resolve a writable default path. Fall back to memory and
+		// rely on doctor surfaces to flag the lack of durability if/when the
+		// user inspects ledger state. Better than crashing on every startup.
+		fallback := core.NewMemoryQuotaLedgerWithPolicy(policy)
+		for _, entry := range entries {
+			fallback.Set(entry)
+		}
+		return fallback
+	}
+
 	ledger, err := core.NewFileQuotaLedgerWithPolicy(path, policy, entries)
 	if err != nil && ledger != nil {
 		return ledger
@@ -93,6 +121,22 @@ func defaultQuotaLedger(policy core.QuotaPolicy, entries []core.QuotaEntry) core
 		fallback.Set(entry)
 	}
 	return fallback
+}
+
+// defaultQuotaLedgerPath resolves the on-disk location for the BYOK quota
+// ledger when the user has not set NOLE_QUOTA_LEDGER_PATH. Honours XDG when
+// available; otherwise falls back to ~/.local/state/nole/quota-ledger.json
+// per the de-facto Linux/macOS convention. Returns "" when no home directory
+// can be resolved; callers handle that by falling back to memory mode.
+func defaultQuotaLedgerPath() string {
+	if state := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); state != "" {
+		return filepath.Join(state, "nole", "quota-ledger.json")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return ""
+	}
+	return filepath.Join(home, ".local", "state", "nole", "quota-ledger.json")
 }
 
 func defaultResponseCacheFromEnv() core.ResponseCache {
