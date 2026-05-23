@@ -17,12 +17,14 @@ const (
 	extractToolDescription = "Extract clean readable content from a public web page URL for summarization, citation, documentation lookup, or research context using free-tier routing with local URL safety preflight."
 )
 
-// hasExtractCapableConfigured reports whether any BYOK provider that supports
+// HasExtractCapableConfigured reports whether any BYOK provider that supports
 // the extract capability has its key configured in the environment. Used at
 // MCP tool-registration time to decide whether mcp__nole__extract should be
 // advertised at all. This avoids an expensive provider.Status HTTP probe at
-// startup: we read env vars directly instead.
-func hasExtractCapableConfigured() bool {
+// startup: we read env vars directly instead. Exported so the doctor command
+// can mirror the MCP server's registration decision for its conditional smoke
+// assertion.
+func HasExtractCapableConfigured() bool {
 	for _, p := range core.BYOKProviders() {
 		if !p.SupportsExtract {
 			continue
@@ -80,7 +82,7 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		return mcp.NewToolResultText(string(b)), nil
 	})
 
-	if hasExtractCapableConfigured() {
+	if HasExtractCapableConfigured() {
 		extractTool := mcp.NewTool(
 			"extract",
 			mcp.WithDescription(extractToolDescription),

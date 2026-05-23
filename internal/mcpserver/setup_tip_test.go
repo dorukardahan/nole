@@ -243,8 +243,8 @@ func TestMCPExtractToolHiddenWhenNoExtractCapableKey(t *testing.T) {
 	t.Setenv("TAVILY_API_KEY", "")
 	t.Setenv("FIRECRAWL_API_KEY", "")
 
-	if hasExtractCapableConfigured() {
-		t.Fatal("with only BRAVE_API_KEY set, hasExtractCapableConfigured must be false")
+	if HasExtractCapableConfigured() {
+		t.Fatal("with only BRAVE_API_KEY set, HasExtractCapableConfigured must be false")
 	}
 
 	// Also verify at the server level: the extract tool must not appear.
@@ -266,8 +266,8 @@ func TestMCPExtractToolPresentWhenExtractCapableKeyExists(t *testing.T) {
 	t.Setenv("TAVILY_API_KEY", "fake-tavily-key")
 	t.Setenv("FIRECRAWL_API_KEY", "")
 
-	if !hasExtractCapableConfigured() {
-		t.Fatal("with TAVILY_API_KEY set, hasExtractCapableConfigured must be true")
+	if !HasExtractCapableConfigured() {
+		t.Fatal("with TAVILY_API_KEY set, HasExtractCapableConfigured must be true")
 	}
 
 	// Server-level: extract must appear in tools/list.
@@ -286,8 +286,8 @@ func TestMCPExtractToolPresentWithFirecrawlOnly(t *testing.T) {
 	t.Setenv("TAVILY_API_KEY", "")
 	t.Setenv("FIRECRAWL_API_KEY", "fake-fc-key")
 
-	if !hasExtractCapableConfigured() {
-		t.Fatal("with FIRECRAWL_API_KEY set, hasExtractCapableConfigured must be true")
+	if !HasExtractCapableConfigured() {
+		t.Fatal("with FIRECRAWL_API_KEY set, HasExtractCapableConfigured must be true")
 	}
 
 	// Server-level: extract must appear in tools/list.

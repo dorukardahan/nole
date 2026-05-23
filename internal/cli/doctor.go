@@ -330,6 +330,15 @@ func checkMCPProtocolSmoke(parent context.Context, binary string) mcpProtocolSmo
 	if missing := missingTools(tools, []string{"budget_status", "provider_status", "search"}); len(missing) > 0 {
 		return finish(fmt.Sprintf("missing tools: %v", missing))
 	}
+	// If an extract-capable BYOK key is configured in the running environment,
+	// the subprocess inherited the same env (cmd.Env = os.Environ()) and MUST
+	// register extract. Catching the inconsistency here prevents a regression
+	// where extract is silently absent for users who have keys.
+	if mcpserver.HasExtractCapableConfigured() {
+		if missing := missingTools(tools, []string{"extract"}); len(missing) > 0 {
+			return finish(fmt.Sprintf("extract-capable BYOK key is set but extract tool missing from MCP surface: %v", missing))
+		}
+	}
 	if result.NonJSONStdoutLines != 0 {
 		return finish("MCP subprocess wrote non-JSON-RPC lines to stdout")
 	}
