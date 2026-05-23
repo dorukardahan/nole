@@ -337,6 +337,33 @@ func TestDoctorCommandSurfacesPaidModeWarning(t *testing.T) {
 	}
 }
 
+// TestDoctorCommandMCPFlagAssertExtractWhenKeyConfigured verifies the
+// conditional extract assertion introduced in checkMCPProtocolSmoke: when an
+// extract-capable BYOK key is set, doctor --mcp must pass (extract IS
+// registered by the subprocess because it inherits the same env). A future
+// regression that accidentally hides extract registration would fail here.
+func TestDoctorCommandMCPFlagAssertExtractWhenKeyConfigured(t *testing.T) {
+	bin := buildNoleBinary(t)
+	t.Setenv("NOLE_MCP_SMOKE_BINARY", bin)
+	// TAVILY_API_KEY is an extract-capable key; HasExtractCapableConfigured()
+	// returns true, triggering the new conditional assertion in
+	// checkMCPProtocolSmoke. The subprocess inherits the same env and MUST
+	// register extract.
+	t.Setenv("TAVILY_API_KEY", "fake-key")
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"doctor", "--mcp"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("doctor --mcp should pass when TAVILY_API_KEY is set and extract is registered; output:\n%s", out.String())
+	}
+	text := out.String()
+	if !strings.Contains(text, "extract") {
+		t.Fatalf("doctor --mcp output should mention the extract tool when key is configured:\n%s", text)
+	}
+}
+
 func TestDoctorCommandMCPFlagReturnsErrorOnSmokeFailure(t *testing.T) {
 	t.Setenv("NOLE_MCP_SMOKE_BINARY", filepath.Join(t.TempDir(), "missing-nole"))
 	cmd := NewRootCommand()
@@ -364,6 +391,10 @@ func TestMCPStdioSmokeDoesNotWriteStartupNoiseToStdout(t *testing.T) {
 
 func TestMCPProtocolSmokeRunsSubprocessInitializeAndToolsList(t *testing.T) {
 	bin := buildNoleBinary(t)
+	// Set an extract-capable key so the subprocess registers the extract tool.
+	// The subprocess inherits os.Environ() from the test process, so t.Setenv
+	// propagates naturally.
+	t.Setenv("TAVILY_API_KEY", "fake-tavily-smoke-key")
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	result := checkMCPProtocolSmoke(ctx, bin)

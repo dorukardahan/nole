@@ -13,7 +13,7 @@ Default policy is `free-first` and each supported BYOK provider is classified as
 | Firecrawl | `FIRECRAWL_API_KEY` | 1000 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Free quota refill semantics shifted in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume use. |
 | DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
 
-The free-tier numbers above are conservative anchors verified 2026-05. They are encoded in `internal/cli/app.go` as `byokFreeDefaults`; bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
+The free-tier numbers above are conservative anchors verified 2026-05. They are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
 
 Use `nole doctor`, `nole providers --json` and MCP `provider_status`/`budget_status` to inspect status safely. These surfaces should report presence/status and local policy decisions, never key values.
 
@@ -254,3 +254,16 @@ Quota refresh:
 - The ledger uses schema version 2. v1 ledgers from prior nole versions are migrated forward on first load. Cost-class transitions (e.g. v1 BYOK keys that were premium-capable becoming free-tier-BYOK) use the seed's fresh `FreeRemaining` instead of the stale on-disk counter.
 
 Important: this is a conservative local policy model, not a live provider billing oracle. Check provider dashboards for real balances, plan limits and overage settings before live use.
+
+## Partial-key behavior
+
+Nólë is designed as a strict enhancement of whatever AI tool consumes it. The MCP surface adapts to which keys are configured:
+
+- **No keys at all:** `mcp__nole__search` is registered and routes via DDGS (keyless). `mcp__nole__extract` is **not** registered — the AI tool uses its own built-in HTTP fetch instead. `mcp__nole__provider_status` and `mcp__nole__budget_status` are always available.
+- **Only `BRAVE_API_KEY`:** Search routes Brave-first with DDGS fallback. Extract is still not registered (Brave has no extract capability); the AI tool's built-in fetch handles URL content.
+- **Only `TAVILY_API_KEY` or only `FIRECRAWL_API_KEY`:** Both `mcp__nole__search` and `mcp__nole__extract` are registered.
+- **Any two or all three:** Full feature set with redundancy on the overlapping capability.
+
+If you add a key mid-session, restart your AI tool (or its MCP connection) so the new tool surface is picked up.
+
+`provider_status` returns a `setup_suggestions` array listing every missing key, what configuring it would unlock, where to sign up, and an `impact` rating (`high` / `medium` / `low`) so AI tools can decide what to surface. The first `search` response of an MCP session also carries a compact `setup_tip` summarizing the same information; subsequent searches in the same session omit it to avoid nagging.

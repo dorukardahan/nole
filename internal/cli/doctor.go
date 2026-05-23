@@ -58,7 +58,8 @@ func newDoctorCommand() *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), "- stdio: logs must go to stderr; stdout reserved for MCP protocol")
 
 			svc := defaultService()
-			statuses := svc.ProviderStatus(context.Background())
+			providerResp := svc.ProviderStatus(context.Background())
+			statuses := providerResp.Providers
 
 			available := 0
 			for _, s := range statuses {
@@ -322,8 +323,21 @@ func checkMCPProtocolSmoke(parent context.Context, binary string) mcpProtocolSmo
 		return finish(fmt.Sprintf("parse tools/list: %v", err))
 	}
 	result.Tools = tools
-	if missing := missingTools(tools, []string{"budget_status", "extract", "provider_status", "search"}); len(missing) > 0 {
+	// "extract" is conditionally registered only when an extract-capable
+	// provider key (TAVILY_API_KEY, FIRECRAWL_API_KEY) is configured, so it
+	// is not checked here. budget_status, provider_status, and search are
+	// always registered regardless of key configuration.
+	if missing := missingTools(tools, []string{"budget_status", "provider_status", "search"}); len(missing) > 0 {
 		return finish(fmt.Sprintf("missing tools: %v", missing))
+	}
+	// If an extract-capable BYOK key is configured in the running environment,
+	// the subprocess inherited the same env (cmd.Env = os.Environ()) and MUST
+	// register extract. Catching the inconsistency here prevents a regression
+	// where extract is silently absent for users who have keys.
+	if mcpserver.HasExtractCapableConfigured() {
+		if missing := missingTools(tools, []string{"extract"}); len(missing) > 0 {
+			return finish(fmt.Sprintf("extract-capable BYOK key is set but extract tool missing from MCP surface: %v", missing))
+		}
 	}
 	if result.NonJSONStdoutLines != 0 {
 		return finish("MCP subprocess wrote non-JSON-RPC lines to stdout")

@@ -390,7 +390,8 @@ func TestServiceProviderAndBudgetStatusExposeSafeCostPolicy(t *testing.T) {
 	ledger.Set(QuotaEntry{Provider: "tavily", CostClass: CostClassPremiumCapable, EstimatedCostCents: 1})
 	service := NewService(registry, ledger, RouteMatrix{TaskGeneral: {"tavily", "ddgs"}})
 
-	statuses := service.ProviderStatus(context.Background())
+	resp := service.ProviderStatus(context.Background())
+	statuses := resp.Providers
 	if len(statuses) != 2 {
 		t.Fatalf("expected 2 provider statuses, got %#v", statuses)
 	}

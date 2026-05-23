@@ -228,14 +228,28 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 	return resp, NoFreeQuotaError{Task: TaskExtract, Provider: route}
 }
 
-func (s *Service) ProviderStatus(ctx context.Context) []ProviderStatus {
+func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 	providers := s.registry.List()
-	out := make([]ProviderStatus, 0, len(providers))
-	for _, provider := range providers {
-		status := provider.Status(ctx)
-		out = append(out, mergeProviderCostStatus(status, s.ledger.Decide(provider.Name())))
+	statuses := make([]ProviderStatus, 0, len(providers))
+	configured := make(map[string]bool)
+
+	byokNames := make(map[string]bool, len(byokProviders))
+	for _, b := range byokProviders {
+		byokNames[b.Name] = true
 	}
-	return out
+
+	for _, provider := range providers {
+		status := provider.Status(ctx) // called once per provider
+		if byokNames[provider.Name()] {
+			configured[provider.Name()] = status.Available
+		}
+		statuses = append(statuses, mergeProviderCostStatus(status, s.ledger.Decide(provider.Name())))
+	}
+	suggestions := BuildSetupSuggestions(configured)
+	return ProviderStatusResponse{
+		Providers:        statuses,
+		SetupSuggestions: suggestions,
+	}
 }
 
 func (s *Service) BudgetStatus() BudgetStatus {

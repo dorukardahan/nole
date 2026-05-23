@@ -5,7 +5,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/dorukardahan/nole/internal/core"
 )
 
 func TestBenchmarkClaimsGuardRejectsUnsupportedClaims(t *testing.T) {
@@ -146,4 +149,30 @@ Do not claim DDGS is a primary docs benchmark provider.
 		t.Fatal(err)
 	}
 	return root
+}
+
+func TestSetupHintStringsAreSanitized(t *testing.T) {
+	// Every user-facing string in BYOKProviders flows into provider_status and
+	// search_tip output. Reuse the existing banned-words pattern so claims like
+	// "Tavily is the best" or "Brave is the fastest" can't sneak in via a
+	// metadata edit. Quantitative claims (e.g., "3x faster") would also be
+	// caught by the bench's main claims guard once they appear in a markdown
+	// summary, but the metadata strings never reach that path — they live
+	// only in JSON tool responses. Hence this test.
+	bad := []string{"best", "fastest", "always works", "guaranteed", "unbeatable", "outperforms"}
+	check := func(field, value string) {
+		lower := strings.ToLower(value)
+		for _, b := range bad {
+			if strings.Contains(lower, b) {
+				t.Errorf("%s contains banned word %q: %q", field, b, value)
+			}
+		}
+	}
+	for _, p := range core.BYOKProviders() {
+		check(p.Name+".FreeTierNote", p.FreeTierNote)
+	}
+	for _, s := range core.BuildSetupSuggestions(map[string]bool{}) {
+		check(s.MissingKey+".CurrentWorkaround", s.CurrentWorkaround)
+		check(s.MissingKey+".FreeTier", s.FreeTier)
+	}
 }

@@ -55,8 +55,8 @@ func (h *httpHandler) start(addr string) error {
 	mux.HandleFunc("/api/providers", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		ctx := r.Context()
-		status := h.svc.ProviderStatus(ctx)
-		json.NewEncoder(w).Encode(status)
+		resp := h.svc.ProviderStatus(ctx)
+		json.NewEncoder(w).Encode(resp)
 	})
 
 	// Budget status endpoint
@@ -156,8 +156,29 @@ func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delegate to MCP server message handler
-	ctx := context.Background()
+	// Build a context that carries the MCP session (when the client supplied
+	// a session header) and/or the ephemeral marker (when they did not).
+	//
+	// Design (fixes P2 "prefix-based ephemerality is fragile"):
+	//
+	//   - Client sends Mcp-Session-Id header → persistent session. Inject the
+	//     session into ctx so ClientSessionFromContext returns a non-nil value
+	//     with the client's ID; echo the ID back so the client knows it was
+	//     accepted. The tip is emitted once for this session ID and suppressed
+	//     on subsequent requests.
+	//
+	//   - Client omits Mcp-Session-Id header → ephemeral request. Do NOT
+	//     generate or echo a server-side session ID. Instead set the
+	//     EphemeralCtxKey context value to true; the tool handler reads that
+	//     flag and always emits the tip without touching the map. Memory stays
+	//     bounded regardless of traffic volume, and a client who later decides
+	//     to pin a session cannot accidentally inherit "ephemeral" semantics
+	//     just because the server happened to generate a matching-prefix ID.
+	if sid := r.Header.Get("Mcp-Session-Id"); sid != "" {
+		w.Header().Set("Mcp-Session-Id", sid) // echo client-supplied ID back
+	}
+	ctx := httpBuildContext(r.Context(), h.mcp, r)
+
 	result := h.mcp.HandleMessage(ctx, body)
 	if result == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -168,6 +189,46 @@ func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
+
+// httpBuildContext prepares the request context for an MCP tool dispatch.
+//
+// If the client supplied an Mcp-Session-Id header the session is injected so
+// that server.ClientSessionFromContext returns it inside the tool handler,
+// enabling per-session tip deduplication. No ephemeral marker is set.
+//
+// If the header is absent the EphemeralCtxKey marker is set to true instead.
+// No session is injected and no ID is generated. The tool handler reads the
+// marker and always emits the tip without adding a map entry, keeping server
+// memory bounded regardless of how many headerless requests arrive.
+//
+// We deliberately do NOT echo a server-generated ID back when the header is
+// absent. Echoing a generated ID would invite clients to pin it in subsequent
+// requests, which would then be incorrectly treated as ephemeral — the very
+// fragility this function is designed to eliminate.
+func httpBuildContext(base context.Context, srv *server.MCPServer, r *http.Request) context.Context {
+	sessionID := r.Header.Get("Mcp-Session-Id")
+	if sessionID == "" {
+		// Ephemeral request: mark it so the tip handler always emits.
+		return context.WithValue(base, mcpserver.EphemeralCtxKey{}, true)
+	}
+	// Persistent session: inject so ClientSessionFromContext finds it.
+	sess := server.NewInProcessSession(sessionID, nil)
+	return srv.WithContext(base, sess)
+}
+
+// httpSessionForRequest is retained for the http_test.go tests that exercise
+// session-ID extraction behaviour directly. New code should use httpBuildContext.
+//
+// Returns the session ID that would be used for the request (the client-supplied
+// header value) and a corresponding InProcessSession. If no header is present the
+// returned ID is empty string and the session is also empty — callers must handle
+// the ephemeral case via httpBuildContext instead.
+func httpSessionForRequest(r *http.Request) (string, *server.InProcessSession) {
+	sessionID := r.Header.Get("Mcp-Session-Id")
+	sess := server.NewInProcessSession(sessionID, nil)
+	return sessionID, sess
+}
+
 func buildMCPServer(svc *core.Service) *server.MCPServer {
 	return mcpserver.New(svc)
 }

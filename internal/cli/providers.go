@@ -13,11 +13,11 @@ func newProvidersCommand() *cobra.Command {
 		Use:   "providers",
 		Short: "Show provider status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			statuses := defaultService().ProviderStatus(context.Background())
+			resp := defaultService().ProviderStatus(context.Background())
 			if jsonOut {
-				return writeJSONTo(cmd.OutOrStdout(), statuses)
+				return writeJSONTo(cmd.OutOrStdout(), resp)
 			}
-			for _, status := range statuses {
+			for _, status := range resp.Providers {
 				state := "unavailable"
 				if status.Available {
 					state = "available"
