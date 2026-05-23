@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/safeerr"
 )
 
 type redirectTransport struct {
@@ -170,6 +171,21 @@ func TestDDGSRateLimitedReturns202AsRateLimited(t *testing.T) {
 		t.Fatalf("error must not include raw 202 body content, got %q", msg)
 	}
 	if !strings.Contains(msg, "response body redacted") {
-		t.Fatalf("error should signal redaction via providerhttp; got %q", msg)
+		t.Fatalf("error should signal redaction; got %q", msg)
+	}
+
+	// safeerr.Message is the path most user-facing surfaces (CLI, bench trace)
+	// render errors through. An earlier shape wrapped providerhttp.NewHTTPStatusError
+	// with %w, which made errors.As unwrap to the inner *HTTPStatusError and
+	// drop the "rate limited" prefix — categorizing 202 as a generic
+	// "unexpected" provider HTTP failure. The classification signal must survive
+	// safeerr.Message; otherwise consumers cannot distinguish rate-limit from
+	// other 2xx-but-non-OK responses.
+	rendered := safeerr.Message(err)
+	if !strings.Contains(rendered, "rate limited") || !strings.Contains(rendered, "202") {
+		t.Fatalf("safeerr.Message lost the rate-limit classification: %q", rendered)
+	}
+	if strings.Contains(rendered, bodyMarker) {
+		t.Fatalf("safeerr.Message leaked raw 202 body: %q", rendered)
 	}
 }

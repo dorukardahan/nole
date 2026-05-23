@@ -67,12 +67,17 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 
 	if resp.StatusCode == http.StatusAccepted {
 		// DDG signals rate-limit / bot-block with HTTP 202 (often with a body
-		// echoing pieces of the request). Route through NewHTTPStatusError so
-		// the body is redacted — DDG sometimes echoes the user query — while
-		// still tagging the error as "rate limited" so the bench classifier
-		// and other consumers can route on it.
+		// echoing pieces of the request). Wrapping providerhttp.NewHTTPStatusError
+		// here would put the redaction in place, but safeerr.Message unwraps
+		// to the inner *HTTPStatusError and renders only its Error() text —
+		// which categorizes 202 as "unexpected" and never mentions "rate
+		// limited." That would erase the classification signal in every
+		// user-facing surface that uses safeerr.Message (the bench tracer
+		// included). Build a sanitized single-shot error here instead: it
+		// keeps the "rate limited" marker AND drops the raw body, recording
+		// only its size so observers know something was redacted.
 		body, _ := io.ReadAll(resp.Body)
-		return core.SearchResponse{}, fmt.Errorf("ddgs: rate limited (HTTP 202): %w", providerhttp.NewHTTPStatusError("ddgs", "search", resp.StatusCode, body))
+		return core.SearchResponse{}, fmt.Errorf("ddgs: rate limited (HTTP 202; response body redacted, %d bytes)", len(body))
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
