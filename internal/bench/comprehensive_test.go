@@ -230,3 +230,37 @@ func TestRunComprehensiveLive_MaxFixturesCap(t *testing.T) {
 		t.Fatalf("max-fixtures cap not applied: got %d, want 2", len(rep.Measurements))
 	}
 }
+
+func TestComprehensiveEvidenceMetadataMentionsCorrectCapFlag(t *testing.T) {
+	// The CostCaveat originally pointed users at "--max-cases", which the CLI
+	// does not define for this mode — following the caveat would fail with an
+	// unknown-flag error. Pin the real flag name so a rename in the CLI must
+	// also touch this metadata.
+	md := ComprehensiveLiveEvidenceMetadata("free-first", 0)
+	if !strings.Contains(md.CostCaveat, "--max-comprehensive-cases") {
+		t.Errorf("cost caveat should reference --max-comprehensive-cases, got: %q", md.CostCaveat)
+	}
+	if strings.Contains(md.CostCaveat, "--max-cases ") || strings.HasSuffix(md.CostCaveat, "--max-cases.") {
+		t.Errorf("cost caveat must not reference non-existent --max-cases flag, got: %q", md.CostCaveat)
+	}
+}
+
+func TestComprehensiveReproductionCommandsCarryCap(t *testing.T) {
+	// When maxCases > 0 the methodology promises a bounded run, but the
+	// original reproduction commands dropped the cap, so a rerun would
+	// silently execute every fixture and inflate provider-account cost.
+	// The cap must round-trip into the commands; the unbounded path must
+	// not emit the flag at all.
+	bounded := ComprehensiveLiveEvidenceMetadata("free-first", 5)
+	for _, cmd := range bounded.Reproduction {
+		if !strings.Contains(cmd, "--max-comprehensive-cases 5") {
+			t.Errorf("bounded reproduction command should carry the cap, got: %q", cmd)
+		}
+	}
+	full := ComprehensiveLiveEvidenceMetadata("free-first", 0)
+	for _, cmd := range full.Reproduction {
+		if strings.Contains(cmd, "--max-comprehensive-cases") {
+			t.Errorf("unbounded reproduction command should not include the cap flag, got: %q", cmd)
+		}
+	}
+}

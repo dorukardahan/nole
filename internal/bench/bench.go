@@ -305,16 +305,28 @@ func ComprehensiveLiveEvidenceMetadata(costPolicy string, maxCases int) Evidence
 			"statistical significance",
 			"provider uptime guarantees",
 		},
-		Reproduction: []string{
-			fmt.Sprintf("NOLE_COST_POLICY=%s nole bench --live --comprehensive --json", costPolicy),
-			fmt.Sprintf("NOLE_COST_POLICY=%s nole bench --live --comprehensive --evidence-md", costPolicy),
-		},
+		Reproduction:       comprehensiveReproductionCommands(costPolicy, maxCases),
 		RawArtifactsPolicy: "No URLs, titles, snippets, or key material captured; provider responses are only inspected for length/error class. Do not commit raw provider artifacts.",
 		NetworkRequired:    true,
 		SecretsRequired:    false,
 		CostPolicy:         costPolicy,
-		CostCaveat:         "Comprehensive mode bypasses the cost policy: every provider configured in the harness is called regardless of policy, and provider-account quota or cost may apply. Use --max-cases to bound the run.",
+		CostCaveat:         "Comprehensive mode bypasses the cost policy: every provider configured in the harness is called regardless of policy, and provider-account quota or cost may apply. Use --max-comprehensive-cases to bound the run.",
 		Sanitized:          true,
+	}
+}
+
+// comprehensiveReproductionCommands carries the fixture cap into the
+// printed reproduction commands so the artifact is actually re-runnable.
+// Omitting the cap when maxCases > 0 would silently expand a bounded run
+// into a full one, inflating provider quota usage on rerun.
+func comprehensiveReproductionCommands(costPolicy string, maxCases int) []string {
+	suffix := ""
+	if maxCases > 0 {
+		suffix = fmt.Sprintf(" --max-comprehensive-cases %d", maxCases)
+	}
+	return []string{
+		fmt.Sprintf("NOLE_COST_POLICY=%s nole bench --live --comprehensive%s --json", costPolicy, suffix),
+		fmt.Sprintf("NOLE_COST_POLICY=%s nole bench --live --comprehensive%s --evidence-md", costPolicy, suffix),
 	}
 }
 
