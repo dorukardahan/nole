@@ -12,13 +12,17 @@ trap 'rm -rf "$tmpdir"' EXIT
 nole="$tmpdir/nole"
 go build -o "$nole" .
 
+# We set a placeholder TAVILY_API_KEY so the conditional MCP extract tool
+# is registered for the evidence smoke. Without it, extract is hidden by
+# design (Task 7's partial-keys behavior). The placeholder never enables
+# a real provider call — the smoke does not exercise extract.
 common_env=(
   env
   -u BRAVE_API_KEY
   -u BRAVE_SEARCH_API_KEY
-  -u TAVILY_API_KEY
   -u JINA_API_KEY
   -u FIRECRAWL_API_KEY
+  TAVILY_API_KEY=fake-integration-evidence-key
   NOLE_COST_POLICY=free-first
   NOLE_QUOTA_LEDGER_PATH=memory
   NOLE_CACHE_TTL=5m
