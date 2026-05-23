@@ -6,12 +6,13 @@ import (
 )
 
 func TestBYOKProvidersInvariants(t *testing.T) {
-	if len(BYOKProviders) == 0 {
+	providers := BYOKProviders()
+	if len(providers) == 0 {
 		t.Fatal("BYOKProviders is empty")
 	}
 	names := map[string]bool{}
 	envVars := map[string]bool{}
-	for _, p := range BYOKProviders {
+	for _, p := range providers {
 		if p.Name == "" {
 			t.Errorf("entry has empty Name: %#v", p)
 		}
@@ -27,7 +28,7 @@ func TestBYOKProvidersInvariants(t *testing.T) {
 				t.Errorf("env var %q is claimed by multiple providers", ev)
 			}
 			envVars[ev] = true
-			if !strings.HasSuffix(ev, "_API_KEY") && !strings.HasSuffix(ev, "_SEARCH_API_KEY") {
+			if !strings.HasSuffix(ev, "_API_KEY") {
 				t.Errorf("%s env var %q does not follow the *_API_KEY convention", p.Name, ev)
 			}
 		}

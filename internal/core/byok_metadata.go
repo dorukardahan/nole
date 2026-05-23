@@ -18,10 +18,8 @@ type BYOKProvider struct {
 	Unlocks         []string
 }
 
-// BYOKProviders is the single source of truth for keyed-provider metadata.
-// Update this list rather than maintaining separate maps in cli, mcpserver
-// and the hints builder.
-var BYOKProviders = []BYOKProvider{
+// byokProviders is the authoritative slice; never modify after package init.
+var byokProviders = []BYOKProvider{
 	{
 		Name:            "brave",
 		EnvVars:         []string{"BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY"},
@@ -60,10 +58,18 @@ var BYOKProviders = []BYOKProvider{
 	},
 }
 
+// BYOKProviders returns the configured BYOK provider metadata. The returned
+// slice is a copy — mutating it does not affect the package-level data.
+func BYOKProviders() []BYOKProvider {
+	out := make([]BYOKProvider, len(byokProviders))
+	copy(out, byokProviders)
+	return out
+}
+
 // LookupBYOK returns the entry for a provider name, or false if not BYOK.
-// DDGS is keyless and not present in BYOKProviders.
+// DDGS is keyless and not present in byokProviders.
 func LookupBYOK(name string) (BYOKProvider, bool) {
-	for _, p := range BYOKProviders {
+	for _, p := range byokProviders {
 		if p.Name == name {
 			return p, true
 		}
