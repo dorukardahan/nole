@@ -182,19 +182,6 @@ func defaultQuotaPolicyFromEnv() core.QuotaPolicy {
 	return policy
 }
 
-// byokFreeDefaults is the canonical per-provider free-tier seed used when a
-// BYOK key is present and the user has not explicitly opted into paid usage.
-// Numbers are conservative anchors matching each provider's current monthly
-// free tier; see docs/PROVIDER-KEYS.md for sourcing.
-var byokFreeDefaults = map[string]struct {
-	Quota  int
-	Window core.RefreshWindow
-}{
-	"brave":     {Quota: 1000, Window: core.RefreshMonthly},
-	"tavily":    {Quota: 1000, Window: core.RefreshMonthly},
-	"firecrawl": {Quota: 1000, Window: core.RefreshMonthly},
-}
-
 // isProviderPaidMode reports whether the user has explicitly opted into paid
 // usage for a provider via NOLE_<PROVIDER>_PAID=1/true/yes. In paid mode the
 // provider is treated as premium-capable; the policy gate then decides whether
@@ -219,13 +206,13 @@ func providerQuotaEntry(provider string, keyPresent bool) core.QuotaEntry {
 			EstimatedCostCents: providerEstimatedCostCents(provider),
 		}
 	}
-	if def, ok := byokFreeDefaults[provider]; ok {
+	if def, ok := core.LookupBYOK(provider); ok {
 		return core.QuotaEntry{
 			Provider:      provider,
 			CostClass:     core.CostClassFreeTierBYOK,
-			FreeRemaining: def.Quota,
-			FreeQuota:     def.Quota,
-			RefreshWindow: def.Window,
+			FreeRemaining: def.FreeQuota,
+			FreeQuota:     def.FreeQuota,
+			RefreshWindow: def.RefreshWindow,
 			PeriodStart:   core.CurrentMonthISO(),
 		}
 	}
