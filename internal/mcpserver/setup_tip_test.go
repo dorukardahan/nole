@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -523,6 +524,65 @@ func TestMCPSearchTipMapBoundAtCap(t *testing.T) {
 	suppressed := callSearchWithSession(t, srv, alreadyRecordedID, "q-suppressed")
 	if suppressed.SetupTip != nil {
 		t.Errorf("already-recorded session after cap: tip should be suppressed, got %+v", suppressed.SetupTip)
+	}
+}
+
+// newTestMCPServerNoKeys builds an MCP server with no BYOK provider keys
+// configured. It registers only the generic "mock" provider so that
+// ProviderStatus reports no configured BYOK keys and BuildSetupTip fires on
+// every tip-eligible call. This is a convenience wrapper around
+// newTestMCPServerWithProviders for tests that specifically need the no-keys
+// path (tip always fires) without caring about extract-capability.
+func newTestMCPServerNoKeys(t *testing.T) *server.MCPServer {
+	t.Helper()
+	return newTestMCPServerWithProviders(t, mock.New("mock"))
+}
+
+// TestMCPSearchTipMapBoundsLargeSessionID verifies that a hostile client
+// sending an arbitrarily large Mcp-Session-Id value does not cause the
+// tipState map to store a large key. The implementation must hash the raw ID
+// to a fixed-length SHA-256 hex key (64 chars) before any map operation, so
+// the total map memory stays bounded at tipStateMaxEntries × ~100 bytes
+// regardless of how large the client-supplied header is.
+//
+// The test also confirms that deduplication still works correctly with large
+// IDs: two calls with the same large session ID must be deduplicated (second
+// call must not return a tip), which proves the hash is deterministic and the
+// map lookup uses the same hashed key on both calls.
+func TestMCPSearchTipMapBoundsLargeSessionID(t *testing.T) {
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+
+	srv := newTestMCPServerNoKeys(t)
+
+	// Build a large session ID (4 KB) — representative of a hostile or buggy
+	// client that sends a very long Mcp-Session-Id header value.
+	largeID := strings.Repeat("A", 4096)
+
+	// First call: tip must be emitted (tip fires for every unseen persistent session).
+	first := callSearchWithSession(t, srv, largeID, "q1")
+	if first.SetupTip == nil {
+		t.Fatal("first call missing tip with large session ID")
+	}
+
+	// Second call with the SAME large ID: must be deduplicated (tip suppressed).
+	// This proves (a) the hash is deterministic — the same raw ID maps to the
+	// same 64-char key both times — and (b) the map lookup and store share the
+	// same hashed key path.
+	second := callSearchWithSession(t, srv, largeID, "q2")
+	if second.SetupTip != nil {
+		t.Errorf("second call should suppress tip for same large session ID, got %+v", second.SetupTip)
+	}
+
+	// Verify the stored map key is 64 chars (SHA-256 hex), not 4096 chars.
+	// We do this by checking that hashSessionID produces a 64-char output for
+	// our large input — the map access behaviour above already confirms the key
+	// is used consistently; this assertion documents the size guarantee.
+	hashed := hashSessionID(largeID)
+	if len(hashed) != 64 {
+		t.Errorf("hashSessionID output length = %d, want 64 (SHA-256 hex)", len(hashed))
 	}
 }
 

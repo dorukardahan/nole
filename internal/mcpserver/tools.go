@@ -2,6 +2,8 @@ package mcpserver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -28,6 +30,15 @@ const (
 // Mcp-Session-Id on every request, which would otherwise cause the map to grow
 // linearly with traffic volume.
 const tipStateMaxEntries = 1000
+
+// hashSessionID reduces a client-supplied session ID to a fixed-length key so
+// the dedup map cannot be driven to large memory by long IDs. SHA-256 → hex
+// gives 64 chars per entry; with the entry cap (tipStateMaxEntries), total
+// map size stays bounded regardless of input.
+func hashSessionID(sessionID string) string {
+	sum := sha256.Sum256([]byte(sessionID))
+	return hex.EncodeToString(sum[:])
+}
 
 // HasExtractCapableConfigured reports whether any BYOK provider that supports
 // the extract capability has its key configured in the environment. Used at
@@ -121,6 +132,17 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 				sessionID = sess.SessionID()
 			}
 
+			// Hash the client-supplied session ID before using it as a map key.
+			// A hostile client could send an arbitrarily large Mcp-Session-Id
+			// header (e.g. 10 MB). Storing raw IDs would let
+			// tipStateMaxEntries × maxHeaderSize bytes accumulate in memory.
+			// Hashing to SHA-256 hex caps every key at 64 bytes so the total
+			// map size is bounded at roughly tipStateMaxEntries × 100 bytes
+			// (~100 KB) regardless of input length.
+			// sessionID is still used unmodified for logging and other purposes
+			// outside this block; only the MAP KEY is hashed.
+			hashedID := hashSessionID(sessionID)
+
 			// Bounded-map logic (fixes P2 Issue 2).
 			// - Already seen: respect the recorded value (emit once, suppress forever).
 			// - Not seen, room in map: record and emit.
@@ -129,13 +151,13 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 			//   server's memory is capped. Legitimate stable-session clients
 			//   already recorded are unaffected.
 			tipState.Lock()
-			if seen, ok := tipState.emitted[sessionID]; ok {
+			if seen, ok := tipState.emitted[hashedID]; ok {
 				shouldEmit = !seen
 				if shouldEmit {
-					tipState.emitted[sessionID] = true
+					tipState.emitted[hashedID] = true
 				}
 			} else if len(tipState.emitted) < tipStateMaxEntries {
-				tipState.emitted[sessionID] = true
+				tipState.emitted[hashedID] = true
 				shouldEmit = true
 			} else {
 				// Cap reached: emit but don't record.
