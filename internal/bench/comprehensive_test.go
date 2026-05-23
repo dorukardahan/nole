@@ -24,7 +24,7 @@ type fakeProvider struct {
 	emptyExtr  bool
 }
 
-func (p fakeProvider) Name() string                   { return p.name }
+func (p fakeProvider) Name() string                    { return p.name }
 func (p fakeProvider) Capabilities() []core.Capability { return p.caps }
 func (p fakeProvider) Status(ctx context.Context) core.ProviderStatus {
 	return core.ProviderStatus{Name: p.name, Available: true, Capabilities: p.caps}
