@@ -100,3 +100,66 @@ func TestDDGSStatus(t *testing.T) {
 		t.Fatalf("unexpected status: %#v", status)
 	}
 }
+
+func TestDDGSRequestFormatMatchesSearXNGCanonical(t *testing.T) {
+	// DDG's no-JS HTML endpoint flags requests as bots when (a) the form field
+	// `b` is non-empty on page 1 or (b) browser-parity headers are missing.
+	// SearXNG's canonical implementation sets b="" and emits Referer + the
+	// Sec-Fetch-* family; mirror that to avoid the 202 Ratelimit response.
+	var captured struct {
+		body    string
+		headers http.Header
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		captured.body = string(body)
+		captured.headers = r.Header.Clone()
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body></body></html>`))
+	}))
+	defer srv.Close()
+
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}}
+	_, _ = p.Search(context.Background(), core.SearchRequest{Query: "nole", Task: core.TaskGeneral, Limit: 5})
+
+	if !strings.Contains(captured.body, "b=&") && !strings.HasSuffix(captured.body, "b=") {
+		t.Fatalf("expected b= (empty) in form body, got %q", captured.body)
+	}
+	if strings.Contains(captured.body, "b=Web+Search") {
+		t.Fatalf("regression: b=Web Search must not be sent, got %q", captured.body)
+	}
+	wantHeaders := map[string]string{
+		"Referer":        "https://html.duckduckgo.com/",
+		"Sec-Fetch-Dest": "document",
+		"Sec-Fetch-Mode": "navigate",
+		"Sec-Fetch-Site": "same-origin",
+		"Sec-Fetch-User": "?1",
+	}
+	for h, want := range wantHeaders {
+		if got := captured.headers.Get(h); got != want {
+			t.Errorf("header %s = %q, want %q", h, got, want)
+		}
+	}
+}
+
+func TestDDGSRateLimitedReturns202AsRateLimited(t *testing.T) {
+	// DDG signals rate-limit / bot-block with HTTP 202 and a "202 Ratelimit"
+	// body. The provider must surface this distinctly so callers (and the
+	// bench classifier) treat it as transient throttling rather than a generic
+	// upstream error.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("202 Ratelimit"))
+	}))
+	defer srv.Close()
+
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}}
+	_, err := p.Search(context.Background(), core.SearchRequest{Query: "nole"})
+	if err == nil {
+		t.Fatal("expected error for 202 rate-limit response")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "rate limited") || !strings.Contains(msg, "202") {
+		t.Fatalf("error %q should mention rate limited and 202", msg)
+	}
+}
