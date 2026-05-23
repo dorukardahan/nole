@@ -57,3 +57,26 @@ func TestBYOKProvidersInvariants(t *testing.T) {
 		t.Error("jina entry leaked back in — it was removed in PR #21")
 	}
 }
+
+func TestBYOKProvidersReturnsDeepCopy(t *testing.T) {
+	// Mutating the returned slice — including inner EnvVars / Unlocks — must
+	// not leak back into the package-level data. This guards the doc comment's
+	// promise of full isolation against a shallow-copy regression.
+	first := BYOKProviders()
+	if len(first) == 0 || len(first[0].EnvVars) == 0 || len(first[0].Unlocks) == 0 {
+		t.Fatal("expected at least one provider with non-empty EnvVars and Unlocks")
+	}
+	originalEnv := first[0].EnvVars[0]
+	originalUnlock := first[0].Unlocks[0]
+
+	first[0].EnvVars[0] = "MUTATED_ENV"
+	first[0].Unlocks[0] = "MUTATED_UNLOCK"
+
+	second := BYOKProviders()
+	if second[0].EnvVars[0] != originalEnv {
+		t.Errorf("EnvVars leaked back: got %q, want %q", second[0].EnvVars[0], originalEnv)
+	}
+	if second[0].Unlocks[0] != originalUnlock {
+		t.Errorf("Unlocks leaked back: got %q, want %q", second[0].Unlocks[0], originalUnlock)
+	}
+}

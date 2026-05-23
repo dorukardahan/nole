@@ -62,7 +62,15 @@ var byokProviders = []BYOKProvider{
 // slice is a copy — mutating it does not affect the package-level data.
 func BYOKProviders() []BYOKProvider {
 	out := make([]BYOKProvider, len(byokProviders))
-	copy(out, byokProviders)
+	for i, p := range byokProviders {
+		ev := make([]string, len(p.EnvVars))
+		copy(ev, p.EnvVars)
+		ul := make([]string, len(p.Unlocks))
+		copy(ul, p.Unlocks)
+		p.EnvVars = ev
+		p.Unlocks = ul
+		out[i] = p
+	}
 	return out
 }
 
