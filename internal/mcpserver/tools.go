@@ -48,18 +48,30 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		mcp.WithString("task", mcp.Description(taskDesc)),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of search results to return")),
 	)
-	// First-of-session upgrade hint. tipState protects the once-per-server-lifetime
-	// behavior under concurrent access. Note: "session" here means one MCP server
-	// instance lifetime. For stdio MCP this is one process per AI tool, which is
-	// the right granularity. For HTTP MCP (nole serve --mcp), the server may
-	// handle many clients across its lifetime — only the very first request to
-	// the server gets the tip. Per-HTTP-client tip tracking would require
-	// transport-level session identifiers; defer that until the HTTP MCP path
-	// has actual multi-user deployments.
+	// tipState tracks whether the setup_tip has already been emitted, keyed by
+	// MCP session ID. This gives each MCP client session its own once-per-session
+	// tip, which is the correct semantics for both transport modes:
+	//
+	//   - stdio (nole mcp): one process = one client = one session. The context
+	//     carries no ClientSession, so we fall back to the fixed key
+	//     "stdio-default", preserving the existing once-per-process behavior.
+	//
+	//   - HTTP (nole serve --mcp): many clients share one server process.
+	//     server.ClientSessionFromContext(ctx) returns the per-connection
+	//     ClientSession; its SessionID() is unique per HTTP client, so each
+	//     client independently receives the tip on their first search call and
+	//     is suppressed on subsequent calls — regardless of what other clients
+	//     have done.
+	//
+	// The map can grow up to one entry per connected client over the server
+	// lifetime. Each entry is a string key + bool, so 10k sessions ≈ a few KB;
+	// negligible. Session-close cleanup via OnUnregisterSession hooks is a
+	// possible future improvement but is not required for correctness.
 	var tipState struct {
 		sync.Mutex
-		emitted bool
+		emitted map[string]bool // session ID → already emitted
 	}
+	tipState.emitted = make(map[string]bool)
 	s.AddTool(searchTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		query, err := req.RequireString("query")
 		if err != nil {
@@ -71,13 +83,21 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		if err != nil {
 			return mcp.NewToolResultError(string(toolErrorJSON("search", err, resp.Route, resp.RouteTrace))), nil
 		}
-		// Emit the setup tip exactly once per server lifetime. The lock ensures
-		// that concurrent callers cannot both observe emitted=false and both
-		// attempt to emit; emitted is set to true inside the lock before
-		// releasing so subsequent callers see the updated value atomically.
+		// Determine the session key. In HTTP MCP mode the library injects a
+		// ClientSession into ctx; extract its ID. In stdio mode no session is
+		// injected, so fall back to a fixed key so stdio behaves as before
+		// (once per process lifetime).
+		sessionID := "stdio-default"
+		if sess := server.ClientSessionFromContext(ctx); sess != nil {
+			sessionID = sess.SessionID()
+		}
+		// Emit the setup tip exactly once per MCP session. The lock ensures
+		// concurrent callers for the same session cannot both observe false and
+		// both attempt to emit; the map entry is written inside the lock before
+		// releasing, so the second caller always sees the updated value.
 		tipState.Lock()
-		shouldEmit := !tipState.emitted
-		tipState.emitted = true
+		shouldEmit := !tipState.emitted[sessionID]
+		tipState.emitted[sessionID] = true
 		tipState.Unlock()
 		if shouldEmit {
 			statusResp := svc.ProviderStatus(ctx)

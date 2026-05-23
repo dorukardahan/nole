@@ -46,8 +46,28 @@ func newTestMCPServerWithProviders(t *testing.T, providers ...core.Provider) *se
 
 // callSearch invokes the "search" tool on srv via the mark3labs/mcp-go
 // in-process HandleMessage API and unmarshals the first content item as a
-// core.SearchResponse.
+// core.SearchResponse. The base context is context.Background() (no injected
+// session), which exercises the stdio-default path.
 func callSearch(t *testing.T, srv *server.MCPServer, query string) core.SearchResponse {
+	t.Helper()
+	return callSearchWithContext(t, srv, context.Background(), query)
+}
+
+// callSearchWithSession invokes the "search" tool as if from a specific HTTP
+// MCP session. It creates an InProcessSession with the given sessionID,
+// injects it into the context via s.WithContext, then calls HandleMessage.
+// This exercises the per-session tip-emission path used in nole serve --mcp.
+func callSearchWithSession(t *testing.T, srv *server.MCPServer, sessionID string, query string) core.SearchResponse {
+	t.Helper()
+	sess := server.NewInProcessSession(sessionID, nil)
+	ctx := srv.WithContext(context.Background(), sess)
+	return callSearchWithContext(t, srv, ctx, query)
+}
+
+// callSearchWithContext is the underlying implementation: it marshals the
+// tools/call request, calls HandleMessage with the provided context, and
+// unmarshals the SearchResponse from the JSON-RPC envelope.
+func callSearchWithContext(t *testing.T, srv *server.MCPServer, ctx context.Context, query string) core.SearchResponse {
 	t.Helper()
 
 	msg, err := json.Marshal(map[string]any{
@@ -67,7 +87,7 @@ func callSearch(t *testing.T, srv *server.MCPServer, query string) core.SearchRe
 		t.Fatalf("marshal search request: %v", err)
 	}
 
-	raw := srv.HandleMessage(context.Background(), json.RawMessage(msg))
+	raw := srv.HandleMessage(ctx, json.RawMessage(msg))
 
 	// raw is a mcp.JSONRPCResponse or mcp.JSONRPCError.
 	b, err := json.Marshal(raw)
@@ -331,6 +351,54 @@ func TestMCPSearchTipConcurrencySafe(t *testing.T) {
 
 	if tipSeen != 1 {
 		t.Errorf("expected exactly 1 tip across %d concurrent calls, got %d", N, tipSeen)
+	}
+}
+
+// TestMCPSearchTipPerSession verifies that in HTTP MCP mode (nole serve --mcp)
+// each distinct client session independently receives the setup_tip on their
+// first search, even though they share a single server process. This is the
+// core correctness guarantee added by the per-session tip-state map: session A
+// consuming the tip must not suppress it for session B.
+func TestMCPSearchTipPerSession(t *testing.T) {
+	// Clear BYOK env vars so BuildSetupTip fires (no configured providers).
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
+
+	// Session A: first call should get the tip.
+	aFirst := callSearchWithSession(t, srv, "session-A", "session A first query")
+	if aFirst.SetupTip == nil {
+		t.Fatal("session A first call: expected setup_tip, got nil")
+	}
+
+	// Session A: subsequent call must NOT get the tip again.
+	aSecond := callSearchWithSession(t, srv, "session-A", "session A second query")
+	if aSecond.SetupTip != nil {
+		t.Errorf("session A second call: setup_tip should be nil after first emission, got %+v", aSecond.SetupTip)
+	}
+
+	// Session B: a different client connecting to the same server process
+	// must still receive the tip on its own first call, even though session A
+	// already consumed it. Before this fix, tipState.emitted was a single
+	// bool and session B would be silently suppressed.
+	bFirst := callSearchWithSession(t, srv, "session-B", "session B first query")
+	if bFirst.SetupTip == nil {
+		t.Fatal("session B first call: expected setup_tip on fresh session, got nil (HTTP MCP multi-client regression)")
+	}
+
+	// Session B: second call should be suppressed for B as well.
+	bSecond := callSearchWithSession(t, srv, "session-B", "session B second query")
+	if bSecond.SetupTip != nil {
+		t.Errorf("session B second call: setup_tip should be nil, got %+v", bSecond.SetupTip)
+	}
+
+	// Session C: a third independent client also gets the tip on its first call.
+	cFirst := callSearchWithSession(t, srv, "session-C", "session C first query")
+	if cFirst.SetupTip == nil {
+		t.Fatal("session C first call: expected setup_tip on fresh session, got nil")
 	}
 }
 
