@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/mcpserver"
 	"github.com/dorukardahan/nole/internal/providers/mock"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -114,29 +114,29 @@ func decodeSetupTip(t *testing.T, body []byte) *core.SetupTip {
 	return resp.SetupTip
 }
 
-// TestHTTPMCPSessionIDEchoedInResponse verifies that the handler always sets
-// the Mcp-Session-Id response header regardless of whether the client supplied
-// one in the request.
-func TestHTTPMCPSessionIDEchoedInResponse(t *testing.T) {
+// TestHTTPMCPSessionIDHeaderBehavior verifies that:
+//   - When the client sends an Mcp-Session-Id header, it is echoed back
+//     unchanged so the client knows the server accepted it.
+//   - When the client omits the header, the server does NOT echo a generated ID.
+//     Echoing a server-generated ID would invite clients to pin it, which would
+//     cause subsequent requests to be treated as persistent even though the
+//     server issued the ID with ephemeral intent.
+func TestHTTPMCPSessionIDHeaderBehavior(t *testing.T) {
 	h := newTestHTTPHandler(t)
-	body := mcpSearchBody(t, "test session echo")
+	body := mcpSearchBody(t, "test session header behaviour")
 
-	// Without a client-supplied ID: response must still carry a generated one
-	// with the "http-ephemeral-" prefix.
+	// Without a client-supplied ID: the response must NOT carry an
+	// Mcp-Session-Id header. Generating and echoing a server-side ID is the
+	// root of the prefix-based fragility this fix eliminates.
 	rec1 := postMCP(t, h, "", body)
-	id1 := rec1.Header().Get("Mcp-Session-Id")
-	if id1 == "" {
-		t.Fatal("expected Mcp-Session-Id header in response, got empty string")
-	}
-	if !strings.HasPrefix(id1, "http-ephemeral-") {
-		t.Errorf("generated session ID %q does not start with 'http-ephemeral-'", id1)
+	if id1 := rec1.Header().Get("Mcp-Session-Id"); id1 != "" {
+		t.Errorf("no-header request: expected no Mcp-Session-Id response header, got %q", id1)
 	}
 
-	// With a client-supplied ID: response must echo it back unchanged.
+	// With a client-supplied ID: the header must be echoed back unchanged.
 	clientID := "my-stable-session-42"
 	rec2 := postMCP(t, h, clientID, body)
-	got := rec2.Header().Get("Mcp-Session-Id")
-	if got != clientID {
+	if got := rec2.Header().Get("Mcp-Session-Id"); got != clientID {
 		t.Errorf("echoed session ID = %q, want %q", got, clientID)
 	}
 }
@@ -247,14 +247,17 @@ func TestHTTPMCPDifferentPinnedSessionsEachGetTip(t *testing.T) {
 // TestHTTPSessionForRequest_SessionIDExtraction tests the session ID extraction
 // helper directly, without standing up a full HTTP server.
 func TestHTTPSessionForRequest_SessionIDExtraction(t *testing.T) {
-	t.Run("no header generates http-ephemeral- prefixed ID", func(t *testing.T) {
+	t.Run("no header returns empty ID", func(t *testing.T) {
+		// The helper no longer generates a server-side ID. An empty string is
+		// returned so the caller (httpBuildContext) can set the ephemeral marker
+		// instead of injecting a fake session.
 		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 		id, sess := httpSessionForRequest(req)
-		if !strings.HasPrefix(id, "http-ephemeral-") {
-			t.Errorf("generated ID %q does not start with 'http-ephemeral-'", id)
+		if id != "" {
+			t.Errorf("expected empty ID when no header, got %q", id)
 		}
-		if sess.SessionID() != id {
-			t.Errorf("sess.SessionID() = %q, want %q", sess.SessionID(), id)
+		if sess.SessionID() != "" {
+			t.Errorf("expected empty session ID, got %q", sess.SessionID())
 		}
 	})
 
@@ -269,14 +272,44 @@ func TestHTTPSessionForRequest_SessionIDExtraction(t *testing.T) {
 			t.Errorf("sess.SessionID() = %q, want %q", sess.SessionID(), "my-client-id")
 		}
 	})
+}
 
-	t.Run("two requests without header get distinct IDs", func(t *testing.T) {
-		req1 := httptest.NewRequest(http.MethodPost, "/mcp", nil)
-		req2 := httptest.NewRequest(http.MethodPost, "/mcp", nil)
-		id1, _ := httpSessionForRequest(req1)
-		id2, _ := httpSessionForRequest(req2)
-		if id1 == id2 {
-			t.Errorf("two requests without header produced the same ID: %q", id1)
+// TestHTTPBuildContext_EphemeralMarker verifies that httpBuildContext sets the
+// EphemeralCtxKey when no Mcp-Session-Id header is present, and does NOT set it
+// when the header is present.
+func TestHTTPBuildContext_EphemeralMarker(t *testing.T) {
+	h := newTestHTTPHandler(t)
+
+	t.Run("no header sets ephemeral marker", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		ctx := httpBuildContext(context.Background(), h.mcp, req)
+
+		ephemeral, ok := ctx.Value(mcpserver.EphemeralCtxKey{}).(bool)
+		if !ok || !ephemeral {
+			t.Errorf("expected EphemeralCtxKey=true when no header, got ok=%v value=%v", ok, ephemeral)
+		}
+		// No session injected.
+		if sess := server.ClientSessionFromContext(ctx); sess != nil {
+			t.Errorf("expected no session in context for ephemeral request, got sess.ID=%q", sess.SessionID())
+		}
+	})
+
+	t.Run("header present does not set ephemeral marker", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.Header.Set("Mcp-Session-Id", "stable-123")
+		ctx := httpBuildContext(context.Background(), h.mcp, req)
+
+		ephemeral, _ := ctx.Value(mcpserver.EphemeralCtxKey{}).(bool)
+		if ephemeral {
+			t.Error("expected EphemeralCtxKey=false when header is present, got true")
+		}
+		// Session must be injected with the client-supplied ID.
+		sess := server.ClientSessionFromContext(ctx)
+		if sess == nil {
+			t.Fatal("expected session in context when header present, got nil")
+		}
+		if sess.SessionID() != "stable-123" {
+			t.Errorf("session ID = %q, want %q", sess.SessionID(), "stable-123")
 		}
 	})
 }

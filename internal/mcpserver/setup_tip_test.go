@@ -64,6 +64,16 @@ func callSearchWithSession(t *testing.T, srv *server.MCPServer, sessionID string
 	return callSearchWithContext(t, srv, ctx, query)
 }
 
+// callSearchEphemeral invokes the "search" tool simulating an ephemeral HTTP
+// request (no Mcp-Session-Id header). It sets EphemeralCtxKey=true in the
+// context but does NOT inject a session, which is the exact behaviour of
+// internal/cli/http.go's httpBuildContext when the header is absent.
+func callSearchEphemeral(t *testing.T, srv *server.MCPServer, query string) core.SearchResponse {
+	t.Helper()
+	ctx := context.WithValue(context.Background(), EphemeralCtxKey{}, true)
+	return callSearchWithContext(t, srv, ctx, query)
+}
+
 // callSearchWithContext is the underlying implementation: it marshals the
 // tools/call request, calls HandleMessage with the provided context, and
 // unmarshals the SearchResponse from the JSON-RPC envelope.
@@ -402,11 +412,16 @@ func TestMCPSearchTipPerSession(t *testing.T) {
 	}
 }
 
-// TestMCPSearchTipEphemeralAlwaysEmits verifies that HTTP-ephemeral sessions
-// (generated per-request when the client omits Mcp-Session-Id, identified by
-// the "http-ephemeral-" prefix) always receive the setup_tip. The tipState map
-// is bypassed entirely, so each request is treated as a fresh session and
-// memory cannot grow unbounded from stateless client traffic.
+// TestMCPSearchTipEphemeralAlwaysEmits verifies that ephemeral HTTP requests
+// (client omitted Mcp-Session-Id, signaled by EphemeralCtxKey in the context)
+// always receive the setup_tip. The tipState map is bypassed entirely, so each
+// request is treated as a fresh session and memory cannot grow unbounded from
+// stateless client traffic.
+//
+// Note: ephemerality is now determined by a context value set at HTTP dispatch
+// time (internal/cli/http.go), not by any string prefix in the session ID.
+// Passing an "http-ephemeral-..." ID via a session injection no longer triggers
+// the ephemeral path — only the context flag does.
 func TestMCPSearchTipEphemeralAlwaysEmits(t *testing.T) {
 	t.Setenv("BRAVE_API_KEY", "")
 	t.Setenv("BRAVE_SEARCH_API_KEY", "")
@@ -415,17 +430,24 @@ func TestMCPSearchTipEphemeralAlwaysEmits(t *testing.T) {
 
 	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
 	for i := 0; i < 5; i++ {
-		resp := callSearchWithSession(t, srv, fmt.Sprintf("http-ephemeral-%d", i), "q")
+		// Use the ephemeral context path (no session, EphemeralCtxKey=true).
+		resp := callSearchEphemeral(t, srv, "q")
 		if resp.SetupTip == nil {
-			t.Errorf("ephemeral session #%d: expected tip, got nil", i)
+			t.Errorf("ephemeral request #%d: expected tip, got nil", i)
 		}
 	}
 }
 
-// TestMCPSearchTipPersistentEmitsOnce verifies that a client-provided session
-// ID (one without the "http-ephemeral-" prefix) gets the setup_tip on its
-// first call and suppression on subsequent calls — the standard once-per-session
-// semantics for persistent HTTP MCP sessions.
+// TestMCPSearchTipPersistentEmitsOnce verifies that a client-supplied session
+// ID gets the setup_tip on its first call and suppression on subsequent calls.
+// This is the standard once-per-session behaviour for persistent HTTP MCP sessions.
+//
+// We also verify that a session ID that would previously have been treated as
+// "ephemeral" due to the old "http-ephemeral-" prefix check is now treated as
+// persistent when injected via a real session (not via EphemeralCtxKey). This
+// guards against the regression described in P2 Issue 1: if a client had pinned
+// an "http-ephemeral-..." ID echoed by an older server, the new server must
+// deduplicate it correctly.
 func TestMCPSearchTipPersistentEmitsOnce(t *testing.T) {
 	t.Setenv("BRAVE_API_KEY", "")
 	t.Setenv("BRAVE_SEARCH_API_KEY", "")
@@ -433,6 +455,8 @@ func TestMCPSearchTipPersistentEmitsOnce(t *testing.T) {
 	t.Setenv("FIRECRAWL_API_KEY", "")
 
 	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
+
+	// Standard client-supplied ID.
 	first := callSearchWithSession(t, srv, "client-pinned-abc", "q1")
 	if first.SetupTip == nil {
 		t.Fatal("first call missing tip")
@@ -440,6 +464,65 @@ func TestMCPSearchTipPersistentEmitsOnce(t *testing.T) {
 	second := callSearchWithSession(t, srv, "client-pinned-abc", "q2")
 	if second.SetupTip != nil {
 		t.Errorf("second call should have suppressed tip, got %+v", second.SetupTip)
+	}
+
+	// Regression guard: an "http-ephemeral-..." ID passed via session injection
+	// (not via EphemeralCtxKey) is treated as a persistent session and deduplicated.
+	// Before this fix, the prefix string check would have always emitted the tip.
+	prefixFirst := callSearchWithSession(t, srv, "http-ephemeral-fake-pinned", "q3")
+	if prefixFirst.SetupTip == nil {
+		t.Fatal("first call with legacy-prefixed pinned ID: expected tip, got nil")
+	}
+	prefixSecond := callSearchWithSession(t, srv, "http-ephemeral-fake-pinned", "q4")
+	if prefixSecond.SetupTip != nil {
+		t.Errorf("second call with legacy-prefixed pinned ID: tip should be suppressed (not ephemeral), got %+v", prefixSecond.SetupTip)
+	}
+}
+
+// TestMCPSearchTipMapBoundAtCap verifies the bounded-map policy (Change B):
+// once tipStateMaxEntries unique session IDs have been recorded, new unseen IDs
+// are emitted but not recorded (fail-open). Already-recorded IDs still get the
+// correct once-per-session behaviour.
+func TestMCPSearchTipMapBoundAtCap(t *testing.T) {
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
+
+	// Fill the map to exactly tipStateMaxEntries using unique IDs. Each first
+	// call must emit the tip; a second call with the same ID must suppress it.
+	for i := 0; i < tipStateMaxEntries; i++ {
+		id := fmt.Sprintf("session-%d", i)
+		first := callSearchWithSession(t, srv, id, "q-first")
+		if first.SetupTip == nil {
+			t.Fatalf("session %q first call: expected tip, got nil (i=%d)", id, i)
+		}
+	}
+
+	// The map is now at cap. A brand-new session ID must still receive the tip
+	// (fail-open) even though nothing is recorded for it.
+	newID := "session-at-cap"
+	capFirst := callSearchWithSession(t, srv, newID, "q-cap-first")
+	if capFirst.SetupTip == nil {
+		t.Fatal("first call at cap: expected tip (fail-open), got nil")
+	}
+
+	// Because the cap-overflow call was NOT recorded, a second call with the
+	// same ID also gets the tip (no deduplication once at cap). This is the
+	// documented fail-open policy; clients who care about deduplication should
+	// use stable session IDs that pre-date the cap.
+	capSecond := callSearchWithSession(t, srv, newID, "q-cap-second")
+	if capSecond.SetupTip == nil {
+		t.Fatal("second call at cap (not recorded): expected tip (fail-open), got nil")
+	}
+
+	// An ID that was recorded BEFORE the cap was reached must still suppress.
+	alreadyRecordedID := "session-0"
+	suppressed := callSearchWithSession(t, srv, alreadyRecordedID, "q-suppressed")
+	if suppressed.SetupTip != nil {
+		t.Errorf("already-recorded session after cap: tip should be suppressed, got %+v", suppressed.SetupTip)
 	}
 }
 

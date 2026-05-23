@@ -1,8 +1,7 @@
 package cli
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -157,20 +156,28 @@ func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Inject a per-HTTP-session MCP session into the context so that
-	// ClientSessionFromContext(ctx) returns a non-nil session inside tool
-	// handlers. Without this, every HTTP request falls back to the
-	// "stdio-default" key and all users share a single tipState slot —
-	// only the very first request ever receives the setup_tip.
+	// Build a context that carries the MCP session (when the client supplied
+	// a session header) and/or the ephemeral marker (when they did not).
 	//
-	// Session-ID resolution (MCP spec §5.2):
-	//   1. Use the client-supplied Mcp-Session-Id header when present.
-	//      This lets a client pin a stable session across multiple requests.
-	//   2. Otherwise generate a random per-request ID (each request is
-	//      treated as a fresh session, which is the correct stateless default).
-	sessionID, sess := httpSessionForRequest(r)
-	ctx := h.mcp.WithContext(r.Context(), sess)
-	w.Header().Set("Mcp-Session-Id", sessionID) // echo so clients can pin future requests
+	// Design (fixes P2 "prefix-based ephemerality is fragile"):
+	//
+	//   - Client sends Mcp-Session-Id header → persistent session. Inject the
+	//     session into ctx so ClientSessionFromContext returns a non-nil value
+	//     with the client's ID; echo the ID back so the client knows it was
+	//     accepted. The tip is emitted once for this session ID and suppressed
+	//     on subsequent requests.
+	//
+	//   - Client omits Mcp-Session-Id header → ephemeral request. Do NOT
+	//     generate or echo a server-side session ID. Instead set the
+	//     EphemeralCtxKey context value to true; the tool handler reads that
+	//     flag and always emits the tip without touching the map. Memory stays
+	//     bounded regardless of traffic volume, and a client who later decides
+	//     to pin a session cannot accidentally inherit "ephemeral" semantics
+	//     just because the server happened to generate a matching-prefix ID.
+	if sid := r.Header.Get("Mcp-Session-Id"); sid != "" {
+		w.Header().Set("Mcp-Session-Id", sid) // echo client-supplied ID back
+	}
+	ctx := httpBuildContext(r.Context(), h.mcp, r)
 
 	result := h.mcp.HandleMessage(ctx, body)
 	if result == nil {
@@ -183,33 +190,43 @@ func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-// httpSessionForRequest returns the MCP session ID and a corresponding
-// InProcessSession for the given HTTP request.
+// httpBuildContext prepares the request context for an MCP tool dispatch.
 //
-// If the client supplied an Mcp-Session-Id header the value is reused as-is,
-// allowing a client to maintain a stable session across multiple requests.
-// Otherwise a random "http-ephemeral-<hex>" ID is generated so each stateless
-// request is treated as an independent, ephemeral session.
+// If the client supplied an Mcp-Session-Id header the session is injected so
+// that server.ClientSessionFromContext returns it inside the tool handler,
+// enabling per-session tip deduplication. No ephemeral marker is set.
 //
-// Convention with internal/mcpserver/tools.go: IDs starting with
-// "http-ephemeral-" are NOT persisted in tipState — each request is treated as
-// a fresh session, bypassing the map entirely to keep memory bounded.
-func httpSessionForRequest(r *http.Request) (string, *server.InProcessSession) {
+// If the header is absent the EphemeralCtxKey marker is set to true instead.
+// No session is injected and no ID is generated. The tool handler reads the
+// marker and always emits the tip without adding a map entry, keeping server
+// memory bounded regardless of how many headerless requests arrive.
+//
+// We deliberately do NOT echo a server-generated ID back when the header is
+// absent. Echoing a generated ID would invite clients to pin it in subsequent
+// requests, which would then be incorrectly treated as ephemeral — the very
+// fragility this function is designed to eliminate.
+func httpBuildContext(base context.Context, srv *server.MCPServer, r *http.Request) context.Context {
 	sessionID := r.Header.Get("Mcp-Session-Id")
 	if sessionID == "" {
-		sessionID = newHTTPSessionID()
+		// Ephemeral request: mark it so the tip handler always emits.
+		return context.WithValue(base, mcpserver.EphemeralCtxKey{}, true)
 	}
+	// Persistent session: inject so ClientSessionFromContext finds it.
 	sess := server.NewInProcessSession(sessionID, nil)
-	return sessionID, sess
+	return srv.WithContext(base, sess)
 }
 
-// newHTTPSessionID generates a cryptographically random session identifier
-// prefixed with "http-ephemeral-" to mark it as a stateless per-request session.
-// See httpSessionForRequest for the full convention.
-func newHTTPSessionID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	return "http-ephemeral-" + hex.EncodeToString(b[:])
+// httpSessionForRequest is retained for the http_test.go tests that exercise
+// session-ID extraction behaviour directly. New code should use httpBuildContext.
+//
+// Returns the session ID that would be used for the request (the client-supplied
+// header value) and a corresponding InProcessSession. If no header is present the
+// returned ID is empty string and the session is also empty — callers must handle
+// the ephemeral case via httpBuildContext instead.
+func httpSessionForRequest(r *http.Request) (string, *server.InProcessSession) {
+	sessionID := r.Header.Get("Mcp-Session-Id")
+	sess := server.NewInProcessSession(sessionID, nil)
+	return sessionID, sess
 }
 
 func buildMCPServer(svc *core.Service) *server.MCPServer {
