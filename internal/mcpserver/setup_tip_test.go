@@ -402,6 +402,47 @@ func TestMCPSearchTipPerSession(t *testing.T) {
 	}
 }
 
+// TestMCPSearchTipEphemeralAlwaysEmits verifies that HTTP-ephemeral sessions
+// (generated per-request when the client omits Mcp-Session-Id, identified by
+// the "http-ephemeral-" prefix) always receive the setup_tip. The tipState map
+// is bypassed entirely, so each request is treated as a fresh session and
+// memory cannot grow unbounded from stateless client traffic.
+func TestMCPSearchTipEphemeralAlwaysEmits(t *testing.T) {
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
+	for i := 0; i < 5; i++ {
+		resp := callSearchWithSession(t, srv, fmt.Sprintf("http-ephemeral-%d", i), "q")
+		if resp.SetupTip == nil {
+			t.Errorf("ephemeral session #%d: expected tip, got nil", i)
+		}
+	}
+}
+
+// TestMCPSearchTipPersistentEmitsOnce verifies that a client-provided session
+// ID (one without the "http-ephemeral-" prefix) gets the setup_tip on its
+// first call and suppression on subsequent calls — the standard once-per-session
+// semantics for persistent HTTP MCP sessions.
+func TestMCPSearchTipPersistentEmitsOnce(t *testing.T) {
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
+	first := callSearchWithSession(t, srv, "client-pinned-abc", "q1")
+	if first.SetupTip == nil {
+		t.Fatal("first call missing tip")
+	}
+	second := callSearchWithSession(t, srv, "client-pinned-abc", "q2")
+	if second.SetupTip != nil {
+		t.Errorf("second call should have suppressed tip, got %+v", second.SetupTip)
+	}
+}
+
 // Compile-time check: ensure mcp.CallToolRequest is importable via this
 // package's test file (avoids silent import-path drift).
 var _ mcp.CallToolRequest

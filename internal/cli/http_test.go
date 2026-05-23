@@ -121,14 +121,15 @@ func TestHTTPMCPSessionIDEchoedInResponse(t *testing.T) {
 	h := newTestHTTPHandler(t)
 	body := mcpSearchBody(t, "test session echo")
 
-	// Without a client-supplied ID: response must still carry a generated one.
+	// Without a client-supplied ID: response must still carry a generated one
+	// with the "http-ephemeral-" prefix.
 	rec1 := postMCP(t, h, "", body)
 	id1 := rec1.Header().Get("Mcp-Session-Id")
 	if id1 == "" {
 		t.Fatal("expected Mcp-Session-Id header in response, got empty string")
 	}
-	if !strings.HasPrefix(id1, "http-") {
-		t.Errorf("generated session ID %q does not start with 'http-'", id1)
+	if !strings.HasPrefix(id1, "http-ephemeral-") {
+		t.Errorf("generated session ID %q does not start with 'http-ephemeral-'", id1)
 	}
 
 	// With a client-supplied ID: response must echo it back unchanged.
@@ -246,11 +247,11 @@ func TestHTTPMCPDifferentPinnedSessionsEachGetTip(t *testing.T) {
 // TestHTTPSessionForRequest_SessionIDExtraction tests the session ID extraction
 // helper directly, without standing up a full HTTP server.
 func TestHTTPSessionForRequest_SessionIDExtraction(t *testing.T) {
-	t.Run("no header generates http- prefixed ID", func(t *testing.T) {
+	t.Run("no header generates http-ephemeral- prefixed ID", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 		id, sess := httpSessionForRequest(req)
-		if !strings.HasPrefix(id, "http-") {
-			t.Errorf("generated ID %q does not start with 'http-'", id)
+		if !strings.HasPrefix(id, "http-ephemeral-") {
+			t.Errorf("generated ID %q does not start with 'http-ephemeral-'", id)
 		}
 		if sess.SessionID() != id {
 			t.Errorf("sess.SessionID() = %q, want %q", sess.SessionID(), id)

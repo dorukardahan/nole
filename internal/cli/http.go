@@ -188,8 +188,12 @@ func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {
 //
 // If the client supplied an Mcp-Session-Id header the value is reused as-is,
 // allowing a client to maintain a stable session across multiple requests.
-// Otherwise a random "http-<hex>" ID is generated so each stateless request is
-// treated as an independent session (correct default for one-shot MCP calls).
+// Otherwise a random "http-ephemeral-<hex>" ID is generated so each stateless
+// request is treated as an independent, ephemeral session.
+//
+// Convention with internal/mcpserver/tools.go: IDs starting with
+// "http-ephemeral-" are NOT persisted in tipState — each request is treated as
+// a fresh session, bypassing the map entirely to keep memory bounded.
 func httpSessionForRequest(r *http.Request) (string, *server.InProcessSession) {
 	sessionID := r.Header.Get("Mcp-Session-Id")
 	if sessionID == "" {
@@ -200,11 +204,12 @@ func httpSessionForRequest(r *http.Request) (string, *server.InProcessSession) {
 }
 
 // newHTTPSessionID generates a cryptographically random session identifier
-// prefixed with "http-" to distinguish it from stdio sessions.
+// prefixed with "http-ephemeral-" to mark it as a stateless per-request session.
+// See httpSessionForRequest for the full convention.
 func newHTTPSessionID() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
-	return "http-" + hex.EncodeToString(b[:])
+	return "http-ephemeral-" + hex.EncodeToString(b[:])
 }
 
 func buildMCPServer(svc *core.Service) *server.MCPServer {

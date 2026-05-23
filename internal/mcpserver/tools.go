@@ -56,20 +56,23 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 	//     carries no ClientSession, so we fall back to the fixed key
 	//     "stdio-default", preserving the existing once-per-process behavior.
 	//
-	//   - HTTP (nole serve --mcp): many clients share one server process.
-	//     server.ClientSessionFromContext(ctx) returns the per-connection
-	//     ClientSession; its SessionID() is unique per HTTP client, so each
-	//     client independently receives the tip on their first search call and
-	//     is suppressed on subsequent calls — regardless of what other clients
-	//     have done.
+	//   - HTTP (nole serve --mcp): two sub-cases:
+	//       a) Client supplies Mcp-Session-Id header → persistent session. The
+	//          ID is stored in the map and the tip is emitted once per session.
+	//       b) Client omits the header → ephemeral session. The request ID is
+	//          generated with the "http-ephemeral-" prefix (see internal/cli/http.go).
+	//          Ephemeral sessions bypass the map entirely: the tip is always
+	//          emitted (each request is a different client) and nothing is stored,
+	//          keeping memory bounded regardless of traffic volume.
 	//
-	// The map can grow up to one entry per connected client over the server
-	// lifetime. Each entry is a string key + bool, so 10k sessions ≈ a few KB;
+	// The map grows up to one entry per unique CLIENT-supplied session ID over
+	// the server lifetime. Ephemeral (generated) IDs never enter the map.
+	// Each entry is a string key + bool, so 10k persistent sessions ≈ a few KB;
 	// negligible. Session-close cleanup via OnUnregisterSession hooks is a
 	// possible future improvement but is not required for correctness.
 	var tipState struct {
 		sync.Mutex
-		emitted map[string]bool // session ID → already emitted
+		emitted map[string]bool // session ID → already emitted (persistent sessions only)
 	}
 	tipState.emitted = make(map[string]bool)
 	s.AddTool(searchTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -91,14 +94,27 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		if sess := server.ClientSessionFromContext(ctx); sess != nil {
 			sessionID = sess.SessionID()
 		}
-		// Emit the setup tip exactly once per MCP session. The lock ensures
-		// concurrent callers for the same session cannot both observe false and
-		// both attempt to emit; the map entry is written inside the lock before
-		// releasing, so the second caller always sees the updated value.
-		tipState.Lock()
-		shouldEmit := !tipState.emitted[sessionID]
-		tipState.emitted[sessionID] = true
-		tipState.Unlock()
+		// Ephemeral HTTP sessions (generated per-request when the client omits
+		// Mcp-Session-Id) carry the "http-ephemeral-" prefix (see
+		// internal/cli/http.go). For these, always emit the tip and skip the
+		// map entirely — each request is a different client so suppression is
+		// wrong, and storing nothing keeps memory bounded.
+		const ephemeralPrefix = "http-ephemeral-"
+		isEphemeral := strings.HasPrefix(sessionID, ephemeralPrefix)
+
+		var shouldEmit bool
+		if isEphemeral {
+			// Ephemeral sessions always get the tip; no map entry is written.
+			shouldEmit = true
+		} else {
+			// Persistent sessions (stdio or client-pinned HTTP): emit once per
+			// session. The lock ensures concurrent callers for the same session
+			// cannot both observe false; the map entry is written before release.
+			tipState.Lock()
+			shouldEmit = !tipState.emitted[sessionID]
+			tipState.emitted[sessionID] = true
+			tipState.Unlock()
+		}
 		if shouldEmit {
 			statusResp := svc.ProviderStatus(ctx)
 			if tip := core.BuildSetupTip(statusResp.SetupSuggestions); tip != nil {
