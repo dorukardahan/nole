@@ -1,7 +1,8 @@
 package cli
 
 import (
-	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -156,8 +157,21 @@ func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delegate to MCP server message handler
-	ctx := context.Background()
+	// Inject a per-HTTP-session MCP session into the context so that
+	// ClientSessionFromContext(ctx) returns a non-nil session inside tool
+	// handlers. Without this, every HTTP request falls back to the
+	// "stdio-default" key and all users share a single tipState slot —
+	// only the very first request ever receives the setup_tip.
+	//
+	// Session-ID resolution (MCP spec §5.2):
+	//   1. Use the client-supplied Mcp-Session-Id header when present.
+	//      This lets a client pin a stable session across multiple requests.
+	//   2. Otherwise generate a random per-request ID (each request is
+	//      treated as a fresh session, which is the correct stateless default).
+	sessionID, sess := httpSessionForRequest(r)
+	ctx := h.mcp.WithContext(r.Context(), sess)
+	w.Header().Set("Mcp-Session-Id", sessionID) // echo so clients can pin future requests
+
 	result := h.mcp.HandleMessage(ctx, body)
 	if result == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -168,6 +182,31 @@ func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
+
+// httpSessionForRequest returns the MCP session ID and a corresponding
+// InProcessSession for the given HTTP request.
+//
+// If the client supplied an Mcp-Session-Id header the value is reused as-is,
+// allowing a client to maintain a stable session across multiple requests.
+// Otherwise a random "http-<hex>" ID is generated so each stateless request is
+// treated as an independent session (correct default for one-shot MCP calls).
+func httpSessionForRequest(r *http.Request) (string, *server.InProcessSession) {
+	sessionID := r.Header.Get("Mcp-Session-Id")
+	if sessionID == "" {
+		sessionID = newHTTPSessionID()
+	}
+	sess := server.NewInProcessSession(sessionID, nil)
+	return sessionID, sess
+}
+
+// newHTTPSessionID generates a cryptographically random session identifier
+// prefixed with "http-" to distinguish it from stdio sessions.
+func newHTTPSessionID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return "http-" + hex.EncodeToString(b[:])
+}
+
 func buildMCPServer(svc *core.Service) *server.MCPServer {
 	return mcpserver.New(svc)
 }
