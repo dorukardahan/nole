@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/dorukardahan/nole/internal/bench"
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/brave"
+	"github.com/dorukardahan/nole/internal/providers/ddgs"
+	"github.com/dorukardahan/nole/internal/providers/firecrawl"
+	"github.com/dorukardahan/nole/internal/providers/tavily"
 	"github.com/dorukardahan/nole/internal/safeerr"
 	"github.com/spf13/cobra"
 )
@@ -17,22 +22,38 @@ func newBenchCommand() *cobra.Command {
 	var evidenceMD bool
 	var live bool
 	var maxLiveCases int
+	var comprehensive bool
+	var maxComprehensiveCases int
 	cmd := &cobra.Command{
 		Use:   "bench",
 		Short: "Run deterministic offline routing evals, or optional low-limit live smoke benchmarks",
 		Long: `Run Nólë benchmark/eval fixtures.
 
 Default mode is offline and deterministic: no provider network calls and no API keys required.
-Use --live only for an explicit low-limit smoke run against configured free-tier/keyless providers.`,
+Use --live for a low-limit smoke run against configured free-tier/keyless providers.
+Use --live --comprehensive to force every provider to run every fixture (capability-permitting),
+bypassing the route matrix, cost policy and quota ledger for direct per-provider measurement.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if comprehensive && !live {
+				return fmt.Errorf("--comprehensive requires --live")
+			}
 			var report bench.Report
-			if live {
+			switch {
+			case comprehensive:
+				report = runComprehensiveBench(cmd.Context(), maxComprehensiveCases)
+			case live:
 				report = runLiveBench(cmd.Context(), maxLiveCases)
-			} else {
+			default:
 				report = bench.RunOffline(bench.DefaultFixtureSet(), core.DefaultRouteMatrix())
 			}
 			if evidenceMD {
-				_, err := fmt.Fprint(cmd.OutOrStdout(), bench.MarkdownEvidenceSummary(report))
+				var out string
+				if report.Mode == bench.ModeComprehensiveLive {
+					out = bench.MarkdownComprehensiveSummary(report)
+				} else {
+					out = bench.MarkdownEvidenceSummary(report)
+				}
+				_, err := fmt.Fprint(cmd.OutOrStdout(), out)
 				return err
 			}
 			if jsonOut {
@@ -48,17 +69,62 @@ Use --live only for an explicit low-limit smoke run against configured free-tier
 	cmd.Flags().BoolVar(&evidenceMD, "evidence-md", false, "output a sanitized Markdown route-evidence summary")
 	cmd.Flags().BoolVar(&live, "live", false, "run optional low-limit live smoke benchmark against configured providers")
 	cmd.Flags().IntVar(&maxLiveCases, "max-live-cases", 3, "maximum live fixture cases to run when --live is set")
+	cmd.Flags().BoolVar(&comprehensive, "comprehensive", false, "with --live, force every provider to run every fixture (bypasses router/policy/ledger)")
+	cmd.Flags().IntVar(&maxComprehensiveCases, "max-comprehensive-cases", 0, "with --live --comprehensive, bound the fixture set (0 = all fixtures)")
 	return cmd
 }
 
 func printBenchReport(cmd *cobra.Command, report bench.Report) {
 	fmt.Fprintf(cmd.OutOrStdout(), "nole bench: %s fixture %s\n", report.Mode, report.FixtureVersion)
+	if report.Mode == bench.ModeComprehensiveLive {
+		fmt.Fprintf(cmd.OutOrStdout(), "measurements: %d passed: %d failed: %d\n",
+			report.Summary.TotalCases, report.Summary.PassedCases, report.Summary.FailedCases)
+		provs := sortedKeys(report.ProviderSummary)
+		for _, prov := range provs {
+			s := report.ProviderSummary[prov]
+			if s.Successes == 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "- %s: 0/%d success (no latency stats); errors=%v\n",
+					prov, s.Calls, s.ErrorClasses)
+				continue
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "- %s: %d/%d success, p50=%dms p95=%dms avg=%dms\n",
+				prov, s.Successes, s.Calls, s.P50LatencyMS, s.P95LatencyMS, s.AvgLatencyMS)
+		}
+		return
+	}
 	fmt.Fprintf(cmd.OutOrStdout(), "cases: %d passed: %d failed: %d avg_score: %.2f\n",
 		report.Summary.TotalCases, report.Summary.PassedCases, report.Summary.FailedCases, report.Summary.AverageScore)
 	for _, c := range report.Cases {
 		fmt.Fprintf(cmd.OutOrStdout(), "- %s [%s/%s] selected=%s score=%.2f route=%v\n",
 			c.ID, c.Task, c.Language, c.SelectedProvider, c.Score, c.Route)
 	}
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j-1] > out[j]; j-- {
+			out[j-1], out[j] = out[j], out[j-1]
+		}
+	}
+	return out
+}
+
+func runComprehensiveBench(ctx context.Context, maxCases int) bench.Report {
+	providers := map[string]core.Provider{
+		"brave":     brave.New(),
+		"ddgs":      ddgs.New(),
+		"firecrawl": firecrawl.New(),
+		"tavily":    tavily.New(),
+	}
+	return bench.RunComprehensiveLive(ctx, bench.DefaultFixtureSet(), providers, bench.ComprehensiveOptions{
+		MaxFixtures:    maxCases,
+		NetworkContext: os.Getenv("BENCH_NETWORK_CONTEXT"),
+		CostPolicy:     string(defaultQuotaPolicyFromEnv().Policy),
+	})
 }
 
 func runLiveBench(ctx context.Context, maxCases int) bench.Report {
