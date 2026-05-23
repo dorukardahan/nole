@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/safeerr"
 )
 
 type redirectTransport struct {
@@ -98,5 +99,93 @@ func TestDDGSStatus(t *testing.T) {
 	status := New().Status(context.Background())
 	if !status.Available || status.Name != "ddgs" || !core.HasCapability(status.Capabilities, core.CapabilitySearch) {
 		t.Fatalf("unexpected status: %#v", status)
+	}
+}
+
+func TestDDGSRequestFormatMatchesSearXNGCanonical(t *testing.T) {
+	// DDG's no-JS HTML endpoint flags requests as bots when (a) the form field
+	// `b` is non-empty on page 1 or (b) browser-parity headers are missing.
+	// SearXNG's canonical implementation sets b="" and emits Referer + the
+	// Sec-Fetch-* family; mirror that to avoid the 202 Ratelimit response.
+	var captured struct {
+		body    string
+		headers http.Header
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		captured.body = string(body)
+		captured.headers = r.Header.Clone()
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body></body></html>`))
+	}))
+	defer srv.Close()
+
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}}
+	_, _ = p.Search(context.Background(), core.SearchRequest{Query: "nole", Task: core.TaskGeneral, Limit: 5})
+
+	if !strings.Contains(captured.body, "b=&") && !strings.HasSuffix(captured.body, "b=") {
+		t.Fatalf("expected b= (empty) in form body, got %q", captured.body)
+	}
+	if strings.Contains(captured.body, "b=Web+Search") {
+		t.Fatalf("regression: b=Web Search must not be sent, got %q", captured.body)
+	}
+	wantHeaders := map[string]string{
+		"Referer":        "https://html.duckduckgo.com/",
+		"Sec-Fetch-Dest": "document",
+		"Sec-Fetch-Mode": "navigate",
+		"Sec-Fetch-Site": "same-origin",
+		"Sec-Fetch-User": "?1",
+	}
+	for h, want := range wantHeaders {
+		if got := captured.headers.Get(h); got != want {
+			t.Errorf("header %s = %q, want %q", h, got, want)
+		}
+	}
+}
+
+func TestDDGSRateLimitedReturns202AsRateLimited(t *testing.T) {
+	// DDG signals rate-limit / bot-block with HTTP 202 and a body that can
+	// echo pieces of the request (including the user's query). The provider
+	// must surface this distinctly so callers and the bench classifier can
+	// treat it as transient throttling, but the raw body must NOT appear in
+	// the error string — that's the contract providerhttp.NewHTTPStatusError
+	// enforces for non-2xx responses, and the 202 branch needs the same
+	// guarantee.
+	bodyMarker := "echoed-query-secret-must-not-leak"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("202 Ratelimit " + bodyMarker))
+	}))
+	defer srv.Close()
+
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}}
+	_, err := p.Search(context.Background(), core.SearchRequest{Query: "nole"})
+	if err == nil {
+		t.Fatal("expected error for 202 rate-limit response")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "rate limited") || !strings.Contains(msg, "202") {
+		t.Fatalf("error %q should mention rate limited and 202", msg)
+	}
+	if strings.Contains(msg, bodyMarker) {
+		t.Fatalf("error must not include raw 202 body content, got %q", msg)
+	}
+	if !strings.Contains(msg, "response body redacted") {
+		t.Fatalf("error should signal redaction; got %q", msg)
+	}
+
+	// safeerr.Message is the path most user-facing surfaces (CLI, bench trace)
+	// render errors through. An earlier shape wrapped providerhttp.NewHTTPStatusError
+	// with %w, which made errors.As unwrap to the inner *HTTPStatusError and
+	// drop the "rate limited" prefix — categorizing 202 as a generic
+	// "unexpected" provider HTTP failure. The classification signal must survive
+	// safeerr.Message; otherwise consumers cannot distinguish rate-limit from
+	// other 2xx-but-non-OK responses.
+	rendered := safeerr.Message(err)
+	if !strings.Contains(rendered, "rate limited") || !strings.Contains(rendered, "202") {
+		t.Fatalf("safeerr.Message lost the rate-limit classification: %q", rendered)
+	}
+	if strings.Contains(rendered, bodyMarker) {
+		t.Fatalf("safeerr.Message leaked raw 202 body: %q", rendered)
 	}
 }

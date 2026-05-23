@@ -40,7 +40,10 @@ var (
 func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.SearchResponse, error) {
 	form := url.Values{}
 	form.Set("q", req.Query)
-	form.Set("b", "Web Search")
+	// DDG no-JS HTML endpoint expects b="" on the first page. Setting b="Web Search"
+	// (the visible submit-button label) trips the anti-bot heuristic — SearXNG's
+	// canonical implementation explicitly sends an empty string.
+	form.Set("b", "")
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://html.duckduckgo.com/html/", strings.NewReader(form.Encode()))
 	if err != nil {
@@ -48,6 +51,13 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	httpReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+	// Browser-parity headers required by DDG's bot blocker (Q3/Q4 2025 tightening).
+	// Missing Sec-Fetch-* + Referer triggers immediate 202 Ratelimit on most queries.
+	httpReq.Header.Set("Referer", "https://html.duckduckgo.com/")
+	httpReq.Header.Set("Sec-Fetch-Dest", "document")
+	httpReq.Header.Set("Sec-Fetch-Mode", "navigate")
+	httpReq.Header.Set("Sec-Fetch-Site", "same-origin")
+	httpReq.Header.Set("Sec-Fetch-User", "?1")
 
 	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
 	if err != nil {
@@ -55,6 +65,20 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusAccepted {
+		// DDG signals rate-limit / bot-block with HTTP 202 (often with a body
+		// echoing pieces of the request). Wrapping providerhttp.NewHTTPStatusError
+		// here would put the redaction in place, but safeerr.Message unwraps
+		// to the inner *HTTPStatusError and renders only its Error() text —
+		// which categorizes 202 as "unexpected" and never mentions "rate
+		// limited." That would erase the classification signal in every
+		// user-facing surface that uses safeerr.Message (the bench tracer
+		// included). Build a sanitized single-shot error here instead: it
+		// keeps the "rate limited" marker AND drops the raw body, recording
+		// only its size so observers know something was redacted.
+		body, _ := io.ReadAll(resp.Body)
+		return core.SearchResponse{}, fmt.Errorf("ddgs: rate limited (HTTP 202; response body redacted, %d bytes)", len(body))
+	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("ddgs", "search", resp.StatusCode, body)
