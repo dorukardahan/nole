@@ -143,13 +143,17 @@ func TestDDGSRequestFormatMatchesSearXNGCanonical(t *testing.T) {
 }
 
 func TestDDGSRateLimitedReturns202AsRateLimited(t *testing.T) {
-	// DDG signals rate-limit / bot-block with HTTP 202 and a "202 Ratelimit"
-	// body. The provider must surface this distinctly so callers (and the
-	// bench classifier) treat it as transient throttling rather than a generic
-	// upstream error.
+	// DDG signals rate-limit / bot-block with HTTP 202 and a body that can
+	// echo pieces of the request (including the user's query). The provider
+	// must surface this distinctly so callers and the bench classifier can
+	// treat it as transient throttling, but the raw body must NOT appear in
+	// the error string — that's the contract providerhttp.NewHTTPStatusError
+	// enforces for non-2xx responses, and the 202 branch needs the same
+	// guarantee.
+	bodyMarker := "echoed-query-secret-must-not-leak"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte("202 Ratelimit"))
+		_, _ = w.Write([]byte("202 Ratelimit " + bodyMarker))
 	}))
 	defer srv.Close()
 
@@ -161,5 +165,11 @@ func TestDDGSRateLimitedReturns202AsRateLimited(t *testing.T) {
 	msg := err.Error()
 	if !strings.Contains(msg, "rate limited") || !strings.Contains(msg, "202") {
 		t.Fatalf("error %q should mention rate limited and 202", msg)
+	}
+	if strings.Contains(msg, bodyMarker) {
+		t.Fatalf("error must not include raw 202 body content, got %q", msg)
+	}
+	if !strings.Contains(msg, "response body redacted") {
+		t.Fatalf("error should signal redaction via providerhttp; got %q", msg)
 	}
 }

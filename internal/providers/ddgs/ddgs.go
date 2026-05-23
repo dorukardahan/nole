@@ -66,11 +66,13 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusAccepted {
-		// DDG signals rate-limit / bot-block with HTTP 202 + body "202 Ratelimit"
-		// rather than a 4xx. Surface this distinctly so callers and the bench
-		// classifier can treat it as transient rather than a generic 4xx error.
+		// DDG signals rate-limit / bot-block with HTTP 202 (often with a body
+		// echoing pieces of the request). Route through NewHTTPStatusError so
+		// the body is redacted — DDG sometimes echoes the user query — while
+		// still tagging the error as "rate limited" so the bench classifier
+		// and other consumers can route on it.
 		body, _ := io.ReadAll(resp.Body)
-		return core.SearchResponse{}, fmt.Errorf("ddgs: rate limited (status 202): %s", strings.TrimSpace(string(body)))
+		return core.SearchResponse{}, fmt.Errorf("ddgs: rate limited (HTTP 202): %w", providerhttp.NewHTTPStatusError("ddgs", "search", resp.StatusCode, body))
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
