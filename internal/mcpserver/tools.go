@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -47,12 +48,18 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		mcp.WithString("task", mcp.Description(taskDesc)),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of search results to return")),
 	)
-	// tipEmitted is captured by the search handler closure. One MCPServer
-	// instance = one process = one session, so this flag provides
-	// first-of-session emission without any synchronisation overhead (stdio
-	// MCP serialises requests; HTTP MCP would need a mutex, but that is a
-	// future concern).
-	tipEmitted := false
+	// First-of-session upgrade hint. tipState protects the once-per-server-lifetime
+	// behavior under concurrent access. Note: "session" here means one MCP server
+	// instance lifetime. For stdio MCP this is one process per AI tool, which is
+	// the right granularity. For HTTP MCP (nole serve --mcp), the server may
+	// handle many clients across its lifetime — only the very first request to
+	// the server gets the tip. Per-HTTP-client tip tracking would require
+	// transport-level session identifiers; defer that until the HTTP MCP path
+	// has actual multi-user deployments.
+	var tipState struct {
+		sync.Mutex
+		emitted bool
+	}
 	s.AddTool(searchTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		query, err := req.RequireString("query")
 		if err != nil {
@@ -64,16 +71,19 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		if err != nil {
 			return mcp.NewToolResultError(string(toolErrorJSON("search", err, resp.Route, resp.RouteTrace))), nil
 		}
-		// First-of-session upgrade hint. Once a tip has been emitted on this
-		// MCP connection, subsequent search calls omit it so the AI tool is
-		// not nagged on every query.
-		if !tipEmitted {
+		// Emit the setup tip exactly once per server lifetime. The lock ensures
+		// that concurrent callers cannot both observe emitted=false and both
+		// attempt to emit; emitted is set to true inside the lock before
+		// releasing so subsequent callers see the updated value atomically.
+		tipState.Lock()
+		shouldEmit := !tipState.emitted
+		tipState.emitted = true
+		tipState.Unlock()
+		if shouldEmit {
 			statusResp := svc.ProviderStatus(ctx)
-			tip := core.BuildSetupTip(statusResp.SetupSuggestions)
-			if tip != nil {
+			if tip := core.BuildSetupTip(statusResp.SetupSuggestions); tip != nil {
 				resp.SetupTip = tip
 			}
-			tipEmitted = true
 		}
 		b, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {

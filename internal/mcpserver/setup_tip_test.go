@@ -3,6 +3,9 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -295,6 +298,39 @@ func TestMCPExtractToolPresentWithFirecrawlOnly(t *testing.T) {
 	tools := callToolsList(t, srv)
 	if !tools["extract"] {
 		t.Error("extract tool should be advertised when FIRECRAWL_API_KEY is configured")
+	}
+}
+
+// TestMCPSearchTipConcurrencySafe drives the search handler from multiple
+// goroutines and verifies (a) no panic or data race and (b) at most one tip
+// emitted across all concurrent calls. The race detector (go test -race) will
+// catch any unsynchronized writes to tipState that survive the mutex.
+func TestMCPSearchTipConcurrencySafe(t *testing.T) {
+	// Clear all BYOK env vars so BuildSetupTip fires (no configured providers).
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
+
+	const N = 50
+	var tipSeen int32
+	var wg sync.WaitGroup
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			resp := callSearch(t, srv, fmt.Sprintf("concurrent query %d", i))
+			if resp.SetupTip != nil {
+				atomic.AddInt32(&tipSeen, 1)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	if tipSeen != 1 {
+		t.Errorf("expected exactly 1 tip across %d concurrent calls, got %d", N, tipSeen)
 	}
 }
 
