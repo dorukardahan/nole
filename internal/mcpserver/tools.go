@@ -47,10 +47,11 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		// not nagged on every query.
 		if !tipEmitted {
 			statusResp := svc.ProviderStatus(ctx)
-			if tip := core.BuildSetupTip(statusResp.SetupSuggestions); tip != nil {
+			tip := core.BuildSetupTip(statusResp.SetupSuggestions)
+			if tip != nil {
 				resp.SetupTip = tip
-				tipEmitted = true
 			}
+			tipEmitted = true
 		}
 		b, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {
