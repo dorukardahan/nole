@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -15,6 +16,25 @@ const (
 	searchToolDescription  = "Search the public web for internet research, current information, technical docs, news, fact-checking, code examples, pricing, people/company lookups, or deep-research source discovery using free-tier task-based provider routing."
 	extractToolDescription = "Extract clean readable content from a public web page URL for summarization, citation, documentation lookup, or research context using free-tier routing with local URL safety preflight."
 )
+
+// hasExtractCapableConfigured reports whether any BYOK provider that supports
+// the extract capability has its key configured in the environment. Used at
+// MCP tool-registration time to decide whether mcp__nole__extract should be
+// advertised at all. This avoids an expensive provider.Status HTTP probe at
+// startup: we read env vars directly instead.
+func hasExtractCapableConfigured() bool {
+	for _, p := range core.BYOKProviders() {
+		if !p.SupportsExtract {
+			continue
+		}
+		for _, ev := range p.EnvVars {
+			if os.Getenv(ev) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 func RegisterTools(s *server.MCPServer, svc *core.Service) {
 	taskDesc := buildTaskDescription()
@@ -60,28 +80,30 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		return mcp.NewToolResultText(string(b)), nil
 	})
 
-	extractTool := mcp.NewTool(
-		"extract",
-		mcp.WithDescription(extractToolDescription),
-		mcp.WithString("url", mcp.Required(), mcp.Description("Public http(s) web page URL to read and extract")),
-		mcp.WithString("format", mcp.Description("Output format, default markdown")),
-	)
-	s.AddTool(extractTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		url, err := req.RequireString("url")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		format := req.GetString("format", "markdown")
-		resp, err := svc.Extract(ctx, core.ExtractRequest{URL: url, Format: format})
-		if err != nil {
-			return mcp.NewToolResultError(string(toolErrorJSON("extract", err, resp.Route, resp.RouteTrace))), nil
-		}
-		b, err := json.MarshalIndent(resp, "", "  ")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(string(b)), nil
-	})
+	if hasExtractCapableConfigured() {
+		extractTool := mcp.NewTool(
+			"extract",
+			mcp.WithDescription(extractToolDescription),
+			mcp.WithString("url", mcp.Required(), mcp.Description("Public http(s) web page URL to read and extract")),
+			mcp.WithString("format", mcp.Description("Output format, default markdown")),
+		)
+		s.AddTool(extractTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			url, err := req.RequireString("url")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			format := req.GetString("format", "markdown")
+			resp, err := svc.Extract(ctx, core.ExtractRequest{URL: url, Format: format})
+			if err != nil {
+				return mcp.NewToolResultError(string(toolErrorJSON("extract", err, resp.Route, resp.RouteTrace))), nil
+			}
+			b, err := json.MarshalIndent(resp, "", "  ")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(string(b)), nil
+		})
+	}
 
 	statusTool := mcp.NewTool("provider_status", mcp.WithDescription("Show configured provider health plus sanitized cost policy/class status"))
 	s.AddTool(statusTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

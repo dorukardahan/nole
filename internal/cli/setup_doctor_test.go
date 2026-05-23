@@ -364,6 +364,10 @@ func TestMCPStdioSmokeDoesNotWriteStartupNoiseToStdout(t *testing.T) {
 
 func TestMCPProtocolSmokeRunsSubprocessInitializeAndToolsList(t *testing.T) {
 	bin := buildNoleBinary(t)
+	// Set an extract-capable key so the subprocess registers the extract tool.
+	// The subprocess inherits os.Environ() from the test process, so t.Setenv
+	// propagates naturally.
+	t.Setenv("TAVILY_API_KEY", "fake-tavily-smoke-key")
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	result := checkMCPProtocolSmoke(ctx, bin)

@@ -323,7 +323,11 @@ func checkMCPProtocolSmoke(parent context.Context, binary string) mcpProtocolSmo
 		return finish(fmt.Sprintf("parse tools/list: %v", err))
 	}
 	result.Tools = tools
-	if missing := missingTools(tools, []string{"budget_status", "extract", "provider_status", "search"}); len(missing) > 0 {
+	// "extract" is conditionally registered only when an extract-capable
+	// provider key (TAVILY_API_KEY, FIRECRAWL_API_KEY) is configured, so it
+	// is not checked here. budget_status, provider_status, and search are
+	// always registered regardless of key configuration.
+	if missing := missingTools(tools, []string{"budget_status", "provider_status", "search"}); len(missing) > 0 {
 		return finish(fmt.Sprintf("missing tools: %v", missing))
 	}
 	if result.NonJSONStdoutLines != 0 {

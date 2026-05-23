@@ -187,6 +187,117 @@ func TestMCPSearchTipNewServerNewSession(t *testing.T) {
 	}
 }
 
+// callToolsList sends a tools/list JSON-RPC request to the server and returns
+// the set of tool names that are advertised.
+func callToolsList(t *testing.T, srv *server.MCPServer) map[string]bool {
+	t.Helper()
+
+	msg, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/list",
+		"params":  map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("marshal tools/list request: %v", err)
+	}
+
+	raw := srv.HandleMessage(context.Background(), json.RawMessage(msg))
+	b, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("re-marshal HandleMessage result: %v", err)
+	}
+
+	var envelope struct {
+		Result struct {
+			Tools []struct {
+				Name string `json:"name"`
+			} `json:"tools"`
+		} `json:"result"`
+		Error *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		t.Fatalf("unmarshal tools/list envelope: %v\nraw: %s", err, b)
+	}
+	if envelope.Error != nil {
+		t.Fatalf("JSON-RPC error %d: %s", envelope.Error.Code, envelope.Error.Message)
+	}
+
+	names := make(map[string]bool, len(envelope.Result.Tools))
+	for _, tool := range envelope.Result.Tools {
+		names[tool.Name] = true
+	}
+	return names
+}
+
+// TestMCPExtractToolHiddenWhenNoExtractCapableKey verifies that the extract
+// tool is NOT advertised when only a non-extract-capable provider key is set.
+// Brave has SupportsExtract=false, so the extract tool must be hidden.
+func TestMCPExtractToolHiddenWhenNoExtractCapableKey(t *testing.T) {
+	// Only brave key set; brave has no extract capability.
+	t.Setenv("BRAVE_API_KEY", "fake-brave-key")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+
+	if hasExtractCapableConfigured() {
+		t.Fatal("with only BRAVE_API_KEY set, hasExtractCapableConfigured must be false")
+	}
+
+	// Also verify at the server level: the extract tool must not appear.
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"), mock.New("brave"))
+	tools := callToolsList(t, srv)
+	if tools["extract"] {
+		t.Error("extract tool should not be advertised when no extract-capable key is configured")
+	}
+	if !tools["search"] {
+		t.Error("search tool should always be advertised")
+	}
+}
+
+// TestMCPExtractToolPresentWhenExtractCapableKeyExists verifies that the
+// extract tool IS advertised when TAVILY_API_KEY is set (Tavily supports extract).
+func TestMCPExtractToolPresentWhenExtractCapableKeyExists(t *testing.T) {
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "fake-tavily-key")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+
+	if !hasExtractCapableConfigured() {
+		t.Fatal("with TAVILY_API_KEY set, hasExtractCapableConfigured must be true")
+	}
+
+	// Server-level: extract must appear in tools/list.
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"), mock.New("tavily"))
+	tools := callToolsList(t, srv)
+	if !tools["extract"] {
+		t.Error("extract tool should be advertised when TAVILY_API_KEY is configured")
+	}
+}
+
+// TestMCPExtractToolPresentWithFirecrawlOnly verifies that the extract tool IS
+// advertised when only FIRECRAWL_API_KEY is set (Firecrawl supports extract).
+func TestMCPExtractToolPresentWithFirecrawlOnly(t *testing.T) {
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "fake-fc-key")
+
+	if !hasExtractCapableConfigured() {
+		t.Fatal("with FIRECRAWL_API_KEY set, hasExtractCapableConfigured must be true")
+	}
+
+	// Server-level: extract must appear in tools/list.
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"), mock.New("firecrawl"))
+	tools := callToolsList(t, srv)
+	if !tools["extract"] {
+		t.Error("extract tool should be advertised when FIRECRAWL_API_KEY is configured")
+	}
+}
+
 // Compile-time check: ensure mcp.CallToolRequest is importable via this
 // package's test file (avoids silent import-path drift).
 var _ mcp.CallToolRequest
