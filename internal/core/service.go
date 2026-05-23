@@ -230,29 +230,24 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 
 func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 	providers := s.registry.List()
-	out := make([]ProviderStatus, 0, len(providers))
+	statuses := make([]ProviderStatus, 0, len(providers))
+	configured := make(map[string]bool)
 
-	// Build configured map: name -> available, using each provider's Status()
-	// result so we don't couple the service to direct os.Getenv calls.
 	byokNames := make(map[string]bool, len(byokProviders))
 	for _, b := range byokProviders {
 		byokNames[b.Name] = true
 	}
-	configured := make(map[string]bool, len(byokNames))
-	for _, provider := range providers {
-		if byokNames[provider.Name()] {
-			status := provider.Status(ctx)
-			configured[provider.Name()] = status.Available
-		}
-	}
 
 	for _, provider := range providers {
-		status := provider.Status(ctx)
-		out = append(out, mergeProviderCostStatus(status, s.ledger.Decide(provider.Name())))
+		status := provider.Status(ctx) // called once per provider
+		if byokNames[provider.Name()] {
+			configured[provider.Name()] = status.Available
+		}
+		statuses = append(statuses, mergeProviderCostStatus(status, s.ledger.Decide(provider.Name())))
 	}
 	suggestions := BuildSetupSuggestions(configured)
 	return ProviderStatusResponse{
-		Providers:        out,
+		Providers:        statuses,
 		SetupSuggestions: suggestions,
 	}
 }
