@@ -53,6 +53,7 @@ type SearchResponse struct {
 	Route          []string       `json:"route"`
 	RoutingInsight string         `json:"routing_insight,omitempty"`
 	RouteTrace     []RouteAttempt `json:"route_trace,omitempty"`
+	SetupTip       *SetupTip      `json:"setup_tip,omitempty"`
 }
 
 type ExtractResponse struct {
@@ -75,6 +76,29 @@ type RouteAttempt struct {
 	LatencyMS          int64             `json:"latency_ms,omitempty"`
 	ResultCount        int               `json:"result_count,omitempty"`
 	EstimatedCostCents int               `json:"estimated_cost_cents,omitempty"`
+}
+
+// SetupSuggestion describes one missing BYOK key and what configuring it
+// would unlock. Surfaced inside the provider_status response (after the
+// Task 5 envelope migration) and, in compact summary form, inside
+// SearchResponse.SetupTip.
+type SetupSuggestion struct {
+	MissingKey        string   `json:"missing_key"`
+	Impact            string   `json:"impact"` // "high" | "medium" | "low"
+	Unlocks           []string `json:"unlocks"`
+	CurrentWorkaround string   `json:"current_workaround"`
+	FreeTier          string   `json:"free_tier"`
+	SignupURL         string   `json:"signup_url"`
+	EnvExample        string   `json:"env_example"`
+}
+
+// SetupTip is the once-per-MCP-session message embedded into the first
+// SearchResponse when at least one BYOK key is missing. AI tools surface
+// this to the user as a one-time upgrade hint; subsequent search calls on
+// the same connection omit the field entirely.
+type SetupTip struct {
+	Summary string `json:"summary"`
+	SeeAlso string `json:"see_also"`
 }
 
 type ProviderStatus struct {
