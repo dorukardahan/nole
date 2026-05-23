@@ -12,8 +12,9 @@ import (
 type Mode string
 
 const (
-	ModeOffline Mode = "offline"
-	ModeLive    Mode = "live"
+	ModeOffline           Mode = "offline"
+	ModeLive              Mode = "live"
+	ModeComprehensiveLive Mode = "comprehensive_live"
 )
 
 type Kind string
@@ -114,8 +115,46 @@ type Report struct {
 	GeneratedAt    string              `json:"generated_at"`
 	Evidence       EvidenceMetadata    `json:"evidence"`
 	Summary        Summary             `json:"summary"`
-	Cases          []CaseResult        `json:"cases"`
+	Cases          []CaseResult        `json:"cases,omitempty"`
 	RouteMatrix    map[string][]string `json:"route_matrix"`
+
+	// Comprehensive-mode artifacts. Populated only when Mode is
+	// ModeComprehensiveLive; legacy modes leave these nil so existing JSON
+	// consumers (and the offline evidence summary) keep their shape.
+	Measurements    []Measurement           `json:"measurements,omitempty"`
+	ProviderSummary map[string]ProviderStat `json:"provider_summary,omitempty"`
+	NetworkContext  string                  `json:"network_context,omitempty"`
+}
+
+// Measurement is one (provider, fixture) probe in comprehensive mode. The fields
+// are intentionally narrow: no URLs, titles, snippets, key fragments or raw
+// payloads — only the counts, classification, and latency a route-evidence
+// summary needs.
+type Measurement struct {
+	Provider    string        `json:"provider"`
+	Task        core.TaskType `json:"task"`
+	FixtureID   string        `json:"fixture_id"`
+	Language    string        `json:"language"`
+	Kind        Kind          `json:"kind"`
+	Success     bool          `json:"success"`
+	ResultCount int           `json:"result_count"`
+	LatencyMS   int64         `json:"latency_ms"`
+	ErrorClass  string        `json:"error_class,omitempty"`
+}
+
+// ProviderStat aggregates measurements for one provider. Latency stats are
+// computed from successful calls only; including failed-fast errors would
+// pull the median toward unreachable lows.
+type ProviderStat struct {
+	Calls        int            `json:"calls"`
+	Successes    int            `json:"successes"`
+	Failures     int            `json:"failures"`
+	AvgLatencyMS int64          `json:"avg_latency_ms"`
+	P50LatencyMS int64          `json:"p50_latency_ms"`
+	P95LatencyMS int64          `json:"p95_latency_ms"`
+	AvgResults   float64        `json:"avg_results"`
+	ErrorClasses map[string]int `json:"error_classes,omitempty"`
+	PerTaskCalls map[string]int `json:"per_task_calls"`
 }
 
 func OfflineEvidenceMetadata() EvidenceMetadata {
@@ -225,10 +264,58 @@ func MarkdownEvidenceSummary(report Report) string {
 }
 
 func evidenceMetadataForMode(mode Mode, costPolicy string, maxCases int) EvidenceMetadata {
-	if mode == ModeLive {
+	switch mode {
+	case ModeLive:
 		return LiveEvidenceMetadata(costPolicy, maxCases)
+	case ModeComprehensiveLive:
+		return ComprehensiveLiveEvidenceMetadata(costPolicy, maxCases)
 	}
 	return OfflineEvidenceMetadata()
+}
+
+// ComprehensiveLiveEvidenceMetadata documents the comprehensive mode's scope
+// and explicit caveats. Comprehensive runs intentionally bypass the router,
+// cost policy and quota ledger so each (provider, task) pair is exercised — so
+// the metadata calls that out instead of pretending policy semantics apply.
+func ComprehensiveLiveEvidenceMetadata(costPolicy string, maxCases int) EvidenceMetadata {
+	if maxCases <= 0 {
+		maxCases = 0 // 0 == all fixtures
+	}
+	if strings.TrimSpace(costPolicy) == "" {
+		costPolicy = string(core.CostPolicyFreeFirst)
+	}
+	scope := "all fixtures"
+	if maxCases > 0 {
+		scope = fmt.Sprintf("up to %d fixtures", maxCases)
+	}
+	return EvidenceMetadata{
+		ArtifactKind: "comprehensive_live_smoke_summary",
+		Methodology:  fmt.Sprintf("Forces every configured provider to run %s (filtered by declared capability), bypassing the route matrix and quota ledger, and records sanitized per-call metrics.", scope),
+		DataSource:   "Direct provider calls from the local environment; summarized without raw response bodies, URLs, titles or snippets.",
+		Measures: []string{
+			"per-(provider, fixture) success/failure",
+			"per-(provider, fixture) coarse latency",
+			"per-provider aggregate success rate and latency percentiles",
+			"sanitized error class distribution",
+		},
+		DoesNotMeasure: []string{
+			"route-matrix behavior (comprehensive mode bypasses the router)",
+			"quota / cost policy enforcement (comprehensive mode bypasses the ledger)",
+			"comprehensive live web quality",
+			"statistical significance",
+			"provider uptime guarantees",
+		},
+		Reproduction: []string{
+			fmt.Sprintf("NOLE_COST_POLICY=%s nole bench --live --comprehensive --json", costPolicy),
+			fmt.Sprintf("NOLE_COST_POLICY=%s nole bench --live --comprehensive --evidence-md", costPolicy),
+		},
+		RawArtifactsPolicy: "No URLs, titles, snippets, or key material captured; provider responses are only inspected for length/error class. Do not commit raw provider artifacts.",
+		NetworkRequired:    true,
+		SecretsRequired:    false,
+		CostPolicy:         costPolicy,
+		CostCaveat:         "Comprehensive mode bypasses the cost policy: every provider configured in the harness is called regardless of policy, and provider-account quota or cost may apply. Use --max-cases to bound the run.",
+		Sanitized:          true,
+	}
 }
 
 func writeEvidenceList(b *strings.Builder, title string, values []string) {
