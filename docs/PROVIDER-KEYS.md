@@ -13,7 +13,7 @@ Default policy is `free-first` and each supported BYOK provider is classified as
 | Firecrawl | `FIRECRAWL_API_KEY` | 1000 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Free quota refill semantics shifted in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume use. |
 | DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
 
-The free-tier numbers above are conservative anchors verified 2026-05. They are encoded in `internal/cli/app.go` as `byokFreeDefaults`; bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
+The free-tier numbers above are conservative anchors verified 2026-05. They are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
 
 Use `nole doctor`, `nole providers --json` and MCP `provider_status`/`budget_status` to inspect status safely. These surfaces should report presence/status and local policy decisions, never key values.
 

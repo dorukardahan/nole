@@ -99,7 +99,7 @@ The `mcp__nole__provider_status` response (and the equivalent CLI `nole provider
 
 The AI tool decides what to surface. The convention encoded in the tool description is: "If a `setup_suggestions` entry has impact `high` or `medium`, mention it once per conversation when relevant. Skip `low`."
 
-The `setup_suggestions` array is built from the same source of truth (`internal/cli/app.go:byokFreeDefaults`) that drives the existing per-provider `free_tier-BYOK` classification, so the doc surface and the runtime behavior cannot drift.
+The `setup_suggestions` array is built from the same source of truth (`internal/core/byok_metadata.go:byokProviders`, accessed via `core.BYOKProviders()` and `core.LookupBYOK()`) that drives the existing per-provider `free_tier-BYOK` classification, so the doc surface and the runtime behavior cannot drift.
 
 ### 3. First-of-session tip on `search` responses
 
@@ -132,7 +132,7 @@ A future CLI-side `--lang tr` for `nole doctor` is out of scope for this design;
 - `internal/core/types.go` — add `SetupSuggestion`, `ProviderStatusResponse.SetupSuggestions`, `SearchResponse.SetupTip`.
 - `internal/core/setup_hints.go` (new) — build `setup_suggestions` from configured providers and `byokFreeDefaults`. Pure function, easy to test.
 - `internal/mcpserver/*` — at startup, inspect configured providers; conditionally register the extract tool. Track first-call flag per connection.
-- `internal/cli/app.go` — `byokFreeDefaults` becomes the single source of truth for both quotas (existing) and setup hints (new). No behavior change for already-configured providers.
+- `internal/cli/app.go` — `byokFreeDefaults` deleted; quota wiring reads from `core.BYOKProviders()` / `core.LookupBYOK()`. The provider metadata that was previously here lives in `internal/core/byok_metadata.go` (introduced in Task 1) so that `setup_hints.go` (also in core) can read it without an import cycle.
 - `internal/cli/providers.go` — JSON output gains `setup_suggestions`.
 - `docs/PROVIDER-KEYS.md` — short addendum: "Nólë's MCP server hides the `extract` tool if neither Tavily nor Firecrawl is configured. Add a key and restart your AI tool to enable."
 - Tests in `internal/core/setup_hints_test.go`, `internal/mcpserver/*_test.go`, `internal/cli/providers_test.go`.
