@@ -25,6 +25,12 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		mcp.WithString("task", mcp.Description(taskDesc)),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of search results to return")),
 	)
+	// tipEmitted is captured by the search handler closure. One MCPServer
+	// instance = one process = one session, so this flag provides
+	// first-of-session emission without any synchronisation overhead (stdio
+	// MCP serialises requests; HTTP MCP would need a mutex, but that is a
+	// future concern).
+	tipEmitted := false
 	s.AddTool(searchTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		query, err := req.RequireString("query")
 		if err != nil {
@@ -35,6 +41,16 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		resp, err := svc.Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit})
 		if err != nil {
 			return mcp.NewToolResultError(string(toolErrorJSON("search", err, resp.Route, resp.RouteTrace))), nil
+		}
+		// First-of-session upgrade hint. Once a tip has been emitted on this
+		// MCP connection, subsequent search calls omit it so the AI tool is
+		// not nagged on every query.
+		if !tipEmitted {
+			statusResp := svc.ProviderStatus(ctx)
+			if tip := core.BuildSetupTip(statusResp.SetupSuggestions); tip != nil {
+				resp.SetupTip = tip
+				tipEmitted = true
+			}
 		}
 		b, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {
