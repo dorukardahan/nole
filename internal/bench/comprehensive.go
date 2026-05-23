@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 )
 
 // ComprehensiveOptions tune the comprehensive run. Defaults aim at a polite,
@@ -179,6 +180,22 @@ func classifyComprehensiveError(err error) string {
 	if errors.Is(err, io.EOF) {
 		return "eof"
 	}
+	// Structured detection first: providerhttp.HTTPStatusError carries the real
+	// status code, so we don't depend on the message format remaining stable.
+	// String matching falls through to it for plain fmt.Errorf paths.
+	var statusErr *providerhttp.HTTPStatusError
+	if errors.As(err, &statusErr) {
+		switch {
+		case statusErr.StatusCode == 401:
+			return "auth_unauthorized"
+		case statusErr.StatusCode == 403:
+			return "auth_forbidden"
+		case statusErr.StatusCode == 429 || statusErr.StatusCode == 202:
+			return "rate_limited"
+		case statusErr.StatusCode >= 500:
+			return "provider_5xx"
+		}
+	}
 	msg := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(msg, "rate limited") || strings.Contains(msg, "429"):
@@ -189,7 +206,9 @@ func classifyComprehensiveError(err error) string {
 		return "auth_unauthorized"
 	case strings.Contains(msg, "forbidden") || strings.Contains(msg, "403"):
 		return "auth_forbidden"
-	case strings.Contains(msg, "status 5"):
+	// providerhttp emits "returned HTTP 5xx (...)" rather than "status 5xx";
+	// keep both spellings so plain fmt.Errorf strings keep classifying too.
+	case strings.Contains(msg, "returned http 5") || strings.Contains(msg, "status 5"):
 		return "provider_5xx"
 	case strings.Contains(msg, "context") && strings.Contains(msg, "canceled"):
 		return "canceled"
@@ -237,7 +256,15 @@ func summarizeMeasurements(ms []Measurement) map[string]ProviderStat {
 			}
 			stat.AvgLatencyMS = sum / int64(len(succLat))
 			stat.P50LatencyMS = succLat[len(succLat)/2]
-			p95idx := (len(succLat) * 95) / 100
+			// Nearest-rank percentile: index = ceil(p/100 * N) - 1, clamped.
+			// The earlier (N*95)/100 formula was off-by-one for zero-based
+			// indexing — e.g. with N=20 it picked succLat[19] (the max)
+			// instead of the 95th-percentile rank at index 18, inflating
+			// reported P95. The +99 forces ceil to land on the right rank.
+			p95idx := (len(succLat)*95+99)/100 - 1
+			if p95idx < 0 {
+				p95idx = 0
+			}
 			if p95idx >= len(succLat) {
 				p95idx = len(succLat) - 1
 			}

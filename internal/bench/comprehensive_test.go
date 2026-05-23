@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 )
 
 // fakeProvider is a controllable provider for comprehensive-mode tests. It
@@ -150,6 +151,21 @@ func TestClassifyComprehensiveError(t *testing.T) {
 		{errors.New("dial tcp: connection refused"), "network"},
 		{errors.New("status 500 internal server error"), "provider_5xx"},
 		{errors.New("something weird went wrong"), "provider_error"},
+		// Real provider HTTP errors come from providerhttp.NewHTTPStatusError,
+		// which emits "returned HTTP <code>" — the original "status 5" check
+		// missed this shape, mislabeling real 5xx as provider_error. Structured
+		// detection via errors.As must take precedence and pick the right class
+		// straight from the status code regardless of message wording.
+		{providerhttp.NewHTTPStatusError("brave", "search", 500, nil), "provider_5xx"},
+		{providerhttp.NewHTTPStatusError("brave", "search", 503, nil), "provider_5xx"},
+		{providerhttp.NewHTTPStatusError("brave", "search", 401, nil), "auth_unauthorized"},
+		{providerhttp.NewHTTPStatusError("brave", "search", 403, nil), "auth_forbidden"},
+		{providerhttp.NewHTTPStatusError("brave", "search", 429, nil), "rate_limited"},
+		{providerhttp.NewHTTPStatusError("brave", "search", 202, nil), "rate_limited"},
+		// The string form providerhttp.HTTPStatusError.Error() produces must
+		// still classify correctly when it reaches the fallback path (e.g.
+		// after passing through safeerr.Message into a fresh fmt.Errorf).
+		{errors.New("brave: search returned HTTP 502 (transient; response body redacted, 0 bytes)"), "provider_5xx"},
 	}
 	for _, tc := range cases {
 		got := classifyComprehensiveError(tc.err)
@@ -184,6 +200,30 @@ func TestSummarizeMeasurementsLatencyOnSuccessesOnly(t *testing.T) {
 	}
 	if got.ErrorClasses["rate_limited"] != 2 {
 		t.Fatalf("error classes = %v", got.ErrorClasses)
+	}
+}
+
+func TestSummarizeMeasurementsP95UsesNearestRank(t *testing.T) {
+	// The original (N*95)/100 formula selected index 19 for N=20 — the max,
+	// not the 95th-percentile rank. Nearest-rank percentile lands on index 18
+	// (the 19th sorted sample). The boundary is what makes cross-provider
+	// latency comparisons meaningful, so pin the exact index here.
+	ms := make([]Measurement, 0, 20)
+	for i := 1; i <= 20; i++ {
+		ms = append(ms, Measurement{Provider: "p", Success: true, LatencyMS: int64(i * 10), Task: core.TaskGeneral})
+	}
+	stats := summarizeMeasurements(ms)
+	got := stats["p"]
+	if got.P95LatencyMS != 190 {
+		t.Errorf("p95 (N=20) = %d, want 190 (index 18 nearest-rank), not %d (index 19, the max)", got.P95LatencyMS, got.P95LatencyMS)
+	}
+	if got.P95LatencyMS == 200 {
+		t.Errorf("p95 collapsed to max (200) — off-by-one regression in (N*95)/100")
+	}
+	// Small-N sanity: with N=1, p95 must still be defined and equal the only sample.
+	one := summarizeMeasurements([]Measurement{{Provider: "p", Success: true, LatencyMS: 42, Task: core.TaskGeneral}})
+	if one["p"].P95LatencyMS != 42 {
+		t.Errorf("p95 (N=1) = %d, want 42", one["p"].P95LatencyMS)
 	}
 }
 
