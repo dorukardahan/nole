@@ -39,12 +39,12 @@ Before implementation, the engineer needs the exact filenames for the MCP server
 
 - [ ] **Step 1: List the MCP server package**
 
-Run: `ls -la /Users/doruk/src/nole/internal/mcpserver/`
+Run: `ls -la internal/mcpserver/`
 Expected: at least one `.go` file plus its `_test.go` companion. Note the file where `AddTool` (or the mark3labs/mcp-go equivalent) is called for each of `search`, `extract`, `provider_status`, `budget_status`.
 
 - [ ] **Step 2: Identify the search/extract registration callsites**
 
-Run: `grep -nE "AddTool|RegisterTool|mcp__nole" /Users/doruk/src/nole/internal/mcpserver/*.go | head -40`
+Run: `grep -nE "AddTool|RegisterTool|mcp__nole" internal/mcpserver/*.go | head -40`
 Expected: lines that name each tool — record the file path and line numbers for the four tools.
 
 - [ ] **Step 3: Note the server constructor**
@@ -128,7 +128,7 @@ func TestBYOKProvidersInvariants(t *testing.T) {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/core/ -run TestBYOKProvidersInvariants`
+Run: `cd <repo> && go test ./internal/core/ -run TestBYOKProvidersInvariants`
 Expected: FAIL with "undefined: BYOKProviders" (or build error referencing missing type).
 
 - [ ] **Step 3: Create the metadata file**
@@ -215,13 +215,13 @@ func LookupBYOK(name string) (BYOKProvider, bool) {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/core/ -run TestBYOKProvidersInvariants -v`
+Run: `cd <repo> && go test ./internal/core/ -run TestBYOKProvidersInvariants -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/doruk/src/nole
+cd <repo>
 git add internal/core/byok_metadata.go internal/core/byok_metadata_test.go
 git commit -m "feat(core): introduce BYOKProviders single source of truth"
 ```
@@ -236,12 +236,12 @@ git commit -m "feat(core): introduce BYOKProviders single source of truth"
 
 - [ ] **Step 1: Read the current cli quota code**
 
-Run: `grep -n "byokFreeDefaults\|providerQuotaEntry\|isProviderPaidMode" /Users/doruk/src/nole/internal/cli/app.go`
+Run: `grep -n "byokFreeDefaults\|providerQuotaEntry\|isProviderPaidMode" internal/cli/app.go`
 Expected: a handful of lines including the local `byokFreeDefaults` map declaration and the function(s) that consume it.
 
 - [ ] **Step 2: Run the existing cli + core tests as a baseline**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/cli/ ./internal/core/`
+Run: `cd <repo> && go test ./internal/cli/ ./internal/core/`
 Expected: all PASS. Record the count — the same number must still pass after the refactor.
 
 - [ ] **Step 3: Delete `byokFreeDefaults` from `internal/cli/app.go`**
@@ -259,13 +259,13 @@ The fields used will be `defaults.FreeQuota` and `defaults.RefreshWindow` — sa
 
 - [ ] **Step 4: Run tests to verify no regression**
 
-Run: `cd /Users/doruk/src/nole && go test ./...`
+Run: `cd <repo> && go test ./...`
 Expected: same number of PASS, zero FAIL.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/doruk/src/nole
+cd <repo>
 git add internal/cli/app.go
 git commit -m "refactor(cli): read BYOK quota defaults from core source of truth"
 ```
@@ -325,13 +325,13 @@ Use a pointer for `SetupTip` so the `omitempty` tag actually omits it on absence
 
 - [ ] **Step 3: Run the full test suite — types only, nothing breaks**
 
-Run: `cd /Users/doruk/src/nole && go test ./...`
+Run: `cd <repo> && go test ./...`
 Expected: all PASS. No new behavior yet.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /Users/doruk/src/nole
+cd <repo>
 git add internal/core/types.go
 git commit -m "feat(core): add SetupSuggestion and SetupTip types"
 ```
@@ -485,7 +485,7 @@ func TestBuildSetupTipPresenceMatchesSuggestions(t *testing.T) {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/core/ -run "TestBuildSetupSuggestions|TestBuildSetupTip" -v`
+Run: `cd <repo> && go test ./internal/core/ -run "TestBuildSetupSuggestions|TestBuildSetupTip" -v`
 Expected: FAIL with "undefined: BuildSetupSuggestions" (compile error).
 
 - [ ] **Step 3: Implement the builder**
@@ -640,18 +640,18 @@ func joinOr(items []string) string {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/core/ -run "TestBuildSetupSuggestions|TestBuildSetupTip" -v`
+Run: `cd <repo> && go test ./internal/core/ -run "TestBuildSetupSuggestions|TestBuildSetupTip" -v`
 Expected: all PASS.
 
 - [ ] **Step 5: Run the full suite — confirm nothing else broke**
 
-Run: `cd /Users/doruk/src/nole && go test ./...`
+Run: `cd <repo> && go test ./...`
 Expected: all PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/doruk/src/nole
+cd <repo>
 git add internal/core/setup_hints.go internal/core/setup_hints_test.go
 git commit -m "feat(core): build setup suggestions and first-session tip"
 ```
@@ -707,7 +707,7 @@ If `captureProvidersJSON` doesn't exist in the file already, write a small inlin
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/cli/ -run TestProvidersJSONIncludesSetupSuggestionsWhenKeysMissing -v`
+Run: `cd <repo> && go test ./internal/cli/ -run TestProvidersJSONIncludesSetupSuggestionsWhenKeysMissing -v`
 Expected: FAIL — `len(parsed.SetupSuggestions) == 0`.
 
 - [ ] **Step 3: Wire suggestions into the provider_status response**
@@ -729,7 +729,7 @@ response.SetupSuggestions = core.BuildSetupSuggestions(configured)
 
 - [ ] **Step 4: Run the CLI test — it should pass**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/cli/ -run TestProvidersJSONIncludesSetupSuggestionsWhenKeysMissing -v`
+Run: `cd <repo> && go test ./internal/cli/ -run TestProvidersJSONIncludesSetupSuggestionsWhenKeysMissing -v`
 Expected: PASS.
 
 - [ ] **Step 5: Wire suggestions into the MCP provider_status handler**
@@ -756,13 +756,13 @@ func TestMCPProviderStatusIncludesSetupSuggestionsWhenKeysMissing(t *testing.T) 
 
 - [ ] **Step 7: Run the full suite**
 
-Run: `cd /Users/doruk/src/nole && go test ./...`
+Run: `cd <repo> && go test ./...`
 Expected: all PASS.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /Users/doruk/src/nole
+cd <repo>
 git add internal/cli/providers.go internal/cli/providers_test.go internal/mcpserver/
 git commit -m "feat(provider-status): include setup suggestions for missing keys"
 ```
@@ -824,7 +824,7 @@ If `callMCPSearch` doesn't exist, write a tiny helper using the existing in-proc
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/mcpserver/ -run TestMCPSearchTip -v`
+Run: `cd <repo> && go test ./internal/mcpserver/ -run TestMCPSearchTip -v`
 Expected: FAIL — `first.SetupTip is nil`.
 
 - [ ] **Step 4: Wire the tip into the search handler**
@@ -846,18 +846,18 @@ if !s.tipEmitted {
 
 - [ ] **Step 5: Run the tests — they should pass**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/mcpserver/ -run TestMCPSearchTip -v`
+Run: `cd <repo> && go test ./internal/mcpserver/ -run TestMCPSearchTip -v`
 Expected: both tests PASS.
 
 - [ ] **Step 6: Run the full suite**
 
-Run: `cd /Users/doruk/src/nole && go test ./...`
+Run: `cd <repo> && go test ./...`
 Expected: all PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/doruk/src/nole
+cd <repo>
 git add internal/mcpserver/
 git commit -m "feat(mcp): emit setup_tip on first search of each session"
 ```
@@ -916,7 +916,7 @@ The exact tool name comparison (`"extract"` vs `"mcp__nole__extract"`) depends o
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/mcpserver/ -run TestMCPExtractTool -v`
+Run: `cd <repo> && go test ./internal/mcpserver/ -run TestMCPExtractTool -v`
 Expected: the "hidden" test FAILs because extract is always registered today.
 
 - [ ] **Step 3: Gate the extract registration**
@@ -948,18 +948,18 @@ If the existing code registers tools in a slice/list pattern, conditionally appe
 
 - [ ] **Step 4: Run the tests — they should pass**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/mcpserver/ -run TestMCPExtractTool -v`
+Run: `cd <repo> && go test ./internal/mcpserver/ -run TestMCPExtractTool -v`
 Expected: both tests PASS.
 
 - [ ] **Step 5: Run the full suite**
 
-Run: `cd /Users/doruk/src/nole && go test ./...`
+Run: `cd <repo> && go test ./...`
 Expected: all PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/doruk/src/nole
+cd <repo>
 git add internal/mcpserver/
 git commit -m "feat(mcp): hide extract tool when no extract-capable key configured"
 ```
@@ -975,7 +975,7 @@ The existing claims guard rejects superlative or quantitative provider rankings 
 
 - [ ] **Step 1: Locate the existing guard**
 
-Run: `grep -n "claims\|ranking\|provider" /Users/doruk/src/nole/internal/bench/claims_guard_test.go`
+Run: `grep -n "claims\|ranking\|provider" internal/bench/claims_guard_test.go`
 Expected: the existing patterns banning words like "best", "always works", quantitative comparisons.
 
 - [ ] **Step 2: Add a test extending coverage to setup-hint strings**
@@ -1012,13 +1012,13 @@ If `strings` is not already imported in the file, add it.
 
 - [ ] **Step 3: Run the test — confirm it passes against current strings**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/bench/ -run TestSetupHintStringsAreSanitized -v`
+Run: `cd <repo> && go test ./internal/bench/ -run TestSetupHintStringsAreSanitized -v`
 Expected: PASS (the strings in Task 1 were written to avoid the banned words).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /Users/doruk/src/nole
+cd <repo>
 git add internal/bench/claims_guard_test.go
 git commit -m "test(bench): claims guard now covers setup-hint metadata strings"
 ```
@@ -1032,7 +1032,7 @@ git commit -m "test(bench): claims guard now covers setup-hint metadata strings"
 
 - [ ] **Step 1: Read the existing doc**
 
-Run: `cat /Users/doruk/src/nole/docs/PROVIDER-KEYS.md | head -60`
+Run: `cat docs/PROVIDER-KEYS.md | head -60`
 Expected: the existing key/quota table.
 
 - [ ] **Step 2: Append the addendum**
@@ -1056,13 +1056,13 @@ If you add a key mid-session, restart your AI tool (or its MCP connection) so th
 
 - [ ] **Step 3: Verify the doc still passes claims-guard**
 
-Run: `cd /Users/doruk/src/nole && go test ./internal/bench/ -run TestBenchmarkClaimsGuard`
+Run: `cd <repo> && go test ./internal/bench/ -run TestBenchmarkClaimsGuard`
 Expected: PASS (no superlative or quantitative rankings introduced).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /Users/doruk/src/nole
+cd <repo>
 git add docs/PROVIDER-KEYS.md
 git commit -m "docs(provider-keys): document partial-key MCP behavior and setup hints"
 ```
@@ -1076,7 +1076,7 @@ git commit -m "docs(provider-keys): document partial-key MCP behavior and setup 
 
 - [ ] **Step 1: Build the binary fresh from this branch**
 
-Run: `cd /Users/doruk/src/nole && go build -o /tmp/nole-partial-keys . && /tmp/nole-partial-keys doctor | head -20`
+Run: `cd <repo> && go build -o /tmp/nole-partial-keys . && /tmp/nole-partial-keys doctor | head -20`
 Expected: doctor reports successfully; no panics.
 
 - [ ] **Step 2: Smoke-test the MCP server with no keys**
@@ -1091,13 +1091,13 @@ Expected: `setup_suggestions` has two entries (tavily, firecrawl), both with `"i
 
 - [ ] **Step 4: Full test suite final pass**
 
-Run: `cd /Users/doruk/src/nole && go test ./... -count=1`
+Run: `cd <repo> && go test ./... -count=1`
 Expected: all PASS, no cached results.
 
 - [ ] **Step 5: Push and open PR**
 
 ```bash
-cd /Users/doruk/src/nole
+cd <repo>
 git push -u origin spec/partial-keys-graceful-degradation
 gh pr create --base main --head spec/partial-keys-graceful-degradation \
   --title "feat: partial-keys graceful degradation across MCP surface" \

@@ -32,8 +32,8 @@ func newTestMCPServerWithProviders(t *testing.T, providers ...core.Provider) *se
 		}
 		// Seed a keyless-free entry so the quota gate allows calls.
 		ledger.Set(core.QuotaEntry{
-			Provider:   p.Name(),
-			CostClass:  core.CostClassKeylessFree,
+			Provider:    p.Name(),
+			CostClass:   core.CostClassKeylessFree,
 			KeylessFree: true,
 		})
 	}
