@@ -122,6 +122,10 @@ func TestBuildSetupTipPresenceMatchesSuggestions(t *testing.T) {
 	if tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave", "tavily", "firecrawl"))); tip != nil {
 		t.Errorf("expected nil tip when nothing missing, got %+v", tip)
 	}
+	// LOW-only: brave + tavily configured, firecrawl missing at LOW — tip must be nil.
+	if tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave", "tavily"))); tip != nil {
+		t.Errorf("expected nil tip for LOW-only suggestions, got %+v", tip)
+	}
 	tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave")))
 	if tip == nil {
 		t.Fatal("expected non-nil tip when extract is missing")
