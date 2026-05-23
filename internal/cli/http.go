@@ -55,8 +55,8 @@ func (h *httpHandler) start(addr string) error {
 	mux.HandleFunc("/api/providers", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		ctx := r.Context()
-		status := h.svc.ProviderStatus(ctx)
-		json.NewEncoder(w).Encode(status)
+		resp := h.svc.ProviderStatus(ctx)
+		json.NewEncoder(w).Encode(resp)
 	})
 
 	// Budget status endpoint

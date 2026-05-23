@@ -101,6 +101,14 @@ type SetupTip struct {
 	SeeAlso string `json:"see_also"`
 }
 
+// ProviderStatusResponse wraps the per-provider status slice with optional
+// metadata. Today it carries SetupSuggestions: a list of missing BYOK keys
+// and what configuring them would unlock. Returned by Service.ProviderStatus.
+type ProviderStatusResponse struct {
+	Providers        []ProviderStatus  `json:"providers"`
+	SetupSuggestions []SetupSuggestion `json:"setup_suggestions,omitempty"`
+}
+
 type ProviderStatus struct {
 	Name               string            `json:"name"`
 	Available          bool              `json:"available"`

@@ -58,7 +58,8 @@ func newDoctorCommand() *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), "- stdio: logs must go to stderr; stdout reserved for MCP protocol")
 
 			svc := defaultService()
-			statuses := svc.ProviderStatus(context.Background())
+			providerResp := svc.ProviderStatus(context.Background())
+			statuses := providerResp.Providers
 
 			available := 0
 			for _, s := range statuses {

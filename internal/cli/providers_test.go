@@ -20,10 +20,11 @@ func TestProvidersCommandJSONIncludesCostPolicyWithoutSecrets(t *testing.T) {
 		t.Fatalf("providers failed: %v", err)
 	}
 
-	var statuses []core.ProviderStatus
-	if err := json.Unmarshal(out.Bytes(), &statuses); err != nil {
+	var envelope core.ProviderStatusResponse
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 		t.Fatalf("providers output is not JSON: %v\n%s", err, out.String())
 	}
+	statuses := envelope.Providers
 	if len(statuses) == 0 {
 		t.Fatal("expected provider statuses")
 	}
@@ -104,6 +105,57 @@ func TestProvidersCommandPaidModeQualityFirstExplicitlyAllows(t *testing.T) {
 	}
 }
 
+// TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions asserts that the
+// --json output is an envelope (not a bare array) and that setup_suggestions
+// is populated when all BYOK keys are absent. Three BYOK providers are
+// registered (brave, tavily, firecrawl), so we expect exactly three entries.
+func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
+	clearProviderPolicyEnv(t)
+	// All BYOK keys are already cleared by clearProviderPolicyEnv; be explicit.
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+
+	envelope := decodeProvidersEnvelopeJSON(t)
+
+	if len(envelope.Providers) == 0 {
+		t.Fatal("expected providers in envelope")
+	}
+	if len(envelope.SetupSuggestions) != 3 {
+		t.Fatalf("expected 3 setup_suggestions (brave/tavily/firecrawl all missing), got %d: %#v",
+			len(envelope.SetupSuggestions), envelope.SetupSuggestions)
+	}
+	// All three BYOK providers must appear as missing keys.
+	byKey := map[string]core.SetupSuggestion{}
+	for _, s := range envelope.SetupSuggestions {
+		byKey[s.MissingKey] = s
+	}
+	for _, wantKey := range []string{"BRAVE_API_KEY", "TAVILY_API_KEY", "FIRECRAWL_API_KEY"} {
+		if _, ok := byKey[wantKey]; !ok {
+			t.Errorf("expected setup_suggestions to contain missing key %q, got keys: %v",
+				wantKey, keysOf(byKey))
+		}
+	}
+	// Impact must be set for each suggestion.
+	for _, s := range envelope.SetupSuggestions {
+		if s.Impact == "" {
+			t.Errorf("suggestion for %q has empty impact", s.MissingKey)
+		}
+		if s.SignupURL == "" {
+			t.Errorf("suggestion for %q has empty signup_url", s.MissingKey)
+		}
+	}
+}
+
+func keysOf(m map[string]core.SetupSuggestion) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
 func decodeProvidersJSON(t *testing.T) map[string]core.ProviderStatus {
 	t.Helper()
 	cmd := NewRootCommand()
@@ -114,15 +166,32 @@ func decodeProvidersJSON(t *testing.T) map[string]core.ProviderStatus {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("providers failed: %v", err)
 	}
-	var statuses []core.ProviderStatus
-	if err := json.Unmarshal(out.Bytes(), &statuses); err != nil {
+	var envelope core.ProviderStatusResponse
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 		t.Fatalf("providers output is not JSON: %v\n%s", err, out.String())
 	}
 	byName := map[string]core.ProviderStatus{}
-	for _, status := range statuses {
+	for _, status := range envelope.Providers {
 		byName[status.Name] = status
 	}
 	return byName
+}
+
+func decodeProvidersEnvelopeJSON(t *testing.T) core.ProviderStatusResponse {
+	t.Helper()
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"providers", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("providers failed: %v", err)
+	}
+	var envelope core.ProviderStatusResponse
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatalf("providers output is not JSON: %v\n%s", err, out.String())
+	}
+	return envelope
 }
 
 func clearProviderPolicyEnv(t *testing.T) {
