@@ -71,6 +71,10 @@ func (h *httpHandler) start(addr string) error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		// Cap request body at 1 MiB to prevent unbounded memory growth on
+		// untrusted input (slowloris / large-payload DoS). Default bind is
+		// loopback; this matters when the user passes --listen 0.0.0.0.
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var req struct {
 			Query string `json:"query"`
 			Task  string `json:"task"`
@@ -102,6 +106,7 @@ func (h *httpHandler) start(addr string) error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var req struct {
 			URL    string `json:"url"`
 			Format string `json:"format"`
@@ -124,6 +129,13 @@ func (h *httpHandler) start(addr string) error {
 
 	h.server = &http.Server{
 		Handler: mux,
+		// Slowloris-class hardening. Defaults are 0 which means "no limit";
+		// matter most when the user passes --listen 0.0.0.0:port, but cheap
+		// to set unconditionally.
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	listener, err := net.Listen("tcp", addr)
@@ -142,6 +154,7 @@ func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
