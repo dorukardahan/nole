@@ -88,7 +88,7 @@ Stdlib findings should be zero on a current toolchain.
   `cross-platform-build`) must pass before review.
 - No secrets in diffs. The repo's `scripts/secret-scan.sh` is strict; do not
   commit `.env` files, real API keys, auth headers, private hostnames, or
-  absolute home paths (`/Users/...`, `/home/...`).
+  absolute home paths (anything under `/Users/USER/` or `/home/user/`).
 - No marketing or superlative claims about providers, routing, benchmarks, or
   speed. The bench claims guard (`internal/bench/claims_guard_test.go`)
   rejects them in CI.
