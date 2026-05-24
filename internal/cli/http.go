@@ -132,9 +132,17 @@ func (h *httpHandler) start(addr string) error {
 		// Slowloris-class hardening. Defaults are 0 which means "no limit";
 		// matter most when the user passes --listen 0.0.0.0:port, but cheap
 		// to set unconditionally.
+		//
+		// WriteTimeout sized for the worst-case provider-backed handler:
+		// Service.Search / Service.Extract try providers sequentially, each
+		// with a 20-30s provider client timeout and up to 2 retry attempts.
+		// A naive 60s cap can guillotine a legitimate handler mid-fallback
+		// (Codex review on PR #25). 300s leaves room for the full route
+		// chain plus DDGS rate-limit Retry-After waits; Read/Header timeouts
+		// still bound the client side independently.
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
+		WriteTimeout:      300 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 
