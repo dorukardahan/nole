@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 // launchSpec describes how a client should be told to invoke Nólë's MCP server.
@@ -43,20 +44,21 @@ func newSetupCommand() *cobra.Command {
 	var opencode bool
 	var windsurf bool
 	var kimi bool
+	var hermes bool
 	var wrapper string
 
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Configure AI agents to use nole as MCP server",
 		Long: "Writes MCP server configuration files for supported AI coding agents.\n" +
-			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, or --all.\n" +
+			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, or --all.\n" +
 			"Use --mcp-wrapper /absolute/path/to/nole-mcp to register an env-sourcing wrapper instead of the bare binary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
-				claude, cursor, codex, opencode, kimi, windsurf = true, true, true, true, true, true
+				claude, cursor, codex, opencode, kimi, windsurf, hermes = true, true, true, true, true, true, true
 			}
-			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf {
-				return fmt.Errorf("specify at least one agent: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, or --all")
+			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes {
+				return fmt.Errorf("specify at least one agent: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, or --all")
 			}
 
 			binary, err := os.Executable()
@@ -126,6 +128,14 @@ func newSetupCommand() *cobra.Command {
 					configured++
 				}
 			}
+			if hermes {
+				if err := writeHermesConfig(spec); err != nil {
+					fmt.Fprintf(errOut, "hermes: %v\n", err)
+				} else {
+					fmt.Fprintln(out, "hermes: configured")
+					configured++
+				}
+			}
 
 			fmt.Fprintf(out, "\n%d agent(s) configured. Set provider keys before starting:\n", configured)
 			fmt.Fprintln(out, "  export FIRECRAWL_API_KEY=...")
@@ -147,6 +157,7 @@ func newSetupCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opencode, "opencode", false, "configure OpenCode")
 	cmd.Flags().BoolVar(&kimi, "kimi", false, "configure Kimi CLI")
 	cmd.Flags().BoolVar(&windsurf, "windsurf", false, "configure Windsurf")
+	cmd.Flags().BoolVar(&hermes, "hermes", false, "configure Hermes Agent")
 	cmd.Flags().StringVar(&wrapper, "mcp-wrapper", "", "absolute path to an env-sourcing MCP wrapper (e.g. ~/.local/bin/nole-mcp). Applies to non-Codex writers and changes the Codex launch line to call the wrapper directly.")
 	return cmd
 }
@@ -193,6 +204,52 @@ func writeCursorConfig(spec launchSpec) error {
 	}
 	path := filepath.Join(home, ".cursor", "mcp.json")
 	return writeMCPJSONConfig(path, spec)
+}
+
+func writeHermesConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".hermes", "config.yaml")
+	return writeHermesConfigPath(path, spec)
+}
+
+func writeHermesConfigPath(path string, spec launchSpec) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+	existing, exists, mode, err := readExistingFileWithMode(path)
+	if err != nil {
+		return err
+	}
+	if exists {
+		if err := writeBackup(path, existing, mode); err != nil {
+			return err
+		}
+	}
+	root := map[string]any{}
+	if len(strings.TrimSpace(string(existing))) > 0 {
+		if err := yaml.Unmarshal(existing, &root); err != nil {
+			return fmt.Errorf("parse existing hermes config yaml: %w", err)
+		}
+	}
+	servers, _ := root["mcp_servers"].(map[string]any)
+	if servers == nil {
+		servers = map[string]any{}
+	}
+	servers["nole"] = map[string]any{
+		"command":         spec.command(),
+		"args":            spec.args(),
+		"timeout":         120,
+		"connect_timeout": 60,
+	}
+	root["mcp_servers"] = servers
+	out, err := yaml.Marshal(root)
+	if err != nil {
+		return fmt.Errorf("marshal hermes config yaml: %w", err)
+	}
+	return atomicWriteFile(path, out, configWriteMode(exists, mode))
 }
 
 func writeWindsurfConfig(spec launchSpec) error {
