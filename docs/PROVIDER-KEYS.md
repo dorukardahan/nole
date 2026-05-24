@@ -145,6 +145,8 @@ Use for: broad search, docs, news/freshness, pricing and fallback routes.
 
 Default classification: `free-tier-BYOK`, 1000 calls/month, refilled at the start of each UTC month.
 
+> Note on the 1000 vs 2000 discrepancy: Brave's official Free Data plan advertises a 2,000 calls/month allowance with a 1 request/second rate cap. Nólë's local anchor is intentionally set at 1,000 to add a safety margin (overage on Brave is billed to the credit card on file). Bump `byokProviders.FreeQuota` in `internal/core/byok_metadata.go` only with sanitized evidence (provider dashboard screenshot or doc URL).
+
 Setup:
 
 1. Create a Brave Search API key in the Brave dashboard.

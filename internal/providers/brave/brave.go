@@ -72,7 +72,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 
 	u := fmt.Sprintf("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d",
-		url.QueryEscape(req.Query), maxInt(req.Limit, 1))
+		url.QueryEscape(req.Query), clampMin(req.Limit, 1))
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -137,7 +137,7 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 	}
 }
 
-func maxInt(a, b int) int {
+func clampMin(a, b int) int {
 	if a > b {
 		return a
 	}

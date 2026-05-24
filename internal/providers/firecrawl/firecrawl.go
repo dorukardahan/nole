@@ -50,7 +50,12 @@ func (p Provider) Capabilities() []core.Capability {
 	return []core.Capability{core.CapabilitySearch, core.CapabilityExtract, core.CapabilityStatus}
 }
 
-// --- Firecrawl Search API response types ---
+// --- Firecrawl Search API request/response types ---
+
+type firecrawlSearchRequest struct {
+	Query string `json:"query"`
+	Limit int    `json:"limit"`
+}
 
 type firecrawlSearchResponse struct {
 	Success bool                `json:"success"`
@@ -73,9 +78,9 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: FIRECRAWL_API_KEY not set")
 	}
 
-	body := map[string]interface{}{
-		"query": req.Query,
-		"limit": req.Limit,
+	body := firecrawlSearchRequest{
+		Query: req.Query,
+		Limit: req.Limit,
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -130,7 +135,11 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}, nil
 }
 
-// --- Firecrawl Scrape API response types ---
+// --- Firecrawl Scrape API request/response types ---
+
+type firecrawlScrapeRequest struct {
+	URL string `json:"url"`
+}
 
 type firecrawlScrapeResponse struct {
 	Success bool                `json:"success"`
@@ -147,8 +156,8 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 		return core.ExtractResponse{}, fmt.Errorf("firecrawl: FIRECRAWL_API_KEY not set")
 	}
 
-	body := map[string]interface{}{
-		"url": req.URL,
+	body := firecrawlScrapeRequest{
+		URL: req.URL,
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {

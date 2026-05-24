@@ -73,7 +73,7 @@ See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 
 Prerequisites:
 
-- Go 1.23+ for building from source.
+- Go 1.25+ for building from source (matches the `go 1.25.10` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily and Firecrawl.
 - No provider key is required for the deterministic benchmark or DDGS keyless fallback.
 
@@ -118,6 +118,7 @@ Configure an agent when the setup writer is available:
 nole setup --claude
 nole setup --codex
 nole setup --opencode
+# see `nole setup --help` for the full client list (kimi, cursor, openclaw, hermes, etc.)
 ```
 
 For unverified or generic clients, use the MCP command template:
