@@ -21,7 +21,7 @@ This is an advanced surface for team/shared/remote usage.
 For local agent usage, prefer 'nole mcp' (stdio).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !mcp {
-				return fmt.Errorf("specify --mcp to enable MCP HTTP endpoint. REST API coming soon.")
+				return fmt.Errorf("specify --mcp to enable MCP HTTP endpoint. REST API coming soon. (see docs/CLIENTS/README.md for HTTP setup)")
 			}
 
 			svc := defaultService()

@@ -119,6 +119,7 @@ func newDoctorCommand() *cobra.Command {
 			for _, e := range budget.Entries {
 				fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s free_remaining=%d estimated_cost_cents=%d spent_cents=%d\n", e.Provider, e.CostClass, e.FreeRemaining, e.EstimatedCostCents, e.SpentCents)
 			}
+			fmt.Fprintln(cmd.OutOrStdout(), "  (free_remaining is a local quota counter; resets monthly)")
 
 			if checkMCP {
 				fmt.Fprintln(cmd.OutOrStdout(), "")

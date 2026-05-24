@@ -51,7 +51,6 @@ type tavilySearchRequest struct {
 	MaxResults    int    `json:"max_results"`
 	SearchDepth   string `json:"search_depth"`
 	IncludeAnswer bool   `json:"include_answer"`
-	APIKey        string `json:"api_key"`
 }
 
 type tavilySearchResponse struct {
@@ -88,7 +87,6 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		MaxResults:    limit,
 		SearchDepth:   depth,
 		IncludeAnswer: false,
-		APIKey:        p.apiKey,
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -99,6 +97,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("tavily: create request: %w", err)
 	}
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
@@ -142,8 +141,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 // --- Tavily Extract API ---
 
 type tavilyExtractRequest struct {
-	URLs   []string `json:"urls"`
-	APIKey string   `json:"api_key"`
+	URLs []string `json:"urls"`
 }
 
 type tavilyExtractResponse struct {
@@ -161,8 +159,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	}
 
 	body := tavilyExtractRequest{
-		URLs:   []string{req.URL},
-		APIKey: p.apiKey,
+		URLs: []string{req.URL},
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -173,6 +170,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	if err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("tavily: create request: %w", err)
 	}
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())

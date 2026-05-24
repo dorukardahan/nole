@@ -26,7 +26,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.23.0'
+          go-version: '1.25.x'
           cache: true
 
       - name: Go version
@@ -59,7 +59,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.23.0'
+          go-version: '1.25.x'
           cache: true
 
       - name: Build private-prep artifacts and checksums
