@@ -64,6 +64,7 @@ Nólë currently supports these provider adapters:
 - Tavily: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - Firecrawl: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - DDGS: keyless search fallback.
+- Scrapling: optional local Python URL extraction fallback via a user-supplied Python runtime with `scrapling[fetchers]` installed. Nólë does not vendor or redistribute Scrapling.
 
 Nólë reads provider credentials from environment variables. It should only report whether a key is present; it must never print key values, auth headers or raw provider payloads.
 
@@ -75,7 +76,8 @@ Prerequisites:
 
 - Go 1.25+ for building from source (matches the `go 1.25.10` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily and Firecrawl.
-- No provider key is required for the deterministic benchmark or DDGS keyless fallback.
+- Optional Python 3.10+ runtime with `scrapling[fetchers]` for local Scrapling extraction fallback.
+- No provider key is required for the deterministic benchmark, DDGS keyless fallback or configured local Scrapling fallback.
 
 Build and run locally:
 
@@ -136,13 +138,13 @@ For unverified or generic clients, use the MCP command template:
 
 ## Provider keys and cost control
 
-Default stance: `free-first`. Nólë treats each supported BYOK provider as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, Tavily and Firecrawl, reset at the start of each UTC calendar month). DDGS is always keyless-free. No hidden paid usage is created without an explicit opt-in.
+Default stance: `free-first`. Nólë treats each supported BYOK provider as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, Tavily and Firecrawl, reset at the start of each UTC calendar month). DDGS and a configured local Scrapling runtime are keyless-free. No hidden paid usage is created without an explicit opt-in.
 
 A key by itself is enough to start using a provider under the default policy; you only have to flip `NOLE_<PROVIDER>_PAID=1` when you want Nólë to treat that provider as premium-capable (e.g. you are on a paid plan and the cost-capped or quality-first policy should apply). See `docs/PROVIDER-KEYS.md` for per-provider free-tier sourcing and the Brave subscription/CC caveat.
 
 Cost status classes exposed in `provider_status`, `budget_status`, `route_trace` and JSON CLI/MCP surfaces are:
 
-- `keyless-free` — no key required, currently used for DDGS search fallback.
+- `keyless-free` — no key required, currently used for DDGS search fallback and optional local Scrapling extraction fallback.
 - `free-tier-BYOK` — user-keyed provider running against the local free-tier quota. Default for keyed Brave / Tavily / Firecrawl.
 - `premium-capable` — keyed provider that may incur paid usage depending on account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost` — fail-closed unless an explicit quality-first policy is selected.
@@ -160,6 +162,7 @@ Environment variables:
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
+export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"  # optional local extract fallback
 
 # Opt into paid mode for a specific provider (default: free-tier-BYOK).
 # Use only when you actively want Nólë to bill the provider account.
@@ -183,6 +186,8 @@ export NOLE_CACHE_TTL="5m"                  # or NOLE_CACHE_TTL_SECONDS="300"
 Nólë's quota ledger is **file-backed by default** at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json` when `XDG_STATE_HOME` is unset). Durability is required for the monthly free-tier cap to be meaningful: an in-memory ledger resets to the full free quota on every process restart, which defeats the cap when nole is spawned per session (the typical MCP client pattern). Set `NOLE_QUOTA_LEDGER_PATH` to override the default location, or to `memory`/`off`/`none` to explicitly disable file persistence — only do that if you understand the per-restart reset implication. The ledger stores provider names, cost classes, local free-quota counters and local estimated spend; it does not store provider keys or raw provider payloads. If a configured ledger is corrupt, Nólë backs it up and fails closed for paid/quota-tracked providers while still allowing keyless-free providers. `NOLE_CACHE_TTL` enables an in-memory TTL cache for normalized search/extract responses inside a running process, such as `nole mcp`; cache hit/miss status appears in `route_trace` and compact `routing_insight`.
 
 Do not paste real keys into chat, GitHub issues, docs, PRs or logs. If a GUI agent does not inherit your shell environment, put keys in a local-only env file such as `~/.config/nole/.env` and configure the client launcher to source it. Keep that file out of git and restrict permissions.
+
+For Scrapling, install `scrapling[fetchers]` in your own Python environment and point `NOLE_SCRAPLING_PYTHON` at that executable. Nólë calls Scrapling as a local optional runtime only. Respect target website terms, robots.txt and rate limits.
 
 ## Benchmarks and evidence
 
@@ -223,6 +228,7 @@ Experimental:
 - Preserve user config files; merge unknown fields, write backups and do not widen permissions.
 - Never print or commit secrets, bearer tokens, auth headers or raw provider bodies.
 - Keep default cost behavior free-tier/BYOK-safe.
+- Treat local extract providers as user-controlled runtimes; do not vendor third-party scraper code into Nólë.
 - Mark client integrations unverified until tested against the real client.
 - Do not change provider route ordering without sanitized benchmark/evidence.
 

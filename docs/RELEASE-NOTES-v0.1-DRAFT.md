@@ -28,7 +28,7 @@ The release focuses on private/internal readiness, truthful integration evidence
 - CLI commands for search, extract, classify, route-plan, providers, doctor and benchmark.
 - LLM-free multi-intent classifier and route planner.
 - `free-first` default policy with premium-capable provider support only when explicitly allowed.
-- Provider adapters/status support for Brave, Tavily, Jina, Firecrawl and DDGS fallback.
+- Provider adapters/status support for Brave, Tavily, Firecrawl, DDGS fallback and optional local Scrapling extraction fallback.
 - In-process TTL cache and optional file-backed local quota/cost ledger.
 - Sanitized `route_trace` and compact `routing_insight` fields.
 - `doctor --mcp` subprocess smoke for protocol cleanliness and tool visibility.
@@ -108,6 +108,7 @@ This v0.1 draft does not claim:
 - HTTP/REST remains experimental compared with CLI and MCP stdio.
 - Extract quality depends on configured provider availability and policy.
 - DDGS is keyless fallback/control only; it is not a provider-quality guarantee.
+- Scrapling extraction is optional local runtime integration. Users install and operate their own Python environment, and must respect target website terms, robots.txt and rate limits.
 - Paid-capable provider usage depends on the user's own account settings and explicit policy.
 - Package-manager channels are future work unless separately approved.
 

@@ -267,7 +267,7 @@ Nólë exposes cost policy/status in `nole providers --json`, `nole doctor`, MCP
 
 Cost classes:
 
-- `keyless-free`: no provider key required; DDGS search fallback is the current example.
+- `keyless-free`: no provider key required; DDGS search fallback and optional local Scrapling extraction fallback are current examples.
 - `free-tier-BYOK`: a user-keyed provider with a known local free quota tracked in the ledger. Default for keyed Brave / Tavily / Firecrawl.
 - `premium-capable`: a keyed provider that may incur paid usage depending on the user's account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost`: cost cannot be safely classified; fail closed except under explicit `quality-first`.

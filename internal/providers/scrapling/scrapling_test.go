@@ -63,6 +63,24 @@ exit 1
 	}
 }
 
+func TestScraplingStatusRequiresFetcherExtra(t *testing.T) {
+	fakePython := writeFakePython(t, `#!/usr/bin/env sh
+case "$2" in
+  *"scrapling.fetchers"*) printf 'ModuleNotFoundError: No module named scrapling.fetchers\n' >&2; exit 1 ;;
+  *"__version__"*) printf '1.2.3\n'; exit 0 ;;
+esac
+exit 0
+`)
+	p := New(WithPython(fakePython), WithTimeout(2*time.Second))
+	status := p.Status(context.Background())
+	if status.Available {
+		t.Fatal("expected unavailable status when fetcher extra is missing")
+	}
+	if !strings.Contains(status.Reason, `pip install "scrapling[fetchers]"`) {
+		t.Fatalf("expected fetchers install hint, got %q", status.Reason)
+	}
+}
+
 func TestScraplingSearchUnsupported(t *testing.T) {
 	_, err := New().Search(context.Background(), core.SearchRequest{Query: "x"})
 	if err == nil {

@@ -100,7 +100,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, p.python, "-c", `import scrapling; print(getattr(scrapling, "__version__", "unknown"))`)
+	cmd := exec.CommandContext(ctx, p.python, "-c", `import scrapling; from scrapling.fetchers import Fetcher; print(getattr(scrapling, "__version__", "unknown"))`)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
