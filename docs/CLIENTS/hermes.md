@@ -8,12 +8,21 @@ The verified path used a disposable Hermes profile, not the active default gatew
 
 ## Verified setup shape
 
-Use Hermes Agent's MCP manager with an absolute binary path unless you have confirmed the Hermes process inherits the right PATH and provider environment:
+Use the setup writer or Hermes Agent's MCP manager with an absolute binary path unless you have confirmed the Hermes process inherits the right PATH and provider environment:
+
+```bash
+nole setup --hermes
+# or, if Hermes needs an env-sourcing wrapper for provider keys:
+nole setup --hermes --mcp-wrapper /absolute/path/to/nole-mcp
+
+hermes mcp list
+hermes mcp test nole
+```
+
+Equivalent manual command:
 
 ```bash
 hermes mcp add nole --command /absolute/path/to/nole --args mcp
-hermes mcp list
-hermes mcp test nole
 ```
 
 Sanitized config shape:

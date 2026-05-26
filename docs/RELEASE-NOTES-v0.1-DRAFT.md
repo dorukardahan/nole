@@ -33,7 +33,7 @@ The release focuses on private/internal readiness, truthful integration evidence
 - Sanitized `route_trace` and compact `routing_insight` fields.
 - `doctor --mcp` subprocess smoke for protocol cleanliness and tool visibility.
 - Deterministic offline benchmark harness and public-safe route evidence summary.
-- Agent setup docs and client-specific setup writers/checklists.
+- Agent setup docs and client-specific setup writers/checklists, including the Hermes Agent YAML setup writer.
 - Priority named-client verification evidence recorded for Claude Code, Codex CLI, OpenCode, Kimi, Cursor, OpenClaw and Hermes Agent.
 - Private-prep CI gates, public-safety secret scan and non-publishing cross-platform build/checksum validation.
 
