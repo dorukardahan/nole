@@ -47,7 +47,7 @@ func hashSessionID(sessionID string) string {
 // Exported so the doctor command can mirror the MCP server's registration
 // decision for its conditional smoke assertion.
 func HasExtractCapableConfigured() bool {
-	if os.Getenv("NOLE_SCRAPLING_PYTHON") != "" {
+	if strings.TrimSpace(os.Getenv("NOLE_SCRAPLING_PYTHON")) != "" {
 		return true
 	}
 	for _, p := range core.BYOKProviders() {

@@ -22,7 +22,7 @@ func DefaultRouteMatrix() RouteMatrix {
 		TaskResearch:  {"brave", "firecrawl", "ddgs", "tavily"},
 		// Extract tasks: only providers with extraction capability. Brave/DDGS are
 		// intentionally excluded even if URL-query benchmark scores are high.
-		TaskExtract: {"scrapling", "tavily", "firecrawl"},
+		TaskExtract: {"tavily", "firecrawl", "scrapling"},
 	}
 }
 

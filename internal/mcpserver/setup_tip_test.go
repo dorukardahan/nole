@@ -356,6 +356,24 @@ func TestMCPExtractToolPresentWithScrapling(t *testing.T) {
 	}
 }
 
+func TestMCPExtractToolHiddenWithWhitespaceOnlyScrapling(t *testing.T) {
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+	t.Setenv("NOLE_SCRAPLING_PYTHON", " \t\n ")
+
+	if HasExtractCapableConfigured() {
+		t.Fatal("with whitespace-only NOLE_SCRAPLING_PYTHON, HasExtractCapableConfigured must be false")
+	}
+
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"), mock.New("scrapling"))
+	tools := callToolsList(t, srv)
+	if tools["extract"] {
+		t.Error("extract tool should not be advertised for whitespace-only Scrapling runtime")
+	}
+}
+
 // TestMCPSearchTipConcurrencySafe drives the search handler from multiple
 // goroutines and verifies (a) no panic or data race and (b) at most one tip
 // emitted across all concurrent calls. The race detector (go test -race) will
