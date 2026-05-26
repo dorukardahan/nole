@@ -1,25 +1,29 @@
 # v0.1 release notes draft
 
-This is a draft for a future Nólë v0.1 release. It does not create a tag, publish a GitHub Release, upload assets, publish packages, deploy anything or change repository visibility.
+This is a draft for a future Nólë v0.1 release. It does not create tags,
+publish a GitHub Release, upload assets, publish packages or deploy anything.
 
 ## Release status
 
-- Current status: private/internal v0.1 ready.
-- Publication status: not published by this draft.
-- Repository visibility: private unless a separate explicit approval changes it.
-- Release assets: not uploaded by this draft.
+- Current status: public repository with v0.1 release prep ready.
+- Publication status: no GitHub Release is published by this draft.
+- Repository visibility: public.
+- Release assets: built and uploaded only by the tag-triggered release workflow.
 - Package registries: not published by this draft.
 - Hosted deployment: not part of v0.1 unless separately approved.
 
 ## Suggested title
 
-Nólë v0.1.0 — local web search router for AI agents
+Nólë v0.1.x — local web search router for AI agents
+
+Use the approved tag in the final title. Do not move or reuse an existing tag.
 
 ## Summary
 
 Nólë is a free, local web search router for AI agents and coding CLI tools. It gives Claude Code, Codex CLI, OpenClaw, Hermes Agent, OpenCode, Cursor, Kimi and generic MCP clients a local CLI/MCP search and extraction layer backed by BYOK/free-tier providers.
 
-The release focuses on private/internal readiness, truthful integration evidence, deterministic routing tests, default no-hidden-paid-spend policy and agent-readable installation docs.
+The release focuses on truthful integration evidence, deterministic routing
+tests, default no-hidden-paid-spend policy and agent-readable installation docs.
 
 ## Highlights
 
@@ -35,7 +39,8 @@ The release focuses on private/internal readiness, truthful integration evidence
 - Deterministic offline benchmark harness and public-safe route evidence summary.
 - Agent setup docs and client-specific setup writers/checklists, including the Hermes Agent YAML setup writer.
 - Priority named-client verification evidence recorded for Claude Code, Codex CLI, OpenCode, Kimi, Cursor, OpenClaw and Hermes Agent.
-- Private-prep CI gates, public-safety secret scan and non-publishing cross-platform build/checksum validation.
+- CI gates, public-safety secret scan and automated cross-platform GitHub
+  Release build/checksum validation.
 
 ## Provider and cost safety
 
@@ -94,8 +99,8 @@ git diff --check
 This v0.1 draft does not claim:
 
 - Nólë is a hosted SaaS;
-- public release has been published;
-- release assets are available;
+- a GitHub Release has been published;
+- release assets are available before the release workflow uploads them;
 - package registries are published;
 - any provider is globally ranked over another;
 - deterministic offline benchmarks measure live web quality;
@@ -117,9 +122,10 @@ This v0.1 draft does not claim:
 Before publishing:
 
 1. Confirm explicit release approval.
-2. Confirm repository visibility decision.
+2. Confirm the repository is intended to remain public.
 3. Confirm tag name and release title.
 4. Confirm asset matrix and checksums.
 5. Confirm public-safety scan and CI success.
 6. Confirm no raw logs, secrets, private queries or private URLs are included.
-7. Publish only the approved release/tag/assets/channels.
+7. Push only the approved semantic version tag, then let the release workflow
+   publish the GitHub Release and assets.

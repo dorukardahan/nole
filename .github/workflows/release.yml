@@ -1,0 +1,120 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing semantic version tag to publish, for example v0.1.1
+        required: true
+        type: string
+      prerelease:
+        description: Mark the GitHub Release as a prerelease
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: build assets and publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve release tag
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_TAG: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag="$PUSH_TAG"
+          fi
+
+          if ! printf '%s\n' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "release tag must look like vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease" >&2
+            exit 1
+          fi
+
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "tag $tag does not exist on origin" >&2
+            exit 1
+          fi
+
+          git fetch --force --tags origin "refs/tags/$tag:refs/tags/$tag"
+          git checkout --detach "$tag"
+
+          prerelease="false"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            prerelease="$INPUT_PRERELEASE"
+          elif printf '%s' "$tag" | grep -Eq '[-]'; then
+            prerelease="true"
+          fi
+
+          {
+            echo "tag=$tag"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Verify release gates
+        run: bash scripts/audit.sh --ci
+
+      - name: Scan tracked text files
+        run: ./scripts/secret-scan.sh
+
+      - name: Build release assets
+        env:
+          NOLE_BUILD_OUT: dist
+          NOLE_BUILD_VERSION: ${{ steps.release.outputs.tag }}
+        run: ./scripts/check-release-builds.sh
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          PRERELEASE: ${{ steps.release.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          args=(
+            "$TAG"
+            dist/nole-*
+            dist/SHA256SUMS
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --fail-on-no-commits
+            --title "Nólë $TAG"
+            --notes "$(cat .github/release-preamble.md)"
+            --generate-notes
+          )
+
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+
+          gh release create "${args[@]}"

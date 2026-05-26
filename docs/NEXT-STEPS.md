@@ -1,14 +1,14 @@
-# Next steps after v0.1 private-prep
+# Next steps after v0.1 release prep
 
 Nólë is now positioned as a free, local web search router for AI agents and coding CLI tools. The goal is not to build a hosted search SaaS or replace an agent's research workflow. The goal is to improve the internet/search/extract layer used by Claude Code, Codex, OpenClaw, Hermes, OpenCode and similar tools.
 
 ## Current baseline
 
-v0.1 private-prep is ready on `main`: priority named-client live
-verification is recorded, private-prep gates are green, and the final
-readiness report is available as the local sanitized artifact produced by
-the maintainer run. Public release, release assets, deployments and repo
-visibility changes still require explicit maintainer approval.
+v0.1 release prep is ready on `main`: priority named-client live verification
+is recorded, CI gates are green, release automation exists, and the final
+readiness report is available as the local sanitized artifact produced by the
+maintainer run. Release tags, deployments, package publication and paid-provider
+usage still require explicit maintainer approval.
 
 Completed technical MVP hardening:
 
@@ -17,25 +17,24 @@ Completed technical MVP hardening:
 - `route_trace` in CLI/MCP surfaces;
 - `doctor --mcp` subprocess smoke;
 - deterministic benchmark harness;
-- private-prep CI/release gates;
+- CI/release gates;
 - LLM-free `classify` and `route-plan` commands;
 - compact `routing_insight` output for search/extract/classify/route-plan and CLI/MCP error envelopes;
 - config merge/backup safety for supported setup writers;
 - provider error redaction;
 - core checks passing on main.
 
-Remaining work is product/release-policy work, not a private-prep blocker.
-Public-release checklist docs, draft release notes, non-publishing packaging
-prep and the cost/quota/cache/output-quality audit are now documented. The
-remaining execution steps are approval-gated: controlled live benchmark runs,
-release tags, GitHub Release publication, release assets, package publication,
-deployments and repo visibility changes.
+Remaining work is product/release-policy work, not a release-prep blocker.
+Release checklist docs, draft release notes, tag-triggered GitHub Release
+automation and the cost/quota/cache/output-quality audit are now documented.
+The remaining execution steps are approval-gated: controlled live benchmark
+runs, release tags, package publication, deployments and paid-provider usage.
 
 ## Roadmap order
 
 ### 1. Product framing and docs
 
-Status: implemented for private-prep and public-release preparation docs; keep
+Status: implemented for release-prep and public-release preparation docs; keep
 refining only when actual publication or package-channel scope is explicitly
 selected.
 
@@ -48,15 +47,15 @@ Goals:
 - Client docs exist for Claude Code, Codex, OpenCode, OpenClaw, Hermes, Cursor/Kimi/generic MCP paths.
 - Benchmark docs distinguish deterministic offline harness from optional live summaries.
 
-### 2. CI and private-prep release gates
+### 2. CI and release gates
 
 Goals:
 
 - GitHub Actions without secrets.
 - Run `go test ./...`, `go vet ./...`, `go run . bench --json`, `go run . doctor`, `go run . doctor --mcp`, `git diff --check` and docs/public-safety checks.
-- Add cross-platform build/release-prep workflow for Linux and macOS, Windows if low-friction.
-- Document private-prep vs public release.
-- Do not publish a release or change repo visibility without explicit approval.
+- Keep cross-platform build/release workflow for Linux, macOS and Windows.
+- Document release-ready vs published.
+- Do not push release tags, publish packages or deploy endpoints without explicit approval.
 
 ### 3. Rule-based multi-intent planner
 
@@ -157,9 +156,13 @@ M11 follow-ups for the setup writers (most fixed in the follow-up PR after M11 �
 - **Done.** Hermes Agent live verification recorded on an Ubuntu x86_64 host (Hermes Agent v0.14.0, disposable profile MCP path + chat-agent tool dispatch) in the 2026-05-20 follow-up run logged in `docs/CLIENTS/LIVE-VERIFICATION.md`.
 - Still pending: generic MCP clients remain template-only until a specific client/runtime is named and tested.
 
-### 10. v0.1 private-prep polish
+### 10. v0.1 release polish
 
-Status: implemented for release-gate alignment, integration-evidence gate documentation, public-safe local search/extract smoke expectations, final private-prep readiness reporting, public-release checklist docs, draft v0.1 notes and non-publishing packaging prep. Public release/repo visibility changes remain separate approval-gated work.
+Status: implemented for release-gate alignment, integration-evidence gate
+documentation, public-safe local search/extract smoke expectations, final
+release-prep readiness reporting, release checklist docs, draft v0.1 notes and
+tag-triggered GitHub Release automation. Release tags, package channels,
+deployments and paid-provider usage remain separate approval-gated work.
 
 Goals:
 
@@ -174,7 +177,7 @@ Goals:
   - `nole search "..." --json` may succeed via keyless DDGS or return a sanitized provider/network error envelope.
   - `nole extract "..." --json` fails closed in no-key/free-first mode because v0.1 has no keyless extract provider; it may return content only with explicit user-owned extract-provider keys and policy.
 - Final `/tmp/nole-v0.1-private-prep-report.md`.
-- Public release/repo visibility still requires explicit user approval.
+- Release tag creation still requires explicit user approval.
 
 ## Success criteria
 

@@ -1,13 +1,17 @@
 # Packaging and distribution prep
 
-This document describes non-publishing packaging prep for Nólë. It does not create tags, publish GitHub Releases, upload assets, publish packages, deploy endpoints or change repository visibility.
+This document describes packaging and release automation for Nólë. Reading or
+editing it does not create tags, publish GitHub Releases, upload assets, publish
+packages or deploy endpoints.
 
 ## Current packaging stance
 
 - Primary artifact shape: Go single binary named `nole`.
-- First public artifact channel, if approved later: GitHub Release binaries plus `SHA256SUMS`.
+- First public artifact channel: GitHub Release binaries plus `SHA256SUMS`.
 - Package managers are optional follow-ups after a published release exists.
-- All publication actions are approval-gated.
+- GitHub Releases are published automatically from approved semantic version
+  tags by `.github/workflows/release.yml`.
+- Package-manager publication actions remain separately approval-gated.
 
 ## Non-publishing dry-run
 
@@ -70,13 +74,34 @@ Do not claim signed artifacts exist until the signing mechanism is implemented a
 
 ## GitHub Release assets
 
-A future approved release may upload:
+An approved tag-triggered release uploads:
 
 - one binary per target in the artifact matrix;
 - `SHA256SUMS`;
 - optional signatures/attestations if implemented.
 
-Asset upload requires separate approval from release tag creation and GitHub Release publication.
+Asset upload happens inside the GitHub Release workflow for approved semantic
+version tags. Do not push a tag until the release version and changelog scope are
+accepted.
+
+## Automated GitHub Release workflow
+
+`.github/workflows/release.yml` runs when a tag matching `v*.*.*` is pushed, or
+when a maintainer manually dispatches it for an existing tag.
+
+The workflow:
+
+1. verifies the tag looks like `vMAJOR.MINOR.PATCH` or a prerelease variant;
+2. checks out the exact tag;
+3. runs `scripts/audit.sh --ci`;
+4. runs `scripts/secret-scan.sh`;
+5. builds the Linux, macOS and Windows binary matrix with
+   `scripts/check-release-builds.sh`;
+6. creates a GitHub Release with the assets, `SHA256SUMS`, the standard release
+   preamble and GitHub-generated release notes.
+
+It uses only GitHub-hosted runner tooling, official checkout/setup-go actions
+and the GitHub CLI with `GITHUB_TOKEN`.
 
 ## Homebrew
 
@@ -132,17 +157,16 @@ Do not publish images without explicit Docker publication approval.
 
 ## Release workflow outline
 
-Approval-gated future flow:
+Approval-gated flow:
 
 1. Sync clean `main`.
 2. Run full local gates.
 3. Confirm latest `main` CI is green.
 4. Run non-publishing dry-run build/checksums.
 5. Confirm public release checklist.
-6. Create approved tag.
-7. Publish approved GitHub Release.
-8. Upload approved assets.
+6. Create and push the approved semantic version tag.
+7. Let the release workflow publish the GitHub Release and assets.
+8. Verify published artifacts and checksums.
 9. Publish approved package channels, if any.
-10. Verify published artifacts and checksums.
 
-Steps 6-9 require explicit approval. Steps 1-5 are safe prep.
+Steps 6 and 9 require explicit approval. Steps 1-5 are safe prep.

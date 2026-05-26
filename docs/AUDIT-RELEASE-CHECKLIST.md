@@ -28,8 +28,10 @@ The unified audit checks:
 
 Before changing routing, provider ordering, cost policy, cache behavior or live benchmark claims, update sanitized evidence first.
 
-## Public-release gate
+## Release gate
 
-Nole is still private/internal release prep by default. Do not publish binaries, packages, hosted endpoints or repository visibility changes unless the public-release checklist explicitly passes and Doruk approves that release step.
+Nólë publishes GitHub Release binaries from approved semantic version tags. Do
+not push release tags, publish packages or deploy hosted endpoints unless the
+release checklist explicitly passes and Doruk approves that release step.
 
 Never print API keys, tokens, auth headers, private provider payloads or private URLs while collecting verification evidence.

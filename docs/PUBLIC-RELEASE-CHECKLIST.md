@@ -1,8 +1,11 @@
-# Public release checklist
+# Release checklist
 
-Nólë is private/internal v0.1 ready, but it is not publicly released by this document. Public repository visibility, GitHub Releases, release tags, uploaded assets, package publication and hosted deployments each require explicit maintainer approval.
+Nólë is a public repository, but this document does not publish a GitHub
+Release, create tags, upload assets, publish packages or deploy endpoints.
+Release tags, package publication, hosted deployments and paid-provider spend
+each require explicit maintainer approval.
 
-Use this checklist when deciding whether to move from private-ready to public v0.1.
+Use this checklist before creating a release tag or publishing package channels.
 
 ## Decision record
 
@@ -12,10 +15,10 @@ Fill this section in the release PR or local release note before any public acti
 | --- | --- |
 | Release owner | named maintainer |
 | Target version | explicit semantic version, for example `v0.1.0` |
-| Target visibility | `private` or explicitly approved `public` |
+| Public repository visibility | confirmed public |
 | Release tag approved | yes/no |
 | GitHub Release publication approved | yes/no |
-| Release asset upload approved | yes/no |
+| Release asset upload approved | yes/no; handled by tag workflow |
 | Package publication approved | yes/no per channel |
 | Deploy/public endpoint approved | yes/no |
 | Live benchmark evidence included | optional; yes/no |
@@ -23,30 +26,30 @@ Fill this section in the release PR or local release note before any public acti
 
 If an approval is `no`, do not perform that action. Complete only local prep and document the blocked step.
 
-## Private-ready vs published
+## Release-ready vs published
 
-Private-ready means:
+Release-ready means:
 
 - local and CI gates pass without secrets;
 - `doctor`, `doctor --mcp`, provider status, deterministic benchmark and public-safety checks are green;
 - priority named-client verification is recorded truthfully;
 - docs explain BYOK, free-first default behavior and provider overage cautions;
-- non-publishing build/checksum dry-runs pass.
+- build/checksum dry-runs pass.
 
 Published means at least one explicit public action has happened, such as:
 
-- repository visibility changed to public;
 - a release tag was created;
 - a GitHub Release was published;
 - release assets were uploaded;
 - a package was published to a registry;
 - a public deployment or endpoint was exposed.
 
-Do not use private-ready evidence to imply any publication happened.
+Do not use release-ready evidence to imply a GitHub Release, package or
+deployment has been published.
 
 ## Pre-release gate
 
-Before any public release PR is merged, verify:
+Before any release PR or direct release-prep commit is merged, verify:
 
 ```bash
 ./scripts/check-docs-framing.sh
@@ -87,7 +90,8 @@ Allowed wording is presence/status only, for example `present`, `absent`, `disab
 
 ## Repository visibility checklist
 
-Changing repository visibility is separate from creating a release.
+Changing repository visibility is separate from creating a release. Nólë is
+currently public; keep this section for future visibility changes or forks.
 
 Before making a private repository public:
 
@@ -108,10 +112,11 @@ Only after explicit approval:
 1. Confirm local `main` is clean and synced.
 2. Confirm latest `main` CI is green.
 3. Confirm the chosen version and tag name.
-4. Create the tag only if tag approval is yes.
-5. Draft GitHub Release notes from `docs/RELEASE-NOTES-v0.1-DRAFT.md`.
-6. Publish the GitHub Release only if publication approval is yes.
-7. Upload assets only if asset-upload approval is yes.
+4. Confirm the tag is new. Do not move or reuse an existing tag.
+5. Create and push the tag only if tag approval is yes.
+6. Let `.github/workflows/release.yml` build assets, generate checksums and
+   publish the GitHub Release.
+7. Verify the published release, assets and `SHA256SUMS`.
 
 Do not combine tag creation, release publication and asset upload unless each action is explicitly approved.
 
@@ -131,7 +136,8 @@ A package manifest PR may be drafted without publishing only if it uses placehol
 
 ## Live benchmark evidence
 
-A live benchmark is not required for private/internal v0.1 readiness. It can support public claims only after a separate explicit approval and a sanitized summary.
+A live benchmark is not required for v0.1 release readiness. It can support
+public claims only after a separate explicit approval and a sanitized summary.
 
 Follow:
 

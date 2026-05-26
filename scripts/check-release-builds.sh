@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build release-shaped artifacts for private-prep validation only.
-# This script does not create GitHub releases, tags, or uploads.
+# Build release-shaped artifacts for local validation or the release workflow.
+# This script does not create GitHub releases, tags, or uploads by itself.
 
 ROOT=$(git rev-parse --show-toplevel)
 OUT_DIR=${NOLE_BUILD_OUT:-"$(mktemp -d)"}
-VERSION=${NOLE_BUILD_VERSION:-"dev-private-prep"}
+VERSION=${NOLE_BUILD_VERSION:-"dev-build-check"}
 TARGETS=(
   "linux/amd64"
   "linux/arm64"

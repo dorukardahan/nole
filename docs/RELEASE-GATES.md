@@ -1,8 +1,11 @@
-# Private-prep release gates
+# CI and release gates
 
-Nólë is not publishing a public release from this repository yet. Public release, repo visibility changes, hosted deployment, and any paid-provider spend still require explicit owner approval.
+Nólë is a public repository. GitHub Releases are published only from approved
+semantic version tags. Hosted deployment, package-manager publication and any
+paid-provider spend still require explicit owner approval.
 
-This document defines the v0.1 private-prep gates used by CI and local maintainers.
+This document defines the v0.1 CI and release gates used by GitHub Actions and
+local maintainers.
 
 For future public-release decisions, also use:
 
@@ -12,12 +15,13 @@ For future public-release decisions, also use:
 - `docs/COST-QUOTA-CACHE-QUALITY.md` for the cost/quota/cache/output-quality audit.
 
 Those documents are preparation artifacts only. They do not publish releases,
-upload assets, publish packages, deploy endpoints, run live benchmarks, use
-provider keys or change repository visibility.
+upload assets, publish packages, deploy endpoints, run live benchmarks or use
+provider keys by themselves.
 
 ## CI workflow
 
-`.github/workflows/private-prep.yml` runs on pull requests and pushes to `main` with read-only repository permissions.
+`.github/workflows/ci.yml` runs CI gates on pull requests and pushes
+to `main` with read-only repository permissions.
 
 Jobs:
 
@@ -38,11 +42,17 @@ Jobs:
   - `./scripts/secret-scan.sh`
   - Scans tracked text files for real-looking secrets, private keys, auth headers, and personal machine paths.
   - Allows documented environment variable names and obvious placeholders.
-- `non-publishing build/checksums`
+- `release-shaped build/checksums`
   - `./scripts/check-release-builds.sh`
   - Cross-compiles local release-shaped artifacts for Linux, macOS, and Windows on amd64/arm64.
   - Generates checksums only inside the workflow/temp directory.
   - Does not create tags, GitHub releases, uploaded release assets, or hosted deployments.
+
+`.github/workflows/release.yml` runs on approved semantic version tags and
+manual dispatch for existing tags with write permission limited to repository
+contents. It reuses `scripts/audit.sh --ci`, runs `scripts/secret-scan.sh`,
+builds the same artifact matrix, and publishes the GitHub Release with
+`SHA256SUMS`.
 
 ## Local gate
 
@@ -66,7 +76,7 @@ git diff --check
 ./scripts/check-release-builds.sh
 ```
 
-Optional public-safe CLI smoke before declaring private-prep readiness from a local checkout:
+Optional public-safe CLI smoke before declaring release readiness from a local checkout:
 
 ```bash
 # Search may use the keyless DDGS fallback and can fail because of network/provider availability.
@@ -86,7 +96,7 @@ nole extract "https://example.com" --json
 - MCP stdout remains protocol-clean.
 - No secrets, tokens, auth headers, `.env` values, raw provider payloads, personal paths, or private URLs should appear in docs, fixtures, workflow logs, or reports.
 - CI must not require real provider credentials.
-- Build/checksum checks are private-prep validation only; they do not publish releases.
-- Public release, tag creation, release asset upload, package publication,
-  deployment and repository visibility changes require explicit maintainer
-  approval separate from these gates.
+- Build/checksum checks do not publish releases unless they run inside the
+  approved tag-triggered release workflow.
+- Release tag creation, package publication, deployment and paid-provider usage
+  require explicit maintainer approval separate from these gates.

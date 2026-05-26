@@ -124,9 +124,9 @@ Be precise:
 - Optional live benchmark summaries record configured-provider observations on a fixture set and must be sanitized.
 - Route matrix changes require evidence. Do not change routes just because a provider is popular or paid.
 
-## v0.1 private-prep definition
+## v0.1 release-prep definition
 
-v0.1 private-prep is ready when:
+v0.1 release prep is ready when:
 
 - README tells the right story in the first screen.
 - AGENTS.md lets an agent install Nólë from scratch.
@@ -137,4 +137,5 @@ v0.1 private-prep is ready when:
 - Provider key docs explain BYOK and overage cautions.
 - Repo remains local/BYOK-first and safe to inspect publicly.
 
-Public release, repo visibility changes, hosted deployment and any paid provider usage still require explicit user approval.
+Release tag creation, hosted deployment, package publication and any paid
+provider usage still require explicit user approval.

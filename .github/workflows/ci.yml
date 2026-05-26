@@ -1,4 +1,4 @@
-name: private-prep gates
+name: ci gates
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-prep-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -62,7 +62,7 @@ jobs:
           go-version: '1.25.x'
           cache: true
 
-      - name: Build private-prep artifacts and checksums
+      - name: Build release-shaped artifacts and checksums
         run: ./scripts/check-release-builds.sh
 
   govulncheck:

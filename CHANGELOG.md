@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tag-triggered GitHub Release workflow that runs the audit gate, builds
+  cross-platform binaries, generates `SHA256SUMS`, prepends the standard
+  release safety notes and publishes GitHub-generated release notes.
+- GitHub generated-release-notes configuration and standard release preamble.
 - `LICENSE` at repo root (Apache-2.0).
 - `SECURITY.md` at repo root (mirrors `docs/SECURITY.md`) so GitHub's
   "Report a vulnerability" link discovers it.
@@ -56,6 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `README.md`: Prerequisites lifted to `Go 1.25+` to match new
   toolchain pin; client setup example extended with a pointer to
   `nole setup --help` for the full client roster.
+- Release-facing docs now describe the repository as public and the GitHub
+  Release path as tag-triggered automation.
 - `README.md` and release notes now mention the native Hermes setup writer
   instead of only the manual `hermes mcp add` path.
 - `docs/PROVIDER-KEYS.md`: explicit note that Brave's official free
@@ -74,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] — Unreleased (draft)
 
-Initial private/internal v0.1 readiness. See
+Initial v0.1 release-prep readiness. See
 `docs/RELEASE-NOTES-v0.1-DRAFT.md` for the full draft summary.
 
 ### Added

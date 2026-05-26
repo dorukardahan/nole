@@ -119,8 +119,9 @@ Configure an agent when the setup writer is available:
 ```bash
 nole setup --claude
 nole setup --codex
+nole setup --hermes
 nole setup --opencode
-# see `nole setup --help` for the full client list (kimi, cursor, openclaw, hermes, etc.)
+# see `nole setup --help` for the full client list (openclaw, cursor, kimi, etc.)
 ```
 
 For unverified or generic clients, use the MCP command template:
@@ -232,23 +233,30 @@ Experimental:
 - Mark client integrations unverified until tested against the real client.
 - Do not change provider route ordering without sanitized benchmark/evidence.
 
-## Release and packaging prep
+## Release and packaging
 
-Nólë is private/internal v0.1 ready, but public release is a separate approval-gated step. See:
+Nólë is a public repository, but published GitHub Releases are created only
+from approved semantic version tags. The release workflow builds the
+cross-platform binaries, generates `SHA256SUMS`, and creates a GitHub Release
+automatically when a `v*.*.*` tag is pushed.
 
-- `docs/PUBLIC-RELEASE-CHECKLIST.md` for the public-release decision checklist.
+See:
+
+- `docs/PUBLIC-RELEASE-CHECKLIST.md` for the release decision checklist.
 - `docs/RELEASE-NOTES-v0.1-DRAFT.md` for draft release notes.
-- `docs/PACKAGING.md` for non-publishing build/checksum dry-runs and future package channels.
+- `docs/PACKAGING.md` for release build automation and future package channels.
 - `docs/COST-QUOTA-CACHE-QUALITY.md` for the cost/quota/cache/output-quality audit.
 
-These documents do not publish a release, upload assets, publish packages, deploy endpoints or change repository visibility by themselves.
+Docs do not publish releases, upload assets, publish packages or deploy
+endpoints by themselves. A release is published by the tag-triggered workflow
+after a maintainer creates an approved version tag.
 
 ## Roadmap
 
-Near-term v0.1 private-prep:
+Near-term v0.1 release line:
 
 1. Product framing and agent-readable install docs.
-2. CI gates for tests, vet, doctor, bench and public-safety checks.
+2. CI and release gates for tests, vet, doctor, bench and public-safety checks.
 3. LLM-free multi-intent planner with `--task`/`--tasks` override compatibility.
 4. Compact one-line Nólë insight alongside structured `route_trace`.
 5. Cost policy model: free-first default, premium-capable support, fail-closed no-hidden-spend behavior.
