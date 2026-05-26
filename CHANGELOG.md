@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-26
+
 ### Added
 
 - Tag-triggered GitHub Release workflow that runs the audit gate, builds
@@ -116,5 +118,6 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/HEAD...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/dorukardahan/nole/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dorukardahan/nole/releases/tag/v0.1.0
