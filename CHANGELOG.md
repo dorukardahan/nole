@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `http.MaxBytesReader` (1 MiB) on the `/api/search`, `/api/extract`,
   and `/mcp` POST handlers; `ReadHeaderTimeout`, `ReadTimeout`,
   `WriteTimeout`, and `IdleTimeout` on `http.Server`.
+- Optional local Scrapling extraction fallback via `NOLE_SCRAPLING_PYTHON`.
+  Nólë invokes a user-supplied Python runtime with `scrapling[fetchers]`
+  installed; it does not vendor or redistribute Scrapling code.
 - `nole setup --hermes` support for writing Hermes Agent
   `~/.hermes/config.yaml` MCP config while preserving unrelated config,
   comments, existing Nólë policy fields, and user-tuned timeout values.
@@ -85,7 +88,8 @@ Initial private/internal v0.1 readiness. See
 - `free-first` default policy; `cost-capped` and `quality-first`
   modes for explicit premium-capable provider usage.
 - Provider adapters: Brave (search), Tavily (search+extract),
-  Firecrawl (search+extract), DDGS (keyless search fallback).
+  Firecrawl (search+extract), DDGS (keyless search fallback),
+  Scrapling (optional local extract fallback).
 - In-process TTL cache and optional file-backed local quota/cost
   ledger.
 - Sanitized `route_trace` and compact `routing_insight`.

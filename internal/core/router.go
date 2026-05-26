@@ -22,7 +22,9 @@ func DefaultRouteMatrix() RouteMatrix {
 		TaskResearch:  {"brave", "firecrawl", "ddgs", "tavily"},
 		// Extract tasks: only providers with extraction capability. Brave/DDGS are
 		// intentionally excluded even if URL-query benchmark scores are high.
-		TaskExtract: {"tavily", "firecrawl"},
+		// Scrapling is a local keyless fallback; keep the evidence-backed remote
+		// extraction order until local quality evidence supports reordering.
+		TaskExtract: {"tavily", "firecrawl", "scrapling"},
 	}
 }
 

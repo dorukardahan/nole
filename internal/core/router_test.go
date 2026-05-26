@@ -72,6 +72,29 @@ func TestRouterExtractPrefersTavilyThenFirecrawl(t *testing.T) {
 	}
 }
 
+func TestRouterExtractKeepsEvidenceBackedOrderWithScrapling(t *testing.T) {
+	registry := NewRegistry()
+	_ = registry.Register(fakeProvider{name: "tavily"})
+	_ = registry.Register(fakeProvider{name: "firecrawl"})
+	_ = registry.Register(fakeProvider{name: "scrapling"})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "tavily", FreeRemaining: 1})
+	ledger.Set(QuotaEntry{Provider: "firecrawl", FreeRemaining: 1})
+	ledger.Set(QuotaEntry{Provider: "scrapling", KeylessFree: true})
+	router := NewRouter(registry, ledger, DefaultRouteMatrix())
+
+	provider, route, err := router.Select(TaskExtract, CapabilityExtract)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	if provider.Name() != "tavily" {
+		t.Fatalf("expected evidence-backed tavily first, got %q with route %#v", provider.Name(), route)
+	}
+	if len(route) != 3 || route[0] != "tavily" || route[1] != "firecrawl" || route[2] != "scrapling" {
+		t.Fatalf("extract route should append Scrapling as local fallback, got %#v", route)
+	}
+}
+
 func TestRouterNewsPrefersBrave(t *testing.T) {
 	registry := NewRegistry()
 	_ = registry.Register(fakeProvider{name: "brave"})

@@ -12,6 +12,7 @@ Default policy is `free-first` and each supported BYOK provider is classified as
 | Tavily | `TAVILY_API_KEY` | 1000 calls/month, monthly reset | `NOLE_TAVILY_PAID=1` | Free Researcher tier; no card required. Paid plans charge per credit; review the dashboard before flipping the opt-in. |
 | Firecrawl | `FIRECRAWL_API_KEY` | 1000 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Free quota refill semantics shifted in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume use. |
 | DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
+| Scrapling | `NOLE_SCRAPLING_PYTHON` | Local keyless extraction fallback, no counter | n/a | Points to a Python runtime with `scrapling[fetchers]` installed. Nólë validates public URLs before calling it, but website terms and robots.txt remain the user's responsibility. |
 
 The free-tier numbers above are conservative anchors verified 2026-05. They are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
 
@@ -34,9 +35,10 @@ Nólë currently reads:
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
+export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"  # optional local extract fallback
 ```
 
-DDGS is keyless and does not need a key.
+DDGS is keyless and does not need a key. Scrapling is also keyless, but it is local Python software rather than a remote account; set `NOLE_SCRAPLING_PYTHON` only when that Python environment can import `scrapling.fetchers`.
 
 Per-provider paid opt-in (default: free-tier-BYOK). Use only when the user has a paid plan and wants Nólë to treat the provider as premium-capable so cost-capped or quality-first policies apply:
 
@@ -206,6 +208,33 @@ Notes:
 - Keyless does not mean guaranteed availability or unlimited use.
 - Treat DDGS as a useful fallback, not a hard SLA.
 
+## Scrapling
+
+Use for: local keyless URL extraction fallback.
+
+Setup:
+
+1. Create or choose a local Python 3.10+ environment.
+2. Install the fetcher extras:
+
+   ```bash
+   pip install "scrapling[fetchers]"
+   ```
+
+3. Point Nólë at that Python executable:
+
+   ```bash
+   export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"
+   ```
+
+4. Run `nole doctor --mcp` and confirm the MCP `extract` tool appears when no BYOK extract keys are set.
+
+Notes:
+
+- Nólë keeps Tavily and Firecrawl first in the default extract route because that order is backed by existing route evidence. Scrapling is appended as a local fallback until comparable local extraction evidence exists.
+- The service validates public URLs before calling providers. Scrapling still performs a real HTTP request from the local machine, so respect site terms, robots.txt and rate limits.
+- Do not point `NOLE_SCRAPLING_PYTHON` at a shell snippet. It must be an executable Python path; wrappers should exec Python directly and keep secrets out of command lines.
+
 ## Checking status safely
 
 ```bash
@@ -238,7 +267,7 @@ Nólë exposes cost policy/status in `nole providers --json`, `nole doctor`, MCP
 
 Cost classes:
 
-- `keyless-free`: no provider key required; DDGS search fallback is the current example.
+- `keyless-free`: no provider key required; DDGS search fallback and optional local Scrapling extraction fallback are current examples.
 - `free-tier-BYOK`: a user-keyed provider with a known local free quota tracked in the ledger. Default for keyed Brave / Tavily / Firecrawl.
 - `premium-capable`: a keyed provider that may incur paid usage depending on the user's account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost`: cost cannot be safely classified; fail closed except under explicit `quality-first`.

@@ -276,6 +276,7 @@ func TestMCPExtractToolHiddenWhenNoExtractCapableKey(t *testing.T) {
 	t.Setenv("BRAVE_SEARCH_API_KEY", "")
 	t.Setenv("TAVILY_API_KEY", "")
 	t.Setenv("FIRECRAWL_API_KEY", "")
+	t.Setenv("NOLE_SCRAPLING_PYTHON", "")
 
 	if HasExtractCapableConfigured() {
 		t.Fatal("with only BRAVE_API_KEY set, HasExtractCapableConfigured must be false")
@@ -299,6 +300,7 @@ func TestMCPExtractToolPresentWhenExtractCapableKeyExists(t *testing.T) {
 	t.Setenv("BRAVE_SEARCH_API_KEY", "")
 	t.Setenv("TAVILY_API_KEY", "fake-tavily-key")
 	t.Setenv("FIRECRAWL_API_KEY", "")
+	t.Setenv("NOLE_SCRAPLING_PYTHON", "")
 
 	if !HasExtractCapableConfigured() {
 		t.Fatal("with TAVILY_API_KEY set, HasExtractCapableConfigured must be true")
@@ -319,6 +321,7 @@ func TestMCPExtractToolPresentWithFirecrawlOnly(t *testing.T) {
 	t.Setenv("BRAVE_SEARCH_API_KEY", "")
 	t.Setenv("TAVILY_API_KEY", "")
 	t.Setenv("FIRECRAWL_API_KEY", "fake-fc-key")
+	t.Setenv("NOLE_SCRAPLING_PYTHON", "")
 
 	if !HasExtractCapableConfigured() {
 		t.Fatal("with FIRECRAWL_API_KEY set, HasExtractCapableConfigured must be true")
@@ -332,16 +335,56 @@ func TestMCPExtractToolPresentWithFirecrawlOnly(t *testing.T) {
 	}
 }
 
+// TestMCPExtractToolPresentWithScrapling verifies that the extract tool is
+// advertised when the local Scrapling runtime is configured, even without paid
+// or BYOK extract providers.
+func TestMCPExtractToolPresentWithScrapling(t *testing.T) {
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+	t.Setenv("NOLE_SCRAPLING_PYTHON", "/tmp/fake-python")
+
+	if !HasExtractCapableConfigured() {
+		t.Fatal("with NOLE_SCRAPLING_PYTHON set, HasExtractCapableConfigured must be true")
+	}
+
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"), mock.New("scrapling"))
+	tools := callToolsList(t, srv)
+	if !tools["extract"] {
+		t.Error("extract tool should be advertised when Scrapling runtime is configured")
+	}
+}
+
+func TestMCPExtractToolHiddenWithWhitespaceOnlyScrapling(t *testing.T) {
+	t.Setenv("BRAVE_API_KEY", "")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "")
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
+	t.Setenv("NOLE_SCRAPLING_PYTHON", " \t\n ")
+
+	if HasExtractCapableConfigured() {
+		t.Fatal("with whitespace-only NOLE_SCRAPLING_PYTHON, HasExtractCapableConfigured must be false")
+	}
+
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"), mock.New("scrapling"))
+	tools := callToolsList(t, srv)
+	if tools["extract"] {
+		t.Error("extract tool should not be advertised for whitespace-only Scrapling runtime")
+	}
+}
+
 // TestMCPSearchTipConcurrencySafe drives the search handler from multiple
 // goroutines and verifies (a) no panic or data race and (b) at most one tip
 // emitted across all concurrent calls. The race detector (go test -race) will
 // catch any unsynchronized writes to tipState that survive the mutex.
 func TestMCPSearchTipConcurrencySafe(t *testing.T) {
-	// Clear all BYOK env vars so BuildSetupTip fires (no configured providers).
+	// Clear all extract/provider env vars so BuildSetupTip fires (no configured providers).
 	t.Setenv("BRAVE_API_KEY", "")
 	t.Setenv("BRAVE_SEARCH_API_KEY", "")
 	t.Setenv("TAVILY_API_KEY", "")
 	t.Setenv("FIRECRAWL_API_KEY", "")
+	t.Setenv("NOLE_SCRAPLING_PYTHON", "")
 
 	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
 
