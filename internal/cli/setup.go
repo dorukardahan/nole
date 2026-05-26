@@ -228,28 +228,115 @@ func writeHermesConfigPath(path string, spec launchSpec) error {
 			return err
 		}
 	}
-	root := map[string]any{}
-	if len(strings.TrimSpace(string(existing))) > 0 {
-		if err := yaml.Unmarshal(existing, &root); err != nil {
-			return fmt.Errorf("parse existing hermes config yaml: %w", err)
-		}
+	doc, root, err := parseHermesConfigYAML(existing)
+	if err != nil {
+		return err
 	}
-	servers, _ := root["mcp_servers"].(map[string]any)
-	if servers == nil {
-		servers = map[string]any{}
+	if err := upsertHermesNoleServer(root, spec); err != nil {
+		return err
 	}
-	servers["nole"] = map[string]any{
-		"command":         spec.command(),
-		"args":            spec.args(),
-		"timeout":         120,
-		"connect_timeout": 60,
-	}
-	root["mcp_servers"] = servers
-	out, err := yaml.Marshal(root)
+	out, err := yaml.Marshal(doc)
 	if err != nil {
 		return fmt.Errorf("marshal hermes config yaml: %w", err)
 	}
 	return atomicWriteFile(path, out, configWriteMode(exists, mode))
+}
+
+func parseHermesConfigYAML(existing []byte) (*yaml.Node, *yaml.Node, error) {
+	doc := &yaml.Node{Kind: yaml.DocumentNode}
+	if len(strings.TrimSpace(string(existing))) == 0 {
+		root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		doc.Content = []*yaml.Node{root}
+		return doc, root, nil
+	}
+	if err := yaml.Unmarshal(existing, doc); err != nil {
+		return nil, nil, fmt.Errorf("parse existing hermes config yaml: %w", err)
+	}
+	if doc.Kind != yaml.DocumentNode {
+		return nil, nil, fmt.Errorf("parse existing hermes config yaml: root document is invalid")
+	}
+	if len(doc.Content) == 0 {
+		root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		doc.Content = []*yaml.Node{root}
+		return doc, root, nil
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, nil, fmt.Errorf("parse existing hermes config yaml: root must be a mapping")
+	}
+	return doc, root, nil
+}
+
+func upsertHermesNoleServer(root *yaml.Node, spec launchSpec) error {
+	servers, ok := yamlMappingLookup(root, "mcp_servers")
+	if !ok {
+		servers = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		yamlMappingUpsert(root, "mcp_servers", servers)
+	}
+	if servers.Kind != yaml.MappingNode {
+		return fmt.Errorf("existing hermes config mcp_servers must be a mapping")
+	}
+
+	nole, ok := yamlMappingLookup(servers, "nole")
+	if !ok {
+		nole = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		yamlMappingUpsert(servers, "nole", nole)
+	}
+	if nole.Kind != yaml.MappingNode {
+		return fmt.Errorf("existing hermes config mcp_servers.nole must be a mapping")
+	}
+
+	yamlMappingUpsert(nole, "command", yamlStringNode(spec.command()))
+	yamlMappingUpsert(nole, "args", yamlStringSequenceNode(spec.args()))
+	yamlMappingUpsert(nole, "timeout", yamlIntNode(120))
+	yamlMappingUpsert(nole, "connect_timeout", yamlIntNode(60))
+	return nil
+}
+
+func yamlMappingLookup(mapping *yaml.Node, key string) (*yaml.Node, bool) {
+	if mapping == nil || mapping.Kind != yaml.MappingNode {
+		return nil, false
+	}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return mapping.Content[i+1], true
+		}
+	}
+	return nil, false
+}
+
+func yamlMappingUpsert(mapping *yaml.Node, key string, value *yaml.Node) {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			existing := mapping.Content[i+1]
+			value.HeadComment = existing.HeadComment
+			value.LineComment = existing.LineComment
+			value.FootComment = existing.FootComment
+			mapping.Content[i+1] = value
+			return
+		}
+	}
+	mapping.Content = append(mapping.Content, yamlStringNode(key), value)
+}
+
+func yamlStringNode(value string) *yaml.Node {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
+}
+
+func yamlIntNode(value int) *yaml.Node {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprintf("%d", value)}
+}
+
+func yamlStringSequenceNode(values []string) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+	if len(values) == 0 {
+		node.Style = yaml.FlowStyle
+		return node
+	}
+	for _, value := range values {
+		node.Content = append(node.Content, yamlStringNode(value))
+	}
+	return node
 }
 
 func writeWindsurfConfig(spec launchSpec) error {

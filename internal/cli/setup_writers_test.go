@@ -456,6 +456,78 @@ func TestWriteHermesConfigPreservesExistingYAMLAndRegistersNole(t *testing.T) {
 	}
 }
 
+func TestWriteHermesConfigPreservesComments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	existing := []byte("# user profile\nmodel:\n  # keep provider note\n  provider: openrouter\n  default: test-model\n\n# servers managed by hermes\nmcp_servers:\n  # existing tool server\n  other:\n    command: /usr/bin/other\n    args:\n      - serve\n")
+	if err := os.WriteFile(path, existing, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
+		t.Fatalf("write hermes config: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	for _, want := range []string{
+		"# user profile",
+		"# keep provider note",
+		"# servers managed by hermes",
+		"# existing tool server",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("Hermes config writer should preserve comment %q, got:\n%s", want, text)
+		}
+	}
+}
+
+func TestWriteHermesConfigRejectsNonMappingMCPServers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	existing := []byte("model:\n  provider: openrouter\nmcp_servers: disabled\n")
+	if err := os.WriteFile(path, existing, 0640); err != nil {
+		t.Fatal(err)
+	}
+	err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"})
+	if err == nil {
+		t.Fatal("expected error when existing mcp_servers is not a mapping")
+	}
+	if !strings.Contains(err.Error(), "mcp_servers") {
+		t.Fatalf("expected mcp_servers error, got %q", err.Error())
+	}
+}
+
+func TestWriteHermesConfigPreservesExistingNolePolicy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	existing := []byte("mcp_servers:\n  nole:\n    command: /old/nole\n    args:\n      - mcp\n    tools:\n      resources: false\n      prompts: false\n    supports_parallel_tool_calls: true\n")
+	if err := os.WriteFile(path, existing, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
+		t.Fatalf("write hermes config: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := map[string]any{}
+	if err := yaml.Unmarshal(b, &root); err != nil {
+		t.Fatalf("unmarshal hermes yaml: %v\n%s", err, string(b))
+	}
+	servers := root["mcp_servers"].(map[string]any)
+	nole := servers["nole"].(map[string]any)
+	if nole["supports_parallel_tool_calls"] != true {
+		t.Fatalf("existing supports_parallel_tool_calls lost: %#v", nole)
+	}
+	tools, ok := nole["tools"].(map[string]any)
+	if !ok || tools["resources"] != false || tools["prompts"] != false {
+		t.Fatalf("existing tools policy lost: %#v", nole["tools"])
+	}
+	if nole["command"] != "/usr/local/bin/nole" {
+		t.Fatalf("nole command = %#v, want updated binary", nole["command"])
+	}
+}
+
 func TestSetupHermesFlagWritesUserConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
