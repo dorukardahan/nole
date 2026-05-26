@@ -15,14 +15,18 @@ import (
 )
 
 type Provider struct {
-	python  string
-	timeout time.Duration
+	python     string
+	configured bool
+	timeout    time.Duration
 }
 
 type Option func(*Provider)
 
 func WithPython(path string) Option {
-	return func(p *Provider) { p.python = path }
+	return func(p *Provider) {
+		p.python = strings.TrimSpace(path)
+		p.configured = p.python != ""
+	}
 }
 
 func WithTimeout(timeout time.Duration) Option {
@@ -31,11 +35,11 @@ func WithTimeout(timeout time.Duration) Option {
 
 func New(opts ...Option) Provider {
 	p := Provider{
-		python:  "python3",
 		timeout: 30 * time.Second,
 	}
 	if envPython := strings.TrimSpace(os.Getenv("NOLE_SCRAPLING_PYTHON")); envPython != "" {
 		p.python = envPython
+		p.configured = true
 	}
 	for _, opt := range opts {
 		opt(&p)
@@ -56,6 +60,9 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
 	if strings.TrimSpace(req.URL) == "" {
 		return core.ExtractResponse{}, errors.New("scrapling: url is required")
+	}
+	if !p.configured {
+		return core.ExtractResponse{}, errors.New("scrapling: NOLE_SCRAPLING_PYTHON is not configured")
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
@@ -98,6 +105,9 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 }
 
 func (p Provider) Status(ctx context.Context) core.ProviderStatus {
+	if !p.configured {
+		return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: "NOLE_SCRAPLING_PYTHON is not configured"}
+	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, p.python, "-c", `import scrapling; from scrapling.fetchers import Fetcher; print(getattr(scrapling, "__version__", "unknown"))`)

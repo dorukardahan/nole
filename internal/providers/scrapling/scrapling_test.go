@@ -45,6 +45,28 @@ printf '{"content":" extracted content ","metadata":{"title":"Example","mode":"f
 	}
 }
 
+func TestScraplingExtractRequiresExplicitRuntime(t *testing.T) {
+	t.Setenv("NOLE_SCRAPLING_PYTHON", "")
+	_, err := New().Extract(context.Background(), core.ExtractRequest{URL: "https://example.com"})
+	if err == nil {
+		t.Fatal("expected extract error without explicit runtime")
+	}
+	if !strings.Contains(err.Error(), "NOLE_SCRAPLING_PYTHON") {
+		t.Fatalf("expected explicit runtime error, got %q", err.Error())
+	}
+}
+
+func TestScraplingStatusRequiresExplicitRuntime(t *testing.T) {
+	t.Setenv("NOLE_SCRAPLING_PYTHON", "")
+	status := New().Status(context.Background())
+	if status.Available {
+		t.Fatal("expected unavailable status without explicit runtime")
+	}
+	if !strings.Contains(status.Reason, "NOLE_SCRAPLING_PYTHON") {
+		t.Fatalf("expected explicit runtime status reason, got %q", status.Reason)
+	}
+}
+
 func TestScraplingStatusUnavailableWhenPythonFails(t *testing.T) {
 	fakePython := writeFakePython(t, `#!/usr/bin/env sh
 printf 'ModuleNotFoundError: No module named scrapling\n' >&2
