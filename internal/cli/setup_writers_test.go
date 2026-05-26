@@ -497,6 +497,35 @@ func TestWriteHermesConfigRejectsNonMappingMCPServers(t *testing.T) {
 	}
 }
 
+func TestWriteHermesConfigTreatsNullRootAsEmptyMapping(t *testing.T) {
+	for _, existing := range []string{"null\n", "~\n"} {
+		t.Run(strings.TrimSpace(existing), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(existing), 0640); err != nil {
+				t.Fatal(err)
+			}
+			if err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
+				t.Fatalf("write hermes config: %v", err)
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := map[string]any{}
+			if err := yaml.Unmarshal(b, &root); err != nil {
+				t.Fatalf("unmarshal hermes yaml: %v\n%s", err, string(b))
+			}
+			servers, ok := root["mcp_servers"].(map[string]any)
+			if !ok {
+				t.Fatalf("mcp_servers missing or wrong type: %#v", root["mcp_servers"])
+			}
+			if _, ok := servers["nole"].(map[string]any); !ok {
+				t.Fatalf("nole server missing after null-root setup: %#v", servers)
+			}
+		})
+	}
+}
+
 func TestWriteHermesConfigPreservesExistingNolePolicy(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	existing := []byte("mcp_servers:\n  nole:\n    command: /old/nole\n    args:\n      - mcp\n    timeout: 240\n    connect_timeout: 15\n    tools:\n      resources: false\n      prompts: false\n    supports_parallel_tool_calls: true\n")

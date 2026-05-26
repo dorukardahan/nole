@@ -261,10 +261,19 @@ func parseHermesConfigYAML(existing []byte) (*yaml.Node, *yaml.Node, error) {
 		return doc, root, nil
 	}
 	root := doc.Content[0]
+	if isYAMLNullNode(root) {
+		root = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		doc.Content[0] = root
+		return doc, root, nil
+	}
 	if root.Kind != yaml.MappingNode {
 		return nil, nil, fmt.Errorf("parse existing hermes config yaml: root must be a mapping")
 	}
 	return doc, root, nil
+}
+
+func isYAMLNullNode(node *yaml.Node) bool {
+	return node != nil && node.Kind == yaml.ScalarNode && node.Tag == "!!null"
 }
 
 func upsertHermesNoleServer(root *yaml.Node, spec launchSpec) error {
