@@ -254,7 +254,7 @@ automatically when a `v*.*.*` tag is pushed.
 See:
 
 - `docs/PUBLIC-RELEASE-CHECKLIST.md` for the release decision checklist.
-- `docs/RELEASE-NOTES-v0.2.2.md` for the current release notes.
+- `docs/RELEASE-NOTES-v0.2.3.md` for the current release notes.
 - `docs/PACKAGING.md` for release build automation and future package channels.
 - `docs/COST-QUOTA-CACHE-QUALITY.md` for the cost/quota/cache/output-quality audit.
 
