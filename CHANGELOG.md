@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional local Scrapling extraction fallback via `NOLE_SCRAPLING_PYTHON`.
   Nólë invokes a user-supplied Python runtime with `scrapling[fetchers]`
   installed; it does not vendor or redistribute Scrapling code.
+- `nole setup --hermes` support for writing Hermes Agent
+  `~/.hermes/config.yaml` MCP config while preserving unrelated config,
+  comments, existing Nólë policy fields, and user-tuned timeout values.
 
 ### Changed
 
@@ -53,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `README.md`: Prerequisites lifted to `Go 1.25+` to match new
   toolchain pin; client setup example extended with a pointer to
   `nole setup --help` for the full client roster.
+- `README.md` and release notes now mention the native Hermes setup writer
+  instead of only the manual `hermes mcp add` path.
 - `docs/PROVIDER-KEYS.md`: explicit note that Brave's official free
   tier is 2,000/month and Nólë's local anchor is 1,000 (conservative
   safety margin).

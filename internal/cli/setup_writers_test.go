@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // TestSetupClaudeFlagPrintsInstructionsAndWritesNoFile asserts that
@@ -403,5 +405,213 @@ func TestSetupOpenCodeFlagWritesNativeConfigPath(t *testing.T) {
 	stalePath := filepath.Join(home, "opencode.json")
 	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
 		t.Fatalf("opencode setup must not write %s, got err=%v", stalePath, err)
+	}
+}
+
+func TestWriteHermesConfigPreservesExistingYAMLAndRegistersNole(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	existing := []byte("model:\n  provider: openrouter\n  default: test-model\nmcp_servers:\n  other:\n    command: /usr/bin/other\n    args:\n      - serve\n")
+	if err := os.WriteFile(path, existing, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0640); err != nil {
+		t.Fatal(err)
+	}
+	wrapper := "/usr/local/bin/nole-mcp"
+	if err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole", Wrapper: wrapper}); err != nil {
+		t.Fatalf("write hermes config: %v", err)
+	}
+	assertFileMode(t, path, 0640)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := map[string]any{}
+	if err := yaml.Unmarshal(b, &root); err != nil {
+		t.Fatalf("unmarshal hermes yaml: %v\n%s", err, string(b))
+	}
+	model, ok := root["model"].(map[string]any)
+	if !ok || model["provider"] != "openrouter" || model["default"] != "test-model" {
+		t.Fatalf("existing model config not preserved: %#v", root["model"])
+	}
+	servers, ok := root["mcp_servers"].(map[string]any)
+	if !ok {
+		t.Fatalf("mcp_servers missing or wrong type: %#v", root["mcp_servers"])
+	}
+	if _, ok := servers["other"]; !ok {
+		t.Fatalf("existing mcp server lost: %#v", servers)
+	}
+	nole, ok := servers["nole"].(map[string]any)
+	if !ok {
+		t.Fatalf("nole mcp server missing: %#v", servers)
+	}
+	if got := nole["command"]; got != wrapper {
+		t.Fatalf("nole command = %#v, want %q", got, wrapper)
+	}
+	if args, ok := nole["args"].([]any); !ok || len(args) != 0 {
+		t.Fatalf("wrapper mode should write empty args, got %#v", nole["args"])
+	}
+	if _, err := os.Stat(path + ".bak"); err != nil {
+		t.Fatalf("expected backup file: %v", err)
+	}
+}
+
+func TestWriteHermesConfigPreservesComments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	existing := []byte("# user profile\nmodel:\n  # keep provider note\n  provider: openrouter\n  default: test-model\n\n# servers managed by hermes\nmcp_servers:\n  # existing tool server\n  other:\n    command: /usr/bin/other\n    args:\n      - serve\n")
+	if err := os.WriteFile(path, existing, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
+		t.Fatalf("write hermes config: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	for _, want := range []string{
+		"# user profile",
+		"# keep provider note",
+		"# servers managed by hermes",
+		"# existing tool server",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("Hermes config writer should preserve comment %q, got:\n%s", want, text)
+		}
+	}
+}
+
+func TestWriteHermesConfigRejectsNonMappingMCPServers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	existing := []byte("model:\n  provider: openrouter\nmcp_servers: disabled\n")
+	if err := os.WriteFile(path, existing, 0640); err != nil {
+		t.Fatal(err)
+	}
+	err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"})
+	if err == nil {
+		t.Fatal("expected error when existing mcp_servers is not a mapping")
+	}
+	if !strings.Contains(err.Error(), "mcp_servers") {
+		t.Fatalf("expected mcp_servers error, got %q", err.Error())
+	}
+}
+
+func TestWriteHermesConfigTreatsNullRootAsEmptyMapping(t *testing.T) {
+	for _, existing := range []string{"null\n", "~\n"} {
+		t.Run(strings.TrimSpace(existing), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(existing), 0640); err != nil {
+				t.Fatal(err)
+			}
+			if err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
+				t.Fatalf("write hermes config: %v", err)
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := map[string]any{}
+			if err := yaml.Unmarshal(b, &root); err != nil {
+				t.Fatalf("unmarshal hermes yaml: %v\n%s", err, string(b))
+			}
+			servers, ok := root["mcp_servers"].(map[string]any)
+			if !ok {
+				t.Fatalf("mcp_servers missing or wrong type: %#v", root["mcp_servers"])
+			}
+			if _, ok := servers["nole"].(map[string]any); !ok {
+				t.Fatalf("nole server missing after null-root setup: %#v", servers)
+			}
+		})
+	}
+}
+
+func TestWriteHermesConfigPreservesExistingNolePolicy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	existing := []byte("mcp_servers:\n  nole:\n    command: /old/nole\n    args:\n      - mcp\n    timeout: 240\n    connect_timeout: 15\n    tools:\n      resources: false\n      prompts: false\n    supports_parallel_tool_calls: true\n")
+	if err := os.WriteFile(path, existing, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
+		t.Fatalf("write hermes config: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := map[string]any{}
+	if err := yaml.Unmarshal(b, &root); err != nil {
+		t.Fatalf("unmarshal hermes yaml: %v\n%s", err, string(b))
+	}
+	servers := root["mcp_servers"].(map[string]any)
+	nole := servers["nole"].(map[string]any)
+	if nole["supports_parallel_tool_calls"] != true {
+		t.Fatalf("existing supports_parallel_tool_calls lost: %#v", nole)
+	}
+	tools, ok := nole["tools"].(map[string]any)
+	if !ok || tools["resources"] != false || tools["prompts"] != false {
+		t.Fatalf("existing tools policy lost: %#v", nole["tools"])
+	}
+	if nole["command"] != "/usr/local/bin/nole" {
+		t.Fatalf("nole command = %#v, want updated binary", nole["command"])
+	}
+	if nole["timeout"] != 240 || nole["connect_timeout"] != 15 {
+		t.Fatalf("existing timeout settings should be preserved, got timeout=%#v connect_timeout=%#v", nole["timeout"], nole["connect_timeout"])
+	}
+}
+
+func TestWriteHermesConfigAddsDefaultTimeoutsForNewNoleServer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	existing := []byte("mcp_servers:\n  other:\n    command: /usr/bin/other\n")
+	if err := os.WriteFile(path, existing, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
+		t.Fatalf("write hermes config: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := map[string]any{}
+	if err := yaml.Unmarshal(b, &root); err != nil {
+		t.Fatalf("unmarshal hermes yaml: %v\n%s", err, string(b))
+	}
+	servers := root["mcp_servers"].(map[string]any)
+	nole := servers["nole"].(map[string]any)
+	if nole["timeout"] != 120 || nole["connect_timeout"] != 60 {
+		t.Fatalf("new nole server should get default timeouts, got timeout=%#v connect_timeout=%#v", nole["timeout"], nole["connect_timeout"])
+	}
+}
+
+func TestSetupHermesFlagWritesUserConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	wrapper := filepath.Join(home, "bin", "nole-mcp")
+
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"setup", "--hermes", "--mcp-wrapper", wrapper})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("setup --hermes: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "hermes: configured") {
+		t.Fatalf("expected hermes configured log, got:\n%s", out.String())
+	}
+	path := filepath.Join(home, ".hermes", "config.yaml")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("hermes setup did not create %s: %v", path, err)
+	}
+	root := map[string]any{}
+	if err := yaml.Unmarshal(b, &root); err != nil {
+		t.Fatalf("unmarshal hermes yaml: %v\n%s", err, string(b))
+	}
+	servers := root["mcp_servers"].(map[string]any)
+	nole := servers["nole"].(map[string]any)
+	if nole["command"] != wrapper {
+		t.Fatalf("nole command = %#v, want %q", nole["command"], wrapper)
 	}
 }
