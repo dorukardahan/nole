@@ -106,7 +106,9 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		reason := "scrapling Python package not available"
-		if strings.TrimSpace(stderr.String()) != "" {
+		if strings.Contains(stderr.String(), "ModuleNotFoundError") || strings.Contains(stderr.String(), "No module named") {
+			reason = `scrapling Python package not available; install with: pip install "scrapling[fetchers]"`
+		} else if strings.TrimSpace(stderr.String()) != "" {
 			reason = sanitizeError(stderr.String())
 		}
 		return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: reason}

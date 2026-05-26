@@ -58,6 +58,9 @@ exit 1
 	if !strings.Contains(status.Reason, "scrapling") {
 		t.Fatalf("expected scrapling reason, got %q", status.Reason)
 	}
+	if !strings.Contains(status.Reason, `pip install "scrapling[fetchers]"`) {
+		t.Fatalf("expected actionable install hint, got %q", status.Reason)
+	}
 }
 
 func TestScraplingSearchUnsupported(t *testing.T) {
