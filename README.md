@@ -45,12 +45,12 @@ Priority v0.1 agent targets:
 | Client | Status in this repo | Notes |
 | --- | --- | --- |
 | Claude Code | Verified on macOS via `claude mcp list/get` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --claude` prints the official `claude mcp add` command, including wrapper mode when requested. |
-| Codex CLI | Verified on macOS via `codex mcp list/get` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --codex` inlines `~/.config/nole/.env` sourcing in TOML output, or emits wrapper-direct config with `--mcp-wrapper`. |
+| Codex CLI | Verified on macOS via `codex mcp list/get` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --codex --local-extract` inlines `~/.config/nole/.env` sourcing in TOML output and prepares local Scrapling; `--mcp-wrapper` emits wrapper-direct config. |
 | OpenCode | Verified on macOS via `opencode mcp list` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --opencode` writes OpenCode's native `{type, command, enabled, environment}` schema. |
 | Kimi | Verified on macOS via `kimi mcp list` and `kimi mcp test` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --kimi` writes the same shape that `kimi mcp add` produces. |
-| OpenClaw | Verified on OpenClaw 2026.5.18 via the Gateway/agent MCP path; see `docs/CLIENTS/LIVE-VERIFICATION.md` | Configured with `openclaw mcp set` and an env-sourcing wrapper. A fresh OpenClaw agent turn dispatched `provider_status` and one `limit=1` DDGS search through Nólë. |
-| Hermes Agent | Verified on Hermes Agent v0.14.0 via disposable profile MCP path and chat-agent dispatch; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --hermes` writes `~/.hermes/config.yaml` while preserving unrelated config and existing Nólë policy fields. A fresh Hermes chat turn dispatched `provider_status` and one `limit=1` DDGS fallback search through Nólë. |
-| Cursor | Verified on macOS Cursor 3.4.20 via GUI MCP path and chat-agent dispatch; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --cursor --mcp-wrapper /absolute/path/to/nole-mcp` preserves unrelated MCP servers and emits wrapper-direct config. |
+| OpenClaw | Verified on OpenClaw 2026.5.18 via the Gateway/agent MCP path; see `docs/CLIENTS/LIVE-VERIFICATION.md` | Run `nole setup --local-extract`, then configure OpenClaw with `openclaw mcp set` and the generated env-sourcing wrapper. |
+| Hermes Agent | Verified on Hermes Agent v0.14.0 via disposable profile MCP path and chat-agent dispatch; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --hermes --local-extract` writes `~/.hermes/config.yaml`, prepares local Scrapling and preserves unrelated config. |
+| Cursor | Verified on macOS Cursor 3.4.20 via GUI MCP path and chat-agent dispatch; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --cursor --local-extract` preserves unrelated MCP servers and emits wrapper-direct config through the generated wrapper. |
 
 A client is only called verified after config path, tool visibility and `doctor --mcp` behavior are checked without printing credentials.
 
@@ -64,7 +64,7 @@ Nólë currently supports these provider adapters:
 - Tavily: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - Firecrawl: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - DDGS: keyless search fallback.
-- Scrapling: optional local Python URL extraction fallback via a user-supplied Python runtime with `scrapling[fetchers]` installed. Nólë does not vendor or redistribute Scrapling.
+- Scrapling: optional local Python URL extraction fallback. `nole setup --local-extract` creates an isolated venv, installs `scrapling[fetchers]` there and writes `NOLE_SCRAPLING_PYTHON` locally. Nólë does not vendor or redistribute Scrapling.
 
 Nólë reads provider credentials from environment variables. It should only report whether a key is present; it must never print key values, auth headers or raw provider payloads.
 
@@ -76,7 +76,7 @@ Prerequisites:
 
 - Go 1.25+ for building from source (matches the `go 1.25.10` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily and Firecrawl.
-- Optional Python 3.10+ runtime with `scrapling[fetchers]` for local Scrapling extraction fallback.
+- Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
 - No provider key is required for the deterministic benchmark, DDGS keyless fallback or configured local Scrapling fallback.
 
 Build and run locally:
@@ -114,6 +114,15 @@ nole doctor
 
 If the agent/client process does not inherit PATH, use `/absolute/path/to/nole` in the MCP config.
 
+Optional, but recommended for agent installs that should expose URL extraction without provider keys:
+
+```bash
+nole setup --local-extract
+nole doctor --mcp
+```
+
+This creates `~/.local/share/nole/scrapling-venv`, installs Scrapling into that isolated Python environment, writes `~/.config/nole/.env`, and generates an env-sourcing MCP wrapper at `~/.local/bin/nole-mcp`.
+
 Configure an agent when the setup writer is available:
 
 ```bash
@@ -121,7 +130,9 @@ nole setup --claude
 nole setup --codex
 nole setup --hermes
 nole setup --opencode
-# see `nole setup --help` for the full client list (openclaw, cursor, kimi, etc.)
+nole setup --codex --local-extract
+nole setup --hermes --local-extract
+# see `nole setup --help` for the full client list (cursor, kimi, windsurf, etc.)
 ```
 
 For unverified or generic clients, use the MCP command template:
@@ -163,7 +174,7 @@ Environment variables:
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
-export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"  # optional local extract fallback
+export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"  # written by `nole setup --local-extract`
 
 # Opt into paid mode for a specific provider (default: free-tier-BYOK).
 # Use only when you actively want Nólë to bill the provider account.
@@ -186,9 +197,9 @@ export NOLE_CACHE_TTL="5m"                  # or NOLE_CACHE_TTL_SECONDS="300"
 
 Nólë's quota ledger is **file-backed by default** at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json` when `XDG_STATE_HOME` is unset). Durability is required for the monthly free-tier cap to be meaningful: an in-memory ledger resets to the full free quota on every process restart, which defeats the cap when nole is spawned per session (the typical MCP client pattern). Set `NOLE_QUOTA_LEDGER_PATH` to override the default location, or to `memory`/`off`/`none` to explicitly disable file persistence — only do that if you understand the per-restart reset implication. The ledger stores provider names, cost classes, local free-quota counters and local estimated spend; it does not store provider keys or raw provider payloads. If a configured ledger is corrupt, Nólë backs it up and fails closed for paid/quota-tracked providers while still allowing keyless-free providers. `NOLE_CACHE_TTL` enables an in-memory TTL cache for normalized search/extract responses inside a running process, such as `nole mcp`; cache hit/miss status appears in `route_trace` and compact `routing_insight`.
 
-Do not paste real keys into chat, GitHub issues, docs, PRs or logs. If a GUI agent does not inherit your shell environment, put keys in a local-only env file such as `~/.config/nole/.env` and configure the client launcher to source it. Keep that file out of git and restrict permissions.
+Do not paste real keys into chat, GitHub issues, docs, PRs or logs. Put keys in the process environment or a local-only env file such as `~/.config/nole/.env`. Nólë commands load that file without overriding existing process env values; GUI/service clients should still use the generated `nole-mcp` wrapper so their MCP subprocess gets the same env. Keep that file out of git and restrict permissions.
 
-For Scrapling, install `scrapling[fetchers]` in your own Python environment and point `NOLE_SCRAPLING_PYTHON` at that executable. Nólë calls Scrapling as a local optional runtime only. Respect target website terms, robots.txt and rate limits.
+For Scrapling, prefer `nole setup --local-extract`; it installs Scrapling into a Nólë-owned venv and points `NOLE_SCRAPLING_PYTHON` at that executable. Manual env setup is still supported. Nólë calls Scrapling as a local optional runtime only. Respect target website terms, robots.txt and rate limits.
 
 ## Benchmarks and evidence
 
@@ -243,7 +254,7 @@ automatically when a `v*.*.*` tag is pushed.
 See:
 
 - `docs/PUBLIC-RELEASE-CHECKLIST.md` for the release decision checklist.
-- `docs/RELEASE-NOTES-v0.2.0.md` for the current release notes.
+- `docs/RELEASE-NOTES-v0.2.1.md` for the current release notes.
 - `docs/PACKAGING.md` for release build automation and future package channels.
 - `docs/COST-QUOTA-CACHE-QUALITY.md` for the cost/quota/cache/output-quality audit.
 
@@ -253,7 +264,7 @@ after a maintainer creates an approved version tag.
 
 ## Roadmap
 
-Near-term v0.1 release line:
+Current maintenance line:
 
 1. Product framing and agent-readable install docs.
 2. CI and release gates for tests, vet, doctor, bench and public-safety checks.

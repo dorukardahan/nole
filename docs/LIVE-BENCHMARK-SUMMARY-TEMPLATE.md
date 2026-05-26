@@ -24,9 +24,9 @@ Report presence/status only. Never include values.
 | --- | --- | --- | --- | --- |
 | Brave | yes/no | present/absent/not checked | free-tier-BYOK/premium-capable/disabled-no-key |  |
 | Tavily | yes/no | present/absent/not checked | free-tier-BYOK/premium-capable/disabled-no-key |  |
-| Jina | yes/no | present/absent/not checked | free-tier-BYOK/premium-capable/disabled-no-key |  |
 | Firecrawl | yes/no | present/absent/not checked | free-tier-BYOK/premium-capable/disabled-no-key |  |
 | DDGS | yes/no | not required | keyless-free fallback/control |  |
+| Scrapling | yes/no | configured/not configured/not checked | keyless-free local extract fallback |  |
 
 ## Scenario summary
 
@@ -50,9 +50,9 @@ Do not include private queries. Use scenario labels and public-safe descriptions
 | --- | ---: | ---: | ---: | ---: | --- | --- |
 | Brave |  |  |  |  |  |  |
 | Tavily |  |  |  |  |  |  |
-| Jina |  |  |  |  |  |  |
 | Firecrawl |  |  |  |  |  |  |
 | DDGS |  |  |  |  |  |  |
+| Scrapling |  |  |  |  |  |  |
 
 Allowed sanitized categories include:
 

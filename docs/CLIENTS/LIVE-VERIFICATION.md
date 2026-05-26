@@ -191,7 +191,7 @@ In addition, a single MCP stdio JSON-RPC round trip was performed against the wr
   - Limit: `1`
   - Provider used: `ddgs`
   - Compact routing insight: `Nólë: search docs via ddgs (free-first, 4/5 attempts, 1 result)`
-  - Route interpretation: Brave, Firecrawl, Jina and Tavily were unavailable to the Nólë MCP subprocess as disabled/no-key providers; DDGS was the keyless-free fallback under `free-first`. This is not a claim that DDGS is the benchmark-primary docs provider.
+  - Route interpretation: Brave, Firecrawl and Tavily were unavailable to the Nólë MCP subprocess as disabled/no-key providers; DDGS was the keyless-free fallback under `free-first`. This is not a claim that DDGS is the benchmark-primary docs provider.
   - Result URL: `https://pkg.go.dev/net/http`
 - Secret-safety: no provider key values, bearer tokens, auth headers, raw provider payloads, private URLs, machine-specific absolute paths or chat transcripts are recorded. Local runtime logs/transcripts were not committed.
 - Paid spend: none.

@@ -50,9 +50,9 @@ Allowed provider-key status examples:
 | --- | --- |
 | Brave | `present` / `absent` |
 | Tavily | `present` / `absent` |
-| Jina | `present` / `absent` |
 | Firecrawl | `present` / `absent` |
 | DDGS | `not required; keyless fallback/control` |
+| Scrapling | `configured` / `not configured`; local runtime, no remote key |
 
 ## Provider set
 
@@ -60,9 +60,9 @@ The controlled run may include:
 
 - Brave Search API for search tasks when configured and policy-allowed;
 - Tavily for search/extract tasks when configured and policy-allowed;
-- Jina for search/extract tasks when configured and policy-allowed;
 - Firecrawl for search/extract tasks when configured and policy-allowed;
-- DDGS as a keyless fallback/control only.
+- DDGS as a keyless search fallback/control only;
+- Scrapling as a local keyless extract fallback when `nole setup --local-extract` has configured it.
 
 DDGS must not be described as the benchmark-primary docs provider. Keyed providers must not be preferred merely because keys exist; route choices still need task fit, policy and evidence.
 

@@ -8,7 +8,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Op
 
 - Real OpenCode release was exercised on macOS (M11 live verification).
 - A `nole` MCP entry written directly into `~/.config/opencode/opencode.json` with the OpenCode-native schema is read by `opencode mcp list` and reports `nole connected`.
-- Tools observable through the same wrapper command path: `search`, `extract`, `provider_status`, `budget_status`.
+- Tools observable through the same wrapper command path: `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured.
 - One low-limit docs smoke search succeeded under `free-first` policy via the keyless DDGS fallback.
 - No key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths appear in the OpenCode entry; provider keys are loaded only by the wrapper at launch.
 
@@ -27,6 +27,7 @@ mkdir -p ~/.local/bin
 cp ./nole ~/.local/bin/nole
 export PATH="$HOME/.local/bin:$PATH"
 command -v nole
+nole setup --local-extract
 nole doctor --mcp
 ```
 
@@ -36,7 +37,7 @@ Recommended path against the installed OpenCode release:
 # Bare-binary form (OpenCode inherits your shell env / you do not need an env file):
 nole setup --opencode
 # Wrapper form (recommended when OpenCode launches without your shell env):
-nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --opencode --mcp-wrapper "$HOME/.local/bin/nole-mcp"
 ```
 
 Either invocation upserts the `nole` entry into `~/.config/opencode/opencode.json` using OpenCode's native schema:
@@ -89,7 +90,7 @@ Prefer process environment or a local wrapper script. Do not put raw key values 
 Mark this client `verified` only after:
 
 - `nole doctor --mcp` passes;
-- OpenCode sees `search`, `extract`, `provider_status`, `budget_status`;
+- OpenCode sees `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured;
 - a small docs search works;
 - no secret values are present in config or logs.
 
@@ -97,5 +98,6 @@ Mark this client `verified` only after:
 
 - Restart OpenCode after config changes.
 - Use absolute binary paths if PATH is not inherited.
+- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and restart OpenCode.
 - Check provider key visibility with `nole doctor`.
 - Keep HTTP/REST disabled unless explicitly testing experimental REST behavior.

@@ -9,7 +9,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Ki
 - Real Kimi CLI release was exercised on macOS (M11 live verification).
 - The MCP entry is registered via the official `kimi mcp add` CLI, pointing at `/absolute/path/to/nole-mcp`.
 - `kimi mcp list` reports `nole (stdio)`.
-- `kimi mcp test nole` reports `Connected` and `Available tools: 4`: `budget_status`, `extract`, `provider_status`, `search` (each tool description matches what Nólë advertises).
+- `kimi mcp test nole` reports `Connected` and the tools Nólë advertises: `budget_status`, `provider_status`, `search`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured.
 - One low-limit docs smoke search succeeded under `free-first` policy via the keyless DDGS fallback (shared smoke; recorded in `docs/CLIENTS/LIVE-VERIFICATION.md`).
 - No key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths were printed during verification; the wrapper sources `~/.config/nole/.env` only at launch.
 
@@ -24,10 +24,11 @@ mkdir -p ~/.local/bin
 cp ./nole ~/.local/bin/nole
 export PATH="$HOME/.local/bin:$PATH"
 command -v nole
+nole setup --local-extract
 nole doctor --mcp
 ```
 
-Create the env-sourcing wrapper at `~/.local/bin/nole-mcp` (`chmod 700`); see `docs/PROVIDER-KEYS.md` and `docs/AGENT-INSTALL.md`.
+`nole setup --local-extract` creates the env-sourcing wrapper at `~/.local/bin/nole-mcp` (`chmod 700`); see `docs/PROVIDER-KEYS.md` and `docs/AGENT-INSTALL.md`.
 
 Either run Nólë's built-in writer:
 
@@ -72,7 +73,7 @@ Mark this client `verified` only after:
 
 - `nole doctor` passes with key presence only;
 - `nole doctor --mcp` passes;
-- `kimi mcp test nole` reports `Connected` and shows the expected four tools: `search`, `extract`, `provider_status`, `budget_status`;
+- `kimi mcp test nole` reports `Connected` and shows `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured;
 - a small docs search works;
 - no credentials appear in config, logs or chat.
 
@@ -84,5 +85,6 @@ Mark this client `verified` only after:
 ## Troubleshooting
 
 - If `kimi mcp test nole` cannot connect, run `nole doctor --mcp` directly to confirm Nólë's MCP stdio is healthy and that key presence is detected.
+- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and restart the Kimi session.
 - If provider keys are missing inside Kimi but present in your interactive shell, confirm the wrapper exists and points to a built `nole` binary (`NOLE_BIN`, `command -v nole` or `~/.local/bin/nole` in order of preference).
 - If stdout pollution appears in Kimi's MCP logs, file a bug; `nole mcp` stdout must remain protocol-only.

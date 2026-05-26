@@ -25,14 +25,14 @@ Any MCP-compatible client that can launch a local stdio command should be able t
 
 Some clients use `servers`, `mcp`, TOML or YAML instead of `mcpServers`; adapt the schema but keep command semantics unchanged.
 
-## Required tools
+## Expected tools
 
 A working client should show these tools:
 
 - `search`
-- `extract`
 - `provider_status`
 - `budget_status`
+- `extract` when Tavily, Firecrawl or local Scrapling is configured
 
 ## Install and verify Nólë
 
@@ -42,6 +42,7 @@ cd nole
 go test ./...
 go build -o nole .
 ./nole doctor
+./nole setup --local-extract
 ./nole doctor --mcp
 ```
 
@@ -60,6 +61,10 @@ Do not print actual values. Use `nole doctor` to check presence only.
 ## Optional env-sourcing wrapper
 
 If the client does not inherit the shell environment that owns provider keys, register Nólë via a local wrapper that sources `~/.config/nole/.env` and execs `nole mcp`:
+
+```bash
+nole setup --local-extract
+```
 
 ```json
 {

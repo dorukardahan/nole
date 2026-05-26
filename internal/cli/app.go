@@ -22,6 +22,8 @@ import (
 )
 
 func defaultService() *core.Service {
+	loadDefaultNoleEnvFile()
+
 	registry := core.NewRegistry()
 
 	firecrawlKey := os.Getenv("FIRECRAWL_API_KEY")

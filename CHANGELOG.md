@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-26
+
+### Added
+
+- `nole setup --local-extract`, which creates an isolated Scrapling Python
+  runtime, installs `scrapling[fetchers]`, writes
+  `NOLE_SCRAPLING_PYTHON` to `~/.config/nole/.env` and generates an
+  env-sourcing MCP wrapper at `~/.local/bin/nole-mcp`.
+- Automatic loading of `~/.config/nole/.env` by Nólë commands. Values that
+  are already present in the process environment still take precedence.
+
+### Changed
+
+- Agent install docs now treat local Scrapling setup as part of the standard
+  GitHub-link install flow, so AI agents should not ask users to hand-create
+  `NOLE_SCRAPLING_PYTHON` in normal installs.
+
 ## [0.2.0] - 2026-05-26
 
 ### Added

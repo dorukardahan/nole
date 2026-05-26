@@ -10,7 +10,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Cl
 - The MCP entry is registered via the official `claude mcp add` CLI at user scope, pointing at `/absolute/path/to/nole-mcp`.
 - `claude mcp list` reports `nole` connected.
 - `claude mcp get nole` reports `Scope: User config`, `Type: stdio`, `Status: Connected`.
-- Tools observable through the same wrapper command path: `search`, `extract`, `provider_status`, `budget_status`.
+- Tools observable through the same wrapper command path: `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured.
 - One low-limit docs smoke search succeeded under `free-first` policy via the keyless DDGS fallback.
 - No key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths were printed during verification.
 
@@ -35,10 +35,10 @@ command -v nole
 Recommended path (works against the installed Claude Code release; sources keys via the wrapper):
 
 ```bash
-# 1. Create the env-sourcing wrapper (see docs/PROVIDER-KEYS.md and docs/AGENT-INSTALL.md).
-#    Wrapper lives at: ~/.local/bin/nole-mcp; chmod 700.
+# 1. Create the local extract runtime and env-sourcing wrapper.
+nole setup --local-extract
 # 2. Have nole print the official register command (no file is written):
-nole setup --claude --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --claude --mcp-wrapper "$HOME/.local/bin/nole-mcp"
 # 3. Run the printed command:
 claude mcp add nole -s user -- /absolute/path/to/nole-mcp
 # 4. Confirm the server is connected:
@@ -77,7 +77,7 @@ Mark this client `verified` only after:
 
 - `nole doctor` passes with key presence only;
 - `nole doctor --mcp` passes;
-- Claude Code shows MCP tools `search`, `extract`, `provider_status`, `budget_status`;
+- Claude Code shows MCP tools `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured;
 - a small docs search works;
 - no credentials appear in logs or chat.
 
@@ -90,6 +90,7 @@ Use Nólë to search for Go net/http Client Timeout documentation. Include one c
 ## Troubleshooting
 
 - If tools are missing, restart Claude Code after config changes.
+- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and restart Claude Code.
 - If provider keys are missing, check launch environment.
 - If MCP fails immediately, run `nole doctor --mcp` outside Claude Code.
 - If stdout pollution appears, file a bug; `nole mcp` stdout must remain protocol-only.

@@ -7,7 +7,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Co
 ## What is verified
 
 - Real Codex CLI release was exercised on macOS (M11 live verification).
-- `nole setup --codex` produced a working `[mcp_servers.nole]` block in `~/.codex/config.toml`.
+- `nole setup --codex` produced a working `[mcp_servers.nole]` block in `~/.codex/config.toml`; new installs should prefer `nole setup --codex --local-extract`.
 - `codex mcp list` reports `nole` enabled; `codex mcp get nole` reports `transport: stdio` with the env-sourcing shell line.
 - Tools observable through the same wrapper command path: `search`, `extract`, `provider_status`, `budget_status`.
 - One low-limit docs smoke search succeeded under `free-first` policy via the keyless DDGS fallback.
@@ -19,6 +19,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Co
 - Tests cover preserving existing config while replacing/upserting `[mcp_servers.nole]`.
 - The default generated command launches through `/bin/sh -lc`, sources `~/.config/nole/.env` if present, then executes `nole mcp`.
 - When `--mcp-wrapper /absolute/path/to/nole-mcp` is passed, the writer emits a simpler `command = "<wrapper>"`, `args = []` entry and defers env sourcing to the wrapper.
+- When `--local-extract` is passed, setup creates the local Scrapling runtime, writes `NOLE_SCRAPLING_PYTHON` to `~/.config/nole/.env` and generates `~/.local/bin/nole-mcp`.
 - `nole doctor --mcp` verifies Nólë's MCP stdio behavior.
 
 ## Setup
@@ -46,7 +47,7 @@ chmod 600 ~/.config/nole/.env
 Run:
 
 ```bash
-nole setup --codex
+nole setup --codex --local-extract
 nole doctor --mcp
 ```
 
@@ -68,7 +69,7 @@ Mark this client `verified` only after:
 
 - `nole doctor` passes;
 - `nole doctor --mcp` passes;
-- Codex CLI lists or can call Nólë MCP tools `search`, `extract`, `provider_status`, `budget_status`;
+- Codex CLI lists or can call Nólë MCP tools `search`, `provider_status`, `budget_status`, and `extract` when Tavily, Firecrawl or local Scrapling is configured;
 - a small docs search works;
 - no credentials appear in config, logs or chat.
 
@@ -81,6 +82,7 @@ Use Nólë to search for Go net/http Client Timeout documentation. Include one c
 ## Troubleshooting
 
 - If tools are missing, restart Codex CLI after setup.
+- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and restart Codex CLI.
 - If keys are missing, inspect `~/.config/nole/.env` permissions and syntax without printing values.
 - If existing Codex config changed unexpectedly, compare with the backup created by Nólë setup.
 - If MCP fails, run `nole doctor --mcp` directly.

@@ -9,11 +9,12 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. It
 1. Clone the repository.
 2. Build the `nole` binary.
 3. Put the binary on PATH or use an absolute path in MCP config.
-4. Set provider keys in the local environment if the user has them.
-5. Run `nole doctor` and `nole doctor --mcp`.
-6. Configure the chosen client to launch `nole mcp`.
-7. Verify MCP tool visibility.
-8. Run a first low-risk search.
+4. Run `nole setup --local-extract` when Python 3.10+ is available, so keyless local URL extraction is ready without extra user work.
+5. Set provider keys in the local environment if the user has them.
+6. Run `nole doctor` and `nole doctor --mcp`.
+7. Configure the chosen client to launch `nole mcp` or the generated `nole-mcp` wrapper.
+8. Verify MCP tool visibility.
+9. Run a first low-risk search.
 
 ## M8 agent handoff checklist
 
@@ -22,13 +23,14 @@ When an AI agent receives only the GitHub link and a user request to install Nó
 1. Confirm the target environment: local machine, SSH/VPS, container, GUI app, gateway or service process.
 2. Build from source and run `go test ./...`, `go vet ./...`, `./nole doctor` and `./nole doctor --mcp`.
 3. Install the binary to a user-local PATH directory or capture the absolute binary path for MCP config.
-4. Configure provider key variable names only if the user already owns the matching provider accounts; never ask the user to paste real values into chat.
-5. Keep default `NOLE_COST_POLICY=free-first` unless the user explicitly accepts premium-capable provider risk.
-6. Configure the selected client with `nole mcp` using a setup writer or manual config.
-7. Verify the client sees `search`, `extract`, `provider_status` and `budget_status`.
-8. Run one low-limit docs search and include only the compact `routing_insight` plus result URLs in the user-facing answer.
-9. Record unresolved client/env limitations truthfully; do not upgrade a client status label without real-client evidence.
-10. Scan changed configs/log snippets for key values, bearer tokens, auth headers, raw provider payloads, private paths and private URLs before sharing.
+4. Run `nole setup --local-extract` after the binary is installed. This creates `~/.local/share/nole/scrapling-venv`, installs `scrapling[fetchers]`, writes `~/.config/nole/.env` and generates `~/.local/bin/nole-mcp`. If Python 3.10+ is missing, install Python through the user's normal package manager before declaring local extraction ready.
+5. Configure provider key variable names only if the user already owns the matching provider accounts; never ask the user to paste real values into chat.
+6. Keep default `NOLE_COST_POLICY=free-first` unless the user explicitly accepts premium-capable provider risk.
+7. Configure the selected client with the setup writer and include `--local-extract` when possible, for example `nole setup --codex --local-extract` or `nole setup --hermes --local-extract`.
+8. Verify the client sees `search`, `provider_status`, `budget_status` and `extract` when Tavily, Firecrawl or local Scrapling is configured.
+9. Run one low-limit docs search and include only the compact `routing_insight` plus result URLs in the user-facing answer.
+10. Record unresolved client/env limitations truthfully; do not upgrade a client status label without real-client evidence.
+11. Scan changed configs/log snippets for key values, bearer tokens, auth headers, raw provider payloads, private paths and private URLs before sharing.
 
 ## Agent copy/paste install block
 
@@ -47,11 +49,12 @@ go vet ./...
 go build -o nole .
 mkdir -p "$NOLE_BIN_DIR"
 cp ./nole "$NOLE_BIN"
+"$NOLE_BIN" setup --local-extract
 "$NOLE_BIN" doctor
 "$NOLE_BIN" doctor --mcp
 ```
 
-After this succeeds, use `"$NOLE_BIN"` as the MCP command path if the client does not inherit PATH.
+After this succeeds, use `"$NOLE_BIN"` as the MCP command path if the client inherits the env file, or use `$HOME/.local/bin/nole-mcp` as the MCP command path for GUI/service clients that need the generated env-sourcing wrapper.
 
 ## PATH and absolute binary discovery
 
@@ -97,6 +100,14 @@ export NOLE_CACHE_TTL="5m"
 
 The quota ledger is file-backed by default at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json`). Set `NOLE_QUOTA_LEDGER_PATH` to override the path, or to `memory`/`off`/`none` to opt into per-restart reset. `NOLE_CACHE_TTL_SECONDS=300` is also accepted. Explicit `cost-capped` or `quality-first` settings can allow premium-capable providers, so do not promise absolute no-paid behavior when those policies are selected.
 
+For keyless local URL extraction, do not ask the user to hand-create `NOLE_SCRAPLING_PYTHON`. Run:
+
+```bash
+nole setup --local-extract
+```
+
+This writes `NOLE_SCRAPLING_PYTHON` into `~/.config/nole/.env` and creates the env-sourcing wrapper.
+
 ## Local machine install
 
 ```bash
@@ -116,6 +127,8 @@ mkdir -p ~/.local/bin
 cp ./nole ~/.local/bin/nole
 export PATH="$HOME/.local/bin:$PATH"
 nole doctor
+nole setup --local-extract
+nole doctor --mcp
 ```
 
 Use the absolute binary path in agent configs if the agent does not inherit PATH.
@@ -132,6 +145,7 @@ go build -o nole .
 mkdir -p ~/.local/bin
 cp ./nole ~/.local/bin/nole
 ~/.local/bin/nole doctor
+~/.local/bin/nole setup --local-extract
 ~/.local/bin/nole doctor --mcp
 ```
 
@@ -155,7 +169,7 @@ Rules:
 - Do not commit `.env` files.
 - Do not print key values while debugging.
 - Prefer provider dashboards with free-tier limits or overage disabled where available.
-- Default `NOLE_COST_POLICY` is `free-first`: a key alone is `premium-capable` and remains blocked from live calls unless the user explicitly chooses `cost-capped` with local estimates or `quality-first`.
+- Default `NOLE_COST_POLICY` is `free-first`: a key alone is treated as `free-tier-BYOK` and tracked against the local monthly quota. A provider becomes `premium-capable` only when the user explicitly sets `NOLE_<PROVIDER>_PAID=1`.
 
 A local env file can be useful for GUI apps that do not inherit shell env:
 
@@ -166,13 +180,21 @@ $EDITOR ~/.config/nole/.env
 chmod 600 ~/.config/nole/.env
 ```
 
-The file should contain shell-compatible `KEY=value` lines. Codex setup currently launches through `/bin/sh -lc` and sources this file before `nole mcp`; generic clients may need a wrapper script if they do not load shell env.
+The file should contain shell-compatible `KEY=value` lines. `nole setup --local-extract` writes `NOLE_SCRAPLING_PYTHON` there automatically. Nólë commands load this file without overriding existing process env values. Codex setup currently launches through `/bin/sh -lc` and sources this file before `nole mcp`; generic clients may need a wrapper script if they do not load shell env.
 
 See `docs/PROVIDER-KEYS.md`.
 
 ## Optional env-sourcing MCP wrapper
 
 Several MCP clients launch the configured `command` without inheriting the user's interactive shell environment (this is common for GUI apps, gateway/service processes and some agent runtimes). For those clients, register the MCP server through a small local wrapper that sources `~/.config/nole/.env` and execs `nole mcp`. The wrapper is local-only; do not commit it.
+
+Preferred path:
+
+```bash
+nole setup --local-extract
+```
+
+That command writes this wrapper to `~/.local/bin/nole-mcp`. The manual template below is only for recovery or custom paths.
 
 ```bash
 mkdir -p ~/.local/bin
@@ -232,10 +254,14 @@ nole setup --opencode   # writes ~/.config/opencode/opencode.json (native schema
 nole setup --kimi       # writes ~/.kimi/mcp.json
 nole setup --cursor     # writes ~/.cursor/mcp.json
 nole setup --windsurf   # writes ~/.codeium/windsurf/mcp_config.json
-nole setup --all        # all of the above
+nole setup --hermes     # writes ~/.hermes/config.yaml
+nole setup --local-extract          # prepares local Scrapling and ~/.local/bin/nole-mcp
+nole setup --codex --local-extract  # does both in one command
+nole setup --hermes --local-extract # does both in one command
+nole setup --all        # all client writers above; add --local-extract to prepare Scrapling too
 ```
 
-Non-Codex writers (and the Codex writer when the flag is given) accept `--mcp-wrapper /absolute/path/to/nole-mcp` to register an env-sourcing wrapper instead of the bare `nole mcp` binary. Use the wrapper form when the client launches without inheriting your interactive shell environment:
+When `--local-extract` is present and no custom wrapper is provided, setup writes and registers `~/.local/bin/nole-mcp` automatically. Non-Codex writers (and the Codex writer when the flag is given) also accept `--mcp-wrapper /absolute/path/to/nole-mcp` to register a custom env-sourcing wrapper instead of the bare `nole mcp` binary. Use the wrapper form when the client launches without inheriting your interactive shell environment:
 
 ```bash
 nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp
@@ -282,15 +308,15 @@ The agent should report the compact insight, not the full route trace, unless th
 The agent should see MCP tools similar to:
 
 - `search`
-- `extract`
 - `provider_status`
 - `budget_status`
+- `extract` when Tavily, Firecrawl or local Scrapling is configured
 
 ## Troubleshooting
 
 ### Go missing
 
-Install Go 1.23+ or use a user-local Go toolchain. Do not commit the toolchain into the repo.
+Install Go 1.25+ or use a user-local Go toolchain. Do not commit the toolchain into the repo.
 
 ### PATH issues
 
@@ -309,6 +335,17 @@ nole doctor
 ```
 
 Doctor should show key presence only, never the value. If a GUI app cannot see env vars, use a wrapper script or local `.env` file sourced by the launcher.
+
+### Scrapling/local extract not active
+
+Run:
+
+```bash
+nole setup --local-extract
+nole doctor --mcp
+```
+
+If Python 3.10+ is missing, install Python through the user's normal package manager and rerun the setup command. Do not tell the user to set `NOLE_SCRAPLING_PYTHON` by hand unless the automatic setup cannot be used in that environment.
 
 ### MCP stdout pollution
 

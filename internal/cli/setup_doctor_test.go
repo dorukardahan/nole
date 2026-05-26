@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -339,7 +340,7 @@ func TestDoctorCommandSurfacesPaidModeWarning(t *testing.T) {
 
 // TestDoctorCommandMCPFlagAssertExtractWhenKeyConfigured verifies the
 // conditional extract assertion introduced in checkMCPProtocolSmoke: when an
-// extract-capable BYOK key is set, doctor --mcp must pass (extract IS
+// extract-capable provider is configured, doctor --mcp must pass (extract IS
 // registered by the subprocess because it inherits the same env). A future
 // regression that accidentally hides extract registration would fail here.
 func TestDoctorCommandMCPFlagAssertExtractWhenKeyConfigured(t *testing.T) {
@@ -361,6 +362,37 @@ func TestDoctorCommandMCPFlagAssertExtractWhenKeyConfigured(t *testing.T) {
 	text := out.String()
 	if !strings.Contains(text, "extract") {
 		t.Fatalf("doctor --mcp output should mention the extract tool when key is configured:\n%s", text)
+	}
+}
+
+func TestDoctorCommandMCPFlagLoadsDefaultEnvFileForLocalExtract(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Python shell script is Unix-only")
+	}
+	bin := buildNoleBinary(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("NOLE_DISABLE_ENV_FILE", "")
+	unsetEnvForTest(t, "NOLE_SCRAPLING_PYTHON")
+
+	fakePython := writeFakeSetupPython(t, home)
+	venv := filepath.Join(home, "runtime", "scrapling")
+	if _, err := setupLocalExtract(localExtractOptions{Python: fakePython, VenvPath: venv}); err != nil {
+		t.Fatalf("setup local extract: %v", err)
+	}
+
+	t.Setenv("NOLE_MCP_SMOKE_BINARY", bin)
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"doctor", "--mcp"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("doctor --mcp should load ~/.config/nole/.env and expose extract; output:\n%s", out.String())
+	}
+	text := out.String()
+	if !strings.Contains(text, "extract") {
+		t.Fatalf("doctor --mcp output should mention extract after local-extract setup:\n%s", text)
 	}
 }
 

@@ -12,7 +12,7 @@ Default policy is `free-first` and each supported BYOK provider is classified as
 | Tavily | `TAVILY_API_KEY` | 1000 calls/month, monthly reset | `NOLE_TAVILY_PAID=1` | Free Researcher tier; no card required. Paid plans charge per credit; review the dashboard before flipping the opt-in. |
 | Firecrawl | `FIRECRAWL_API_KEY` | 1000 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Free quota refill semantics shifted in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume use. |
 | DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
-| Scrapling | `NOLE_SCRAPLING_PYTHON` | Local keyless extraction fallback, no counter | n/a | Points to a Python runtime with `scrapling[fetchers]` installed. Nólë validates public URLs before calling it, but website terms and robots.txt remain the user's responsibility. |
+| Scrapling | `NOLE_SCRAPLING_PYTHON` | Local keyless extraction fallback, no counter | n/a | Prefer `nole setup --local-extract`, which creates an isolated venv and writes this variable locally. Nólë validates public URLs before calling it, but website terms and robots.txt remain the user's responsibility. |
 
 The free-tier numbers above are conservative anchors verified 2026-05. They are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
 
@@ -35,10 +35,10 @@ Nólë currently reads:
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
-export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"  # optional local extract fallback
+export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"  # written by `nole setup --local-extract`
 ```
 
-DDGS is keyless and does not need a key. Scrapling is also keyless, but it is local Python software rather than a remote account; set `NOLE_SCRAPLING_PYTHON` only when that Python environment can import `scrapling.fetchers`.
+DDGS is keyless and does not need a key. Scrapling is also keyless, but it is local Python software rather than a remote account. Prefer `nole setup --local-extract`; it sets `NOLE_SCRAPLING_PYTHON` only after the created Python environment can import `scrapling.fetchers`.
 
 Per-provider paid opt-in (default: free-tier-BYOK). Use only when the user has a paid plan and wants Nólë to treat the provider as premium-capable so cost-capped or quality-first policies apply:
 
@@ -95,14 +95,21 @@ Variable names to set locally when you have the matching provider accounts:
 - `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY`
 - `TAVILY_API_KEY`
 - `FIRECRAWL_API_KEY`
+- `NOLE_SCRAPLING_PYTHON` is written automatically by `nole setup --local-extract`; manual edits are optional.
 
-Do not commit real values.
+Do not commit real values. Nólë commands load `~/.config/nole/.env` automatically and do not override variables that are already present in the process environment.
 
 Codex setup sources `~/.config/nole/.env` before launching `nole mcp`. Other clients may need a wrapper command such as `/bin/sh -lc 'set -a; [ -f "$HOME/.config/nole/.env" ] && . "$HOME/.config/nole/.env"; set +a; exec /absolute/path/to/nole mcp'`.
 
 ### Recommended wrapper script
 
-For non-Codex clients, the cleanest pattern is a tiny env-sourcing wrapper at `~/.local/bin/nole-mcp` (`chmod 700`):
+For non-Codex clients, the cleanest pattern is to let Nólë create a tiny env-sourcing wrapper at `~/.local/bin/nole-mcp`:
+
+```bash
+nole setup --local-extract
+```
+
+The manual wrapper template is:
 
 ```sh
 #!/bin/sh
@@ -137,6 +144,13 @@ nole setup --kimi     --mcp-wrapper /absolute/path/to/nole-mcp
 nole setup --cursor   --mcp-wrapper /absolute/path/to/nole-mcp
 nole setup --claude   --mcp-wrapper /absolute/path/to/nole-mcp   # prints the matching claude mcp add command
 nole setup --codex    --mcp-wrapper /absolute/path/to/nole-mcp   # uses a wrapper-direct launch line
+```
+
+When `--local-extract` is passed without `--mcp-wrapper`, setup writes and registers `~/.local/bin/nole-mcp` automatically:
+
+```bash
+nole setup --codex --local-extract
+nole setup --hermes --local-extract
 ```
 
 The wrapper keeps provider keys out of each per-client config file and ensures `nole mcp` always launches with the same env regardless of how the client is started.
@@ -212,7 +226,22 @@ Notes:
 
 Use for: local keyless URL extraction fallback.
 
-Setup:
+Preferred setup:
+
+```bash
+nole setup --local-extract
+nole doctor --mcp
+```
+
+This command:
+
+1. Creates or reuses `~/.local/share/nole/scrapling-venv`.
+2. Installs `scrapling[fetchers]` into that isolated Python environment when needed.
+3. Writes `NOLE_SCRAPLING_PYTHON` to `~/.config/nole/.env`.
+4. Writes `~/.local/bin/nole-mcp`, an env-sourcing MCP wrapper for GUI/service clients.
+5. Lets `nole doctor --mcp` expose the MCP `extract` tool even when no Tavily or Firecrawl key is set.
+
+Manual setup is still supported:
 
 1. Create or choose a local Python 3.10+ environment.
 2. Install the fetcher extras:
@@ -232,6 +261,7 @@ Setup:
 Notes:
 
 - Nólë keeps Tavily and Firecrawl first in the default extract route because that order is backed by existing route evidence. Scrapling is appended as a local fallback until comparable local extraction evidence exists.
+- Nólë does not vendor, copy or redistribute Scrapling code. It optionally installs the user-side Python package into a local venv. Scrapling's PyPI metadata lists BSD-3-Clause licensing; still keep attribution and upstream license notices intact if packaging changes in the future.
 - The service validates public URLs before calling providers. Scrapling still performs a real HTTP request from the local machine, so respect site terms, robots.txt and rate limits.
 - Do not point `NOLE_SCRAPLING_PYTHON` at a shell snippet. It must be an executable Python path; wrappers should exec Python directly and keep secrets out of command lines.
 
@@ -290,11 +320,12 @@ Important: this is a conservative local policy model, not a live provider billin
 
 Nólë is designed as a strict enhancement of whatever AI tool consumes it. The MCP surface adapts to which keys are configured:
 
-- **No keys at all:** `mcp__nole__search` is registered and routes via DDGS (keyless). `mcp__nole__extract` is **not** registered — the AI tool uses its own built-in HTTP fetch instead. `mcp__nole__provider_status` and `mcp__nole__budget_status` are always available.
-- **Only `BRAVE_API_KEY`:** Search routes Brave-first with DDGS fallback. Extract is still not registered (Brave has no extract capability); the AI tool's built-in fetch handles URL content.
+- **No keys and no local Scrapling runtime:** `mcp__nole__search` is registered and routes via DDGS (keyless). `mcp__nole__extract` is **not** registered — the AI tool uses its own built-in HTTP fetch instead. `mcp__nole__provider_status` and `mcp__nole__budget_status` are always available.
+- **No keys plus `nole setup --local-extract`:** Search routes via DDGS, and extract is registered through the local Scrapling runtime.
+- **Only `BRAVE_API_KEY`:** Search routes Brave-first with DDGS fallback. Extract is registered only if local Scrapling is configured; otherwise the AI tool's built-in fetch handles URL content.
 - **Only `TAVILY_API_KEY` or only `FIRECRAWL_API_KEY`:** Both `mcp__nole__search` and `mcp__nole__extract` are registered.
 - **Any two or all three:** Full feature set with redundancy on the overlapping capability.
 
-If you add a key mid-session, restart your AI tool (or its MCP connection) so the new tool surface is picked up.
+If you add a key or run `nole setup --local-extract` mid-session, restart your AI tool (or its MCP connection) so the new tool surface is picked up.
 
 `provider_status` returns a `setup_suggestions` array listing every missing key, what configuring it would unlock, where to sign up, and an `impact` rating (`high` / `medium` / `low`) so AI tools can decide what to surface. The first `search` response of an MCP session also carries a compact `setup_tip` summarizing the same information; subsequent searches in the same session omit it to avoid nagging.

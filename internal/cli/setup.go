@@ -45,6 +45,9 @@ func newSetupCommand() *cobra.Command {
 	var windsurf bool
 	var kimi bool
 	var hermes bool
+	var localExtract bool
+	var localExtractVenv string
+	var localExtractPython string
 	var wrapper string
 
 	cmd := &cobra.Command{
@@ -52,13 +55,14 @@ func newSetupCommand() *cobra.Command {
 		Short: "Configure AI agents to use nole as MCP server",
 		Long: "Writes MCP server configuration files for supported AI coding agents.\n" +
 			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, or --all.\n" +
+			"Use --local-extract to install an isolated Scrapling runtime and write NOLE_SCRAPLING_PYTHON.\n" +
 			"Use --mcp-wrapper /absolute/path/to/nole-mcp to register an env-sourcing wrapper instead of the bare binary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
 				claude, cursor, codex, opencode, kimi, windsurf, hermes = true, true, true, true, true, true, true
 			}
-			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes {
-				return fmt.Errorf("specify at least one agent: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, or --all")
+			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !localExtract {
+				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --local-extract, or --all")
 			}
 
 			binary, err := os.Executable()
@@ -78,6 +82,29 @@ func newSetupCommand() *cobra.Command {
 			out := cmd.OutOrStdout()
 			errOut := cmd.OutOrStderr()
 			configured := 0
+
+			if localExtract {
+				result, err := setupLocalExtract(localExtractOptions{
+					VenvPath: localExtractVenv,
+					Python:   localExtractPython,
+				})
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(out, "local-extract: configured Scrapling runtime at %s\n", result.PythonPath)
+				fmt.Fprintf(out, "local-extract: wrote %s\n", result.EnvPath)
+				if spec.Wrapper == "" {
+					wrapperPath, err := defaultMCPWrapperPath()
+					if err != nil {
+						return err
+					}
+					spec.Wrapper = wrapperPath
+				}
+				if err := writeMCPWrapper(spec.Wrapper, spec.Binary); err != nil {
+					return err
+				}
+				fmt.Fprintf(out, "local-extract: wrote env-sourcing MCP wrapper at %s\n", spec.Wrapper)
+			}
 
 			if claude {
 				// Claude is intentionally instruction-only — the writer does
@@ -141,7 +168,11 @@ func newSetupCommand() *cobra.Command {
 			fmt.Fprintln(out, "  export FIRECRAWL_API_KEY=...")
 			fmt.Fprintln(out, "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
 			fmt.Fprintln(out, "  export TAVILY_API_KEY=...")
-			fmt.Fprintln(out, "  Or store them in ~/.config/nole/.env; Codex setup sources that file without putting secrets in config.toml.")
+			fmt.Fprintln(out, "  Or store them in ~/.config/nole/.env; Nólë commands load it, and Codex setup plus the nole-mcp wrapper source it for MCP clients without putting secrets in client configs.")
+			if !localExtract {
+				fmt.Fprintln(out, "  Optional local extraction fallback:")
+				fmt.Fprintln(out, "    nole setup --local-extract")
+			}
 			if spec.Wrapper == "" {
 				fmt.Fprintln(out, "  For non-Codex clients that do not inherit shell env, point them at an env-sourcing wrapper:")
 				fmt.Fprintln(out, "    nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp")
@@ -158,6 +189,9 @@ func newSetupCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&kimi, "kimi", false, "configure Kimi CLI")
 	cmd.Flags().BoolVar(&windsurf, "windsurf", false, "configure Windsurf")
 	cmd.Flags().BoolVar(&hermes, "hermes", false, "configure Hermes Agent")
+	cmd.Flags().BoolVar(&localExtract, "local-extract", false, "install an isolated local Scrapling extract runtime and write NOLE_SCRAPLING_PYTHON")
+	cmd.Flags().StringVar(&localExtractVenv, "local-extract-venv", "", "absolute path for the local extract Python virtual environment (default: ~/.local/share/nole/scrapling-venv)")
+	cmd.Flags().StringVar(&localExtractPython, "python", "", "Python 3.10+ executable to use for creating the local extract virtual environment (default: auto-detect python3/python)")
 	cmd.Flags().StringVar(&wrapper, "mcp-wrapper", "", "absolute path to an env-sourcing MCP wrapper (e.g. ~/.local/bin/nole-mcp). Applies to non-Codex writers and changes the Codex launch line to call the wrapper directly.")
 	return cmd
 }

@@ -9,10 +9,10 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Cl
 | Client | Current status | Setup path | Notes |
 | --- | --- | --- | --- |
 | Claude Code | verified (CLI MCP manager) | `nole setup --claude` (prints `claude mcp add` instructions) or `claude mcp add nole -s user -- /absolute/path/to/nole-mcp` directly | Verified on macOS via `claude mcp list/get`; see `docs/CLIENTS/LIVE-VERIFICATION.md`. `nole setup --claude` no longer writes a stale `~/.claude/mcp.json`; it prints the exact `claude mcp add` invocation the installed Claude Code release reads. |
-| Codex CLI | verified (CLI MCP manager) | `nole setup --codex` or TOML block | Verified on macOS via `codex mcp list/get`; setup writer correctly sources `~/.config/nole/.env` inline. With `--mcp-wrapper` the writer emits a wrapper-direct launch line instead. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
+| Codex CLI | verified (CLI MCP manager) | `nole setup --codex --local-extract` or TOML block | Verified on macOS via `codex mcp list/get`; setup writer correctly sources `~/.config/nole/.env` inline. Add `--local-extract` during install so keyless local extraction is ready before Codex starts a session. With `--mcp-wrapper` the writer emits a wrapper-direct launch line instead. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
 | OpenCode | verified (CLI MCP manager) | `nole setup --opencode` (writes `~/.config/opencode/opencode.json`) or `opencode mcp add` | Verified on macOS via `opencode mcp list`. The `nole setup --opencode` writer now targets OpenCode's native path and schema (`{type, command, enabled, environment}`). See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
-| OpenClaw | verified (OpenClaw Gateway/agent MCP path) | `openclaw mcp set nole '{"command":"/absolute/path/to/nole-mcp","args":[]}'` | Verified on OpenClaw 2026.5.18 via a fresh Gateway-backed agent turn. OpenClaw loaded the wrapper-direct Nólë MCP entry, exposed `search`, `extract`, `provider_status`, `budget_status`, and dispatched `provider_status` plus one `limit=1` `free-first` DDGS search. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
-| Hermes Agent | verified (Hermes Agent MCP profile path) | `hermes mcp add nole --command /absolute/path/to/nole --args mcp` or generic MCP stdio template | Verified on Hermes Agent v0.14.0 in a 2026-05-20 follow-up run using a disposable cloned profile. Hermes loaded the Nólë MCP entry, exposed `search`, `extract`, `provider_status`, `budget_status`, and dispatched `provider_status` plus one `limit=1` `free-first` DDGS search. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
+| OpenClaw | verified (OpenClaw Gateway/agent MCP path) | `nole setup --local-extract`, then `openclaw mcp set nole '{"command":"/absolute/path/to/nole-mcp","args":[]}'` | Verified on OpenClaw 2026.5.18 via a fresh Gateway-backed agent turn. OpenClaw loaded the wrapper-direct Nólë MCP entry, exposed `search`, `extract`, `provider_status`, `budget_status`, and dispatched `provider_status` plus one `limit=1` `free-first` DDGS search. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
+| Hermes Agent | verified (Hermes Agent MCP profile path) | `nole setup --hermes --local-extract` or equivalent wrapper-direct MCP config | Verified on Hermes Agent v0.14.0 in a 2026-05-20 follow-up run using a disposable cloned profile. Hermes loaded the Nólë MCP entry, exposed `search`, `extract`, `provider_status`, `budget_status`, and dispatched `provider_status` plus one `limit=1` `free-first` DDGS search. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
 | Cursor | verified (GUI MCP path) | `nole setup --cursor --mcp-wrapper /absolute/path/to/nole-mcp` or generic MCP JSON | Verified on macOS in a 2026-05-20 follow-up run: Cursor 3.4.20 GUI MCP client loaded the wrapper-direct entry, and its chat agent dispatched Nólë `provider_status` and `search` by name end-to-end (one `limit=1` `free-first` DDGS result through Cursor). An unrelated existing MCP server in the user's Cursor config was preserved by the writer. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
 | Kimi | verified (CLI MCP manager) | `nole setup --kimi` (writes `~/.kimi/mcp.json`) or `kimi mcp add nole -- /absolute/path/to/nole-mcp` | Verified on macOS via `kimi mcp list` and `kimi mcp test nole` (4 tools reported). The `nole setup --kimi` writer is now in-repo and tested; it produces the same `{"mcpServers":{"nole":{...}}}` shape that `kimi mcp add` writes. See `docs/CLIENTS/LIVE-VERIFICATION.md`. |
 | Generic MCP clients | generic/unverified | command `/absolute/path/to/nole`, args `["mcp"]`, or `/absolute/path/to/nole-mcp` if env-sourcing is desired | Use for clients not listed above. Pass `--mcp-wrapper /absolute/path/to/nole-mcp` to any non-Codex setup writer to point the entry at the wrapper. |
@@ -58,7 +58,7 @@ If the client does not inherit the shell environment that owns provider keys (co
 }
 ```
 
-A wrapper template is documented in `docs/PROVIDER-KEYS.md` and `docs/AGENT-INSTALL.md`. The Codex CLI setup writer already inlines the same env-sourcing pattern in its TOML output, so Codex does not need a separate wrapper.
+A wrapper template is documented in `docs/PROVIDER-KEYS.md` and `docs/AGENT-INSTALL.md`. `nole setup --local-extract` writes the standard wrapper to `~/.local/bin/nole-mcp`; use that before configuring OpenClaw or GUI/service clients. The Codex CLI setup writer already inlines the same env-sourcing pattern in its TOML output, so Codex does not need a separate wrapper unless `--mcp-wrapper` is explicitly used.
 
 Non-Codex setup writers accept `--mcp-wrapper /absolute/path/to/nole-mcp` to emit the wrapper-direct entry instead of the bare-binary command. The Codex writer also accepts the flag and switches to a simpler wrapper-direct launch line (no inline `/bin/sh -lc`). Examples:
 
@@ -67,11 +67,12 @@ nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp
 nole setup --kimi     --mcp-wrapper /absolute/path/to/nole-mcp
 nole setup --cursor   --mcp-wrapper /absolute/path/to/nole-mcp
 nole setup --claude   --mcp-wrapper /absolute/path/to/nole-mcp   # prints the matching claude mcp add command
+nole setup --hermes   --local-extract                            # writes Hermes config and standard wrapper
 ```
 
 ## Environment and cost safety
 
-Provider keys should come from the process environment or a local-only wrapper/env file. Do not write key values into shared project config.
+Provider keys should come from the process environment or a local-only wrapper/env file. Nólë commands load `~/.config/nole/.env` automatically without overriding existing process env values. Do not write key values into shared project config.
 
 Recommended local-only env file pattern:
 
@@ -96,7 +97,7 @@ Before calling a client verified, record:
 4. Exact Nólë MCP entry or setup command used.
 5. `nole doctor` result summarized without key values.
 6. `nole doctor --mcp` result.
-7. Tool visibility for `search`, `extract`, `provider_status`, `budget_status`.
+7. Tool visibility for `search`, `provider_status`, `budget_status`, and `extract` when Tavily, Firecrawl or local Scrapling is configured.
 8. One low-limit docs search with compact `routing_insight` and result URLs.
 9. Confirmation that logs/config/chat contain no provider key values, bearer tokens, auth headers, raw provider payloads, private paths or private URLs.
 10. Troubleshooting notes for PATH/env inheritance.

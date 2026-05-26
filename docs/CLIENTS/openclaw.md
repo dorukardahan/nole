@@ -26,11 +26,12 @@ OpenClaw's verified MCP configuration mechanism is the CLI-managed MCP registry:
 Use OpenClaw's CLI rather than hand-editing when possible:
 
 ```bash
+nole setup --local-extract
 openclaw mcp set nole '{"command":"/absolute/path/to/nole-mcp","args":[]}'
 openclaw mcp show nole --json
 ```
 
-The wrapper sources `~/.config/nole/.env` and execs `nole mcp`; OpenClaw config must not contain provider key values.
+The wrapper sources `~/.config/nole/.env` and execs `nole mcp`; OpenClaw config must not contain provider key values. `nole setup --local-extract` creates that wrapper and writes the local Scrapling Python path into the env file.
 
 ## Install Nólë first
 
@@ -40,6 +41,7 @@ cd nole
 go test ./...
 go build -o nole .
 ./nole doctor
+./nole setup --local-extract
 ./nole doctor --mcp
 ```
 
@@ -61,5 +63,6 @@ The 2026-05-20 OpenClaw run verified:
 
 - Use an absolute path to `nole-mcp`.
 - If OpenClaw cannot see Nólë after `openclaw mcp set`, start a fresh agent session so the runtime reloads MCP definitions.
+- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and start a fresh agent session.
 - Run `nole doctor --mcp` directly to separate Nólë stdio issues from OpenClaw runtime issues.
 - Inspect OpenClaw logs only after redacting provider keys, auth headers, raw provider payloads, private URLs and local paths.
