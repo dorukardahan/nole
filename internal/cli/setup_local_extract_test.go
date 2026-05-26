@@ -59,6 +59,29 @@ func TestWriteMCPWrapperSourcesNoleEnvAndUsesBinaryFallback(t *testing.T) {
 	assertFileMode(t, wrapper, 0700)
 }
 
+func TestResolveSetupPythonPrefersStableVersionedPython(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Python shell script is Unix-only")
+	}
+	dir := t.TempDir()
+	python3 := filepath.Join(dir, "python3")
+	python313 := filepath.Join(dir, "python3.13")
+	for _, path := range []string{python3, python313} {
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir)
+
+	got, err := resolveSetupPython("")
+	if err != nil {
+		t.Fatalf("resolve setup python: %v", err)
+	}
+	if got != python313 {
+		t.Fatalf("resolveSetupPython chose %q, want %q", got, python313)
+	}
+}
+
 func TestSetupLocalExtractFlagWritesEnvAndWrapperWithoutAgent(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake Python shell script is Unix-only")

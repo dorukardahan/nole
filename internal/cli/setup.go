@@ -84,6 +84,7 @@ func newSetupCommand() *cobra.Command {
 			configured := 0
 
 			if localExtract {
+				fmt.Fprintln(out, "local-extract: preparing isolated Scrapling runtime (first run may take a few minutes)")
 				result, err := setupLocalExtract(localExtractOptions{
 					VenvPath: localExtractVenv,
 					Python:   localExtractPython,

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-26
+
+### Changed
+
+- `nole setup --local-extract` now auto-detects stable versioned Python
+  interpreters (`python3.13`, `python3.12`, `python3.11`, `python3.10`)
+  before falling back to generic `python3`/`python`. This avoids bleeding-edge
+  Python runtimes when a more compatible supported interpreter is available.
+- Local extract setup now prints a short "preparing runtime" line before the
+  first-run Python dependency install, so agent installers do not look idle
+  during the slow part of setup.
+
 ## [0.2.1] - 2026-05-26
 
 ### Added

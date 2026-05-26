@@ -93,12 +93,16 @@ func resolveSetupPython(raw string) (string, error) {
 	if python := strings.TrimSpace(raw); python != "" {
 		return python, nil
 	}
-	for _, name := range []string{"python3", "python"} {
+	for _, name := range setupPythonCandidates() {
 		if path, err := exec.LookPath(name); err == nil {
 			return path, nil
 		}
 	}
 	return "", fmt.Errorf("Python 3.10+ not found; install Python or pass --python /absolute/path/to/python3")
+}
+
+func setupPythonCandidates() []string {
+	return []string{"python3.13", "python3.12", "python3.11", "python3.10", "python3", "python"}
 }
 
 func ensurePythonVersion(python string) error {
