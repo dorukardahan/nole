@@ -288,8 +288,8 @@ func upsertHermesNoleServer(root *yaml.Node, spec launchSpec) error {
 
 	yamlMappingUpsert(nole, "command", yamlStringNode(spec.command()))
 	yamlMappingUpsert(nole, "args", yamlStringSequenceNode(spec.args()))
-	yamlMappingUpsert(nole, "timeout", yamlIntNode(120))
-	yamlMappingUpsert(nole, "connect_timeout", yamlIntNode(60))
+	yamlMappingUpsertIfMissing(nole, "timeout", yamlIntNode(120))
+	yamlMappingUpsertIfMissing(nole, "connect_timeout", yamlIntNode(60))
 	return nil
 }
 
@@ -317,6 +317,13 @@ func yamlMappingUpsert(mapping *yaml.Node, key string, value *yaml.Node) {
 		}
 	}
 	mapping.Content = append(mapping.Content, yamlStringNode(key), value)
+}
+
+func yamlMappingUpsertIfMissing(mapping *yaml.Node, key string, value *yaml.Node) {
+	if _, ok := yamlMappingLookup(mapping, key); ok {
+		return
+	}
+	yamlMappingUpsert(mapping, key, value)
 }
 
 func yamlStringNode(value string) *yaml.Node {

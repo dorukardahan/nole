@@ -499,7 +499,7 @@ func TestWriteHermesConfigRejectsNonMappingMCPServers(t *testing.T) {
 
 func TestWriteHermesConfigPreservesExistingNolePolicy(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	existing := []byte("mcp_servers:\n  nole:\n    command: /old/nole\n    args:\n      - mcp\n    tools:\n      resources: false\n      prompts: false\n    supports_parallel_tool_calls: true\n")
+	existing := []byte("mcp_servers:\n  nole:\n    command: /old/nole\n    args:\n      - mcp\n    timeout: 240\n    connect_timeout: 15\n    tools:\n      resources: false\n      prompts: false\n    supports_parallel_tool_calls: true\n")
 	if err := os.WriteFile(path, existing, 0640); err != nil {
 		t.Fatal(err)
 	}
@@ -525,6 +525,33 @@ func TestWriteHermesConfigPreservesExistingNolePolicy(t *testing.T) {
 	}
 	if nole["command"] != "/usr/local/bin/nole" {
 		t.Fatalf("nole command = %#v, want updated binary", nole["command"])
+	}
+	if nole["timeout"] != 240 || nole["connect_timeout"] != 15 {
+		t.Fatalf("existing timeout settings should be preserved, got timeout=%#v connect_timeout=%#v", nole["timeout"], nole["connect_timeout"])
+	}
+}
+
+func TestWriteHermesConfigAddsDefaultTimeoutsForNewNoleServer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	existing := []byte("mcp_servers:\n  other:\n    command: /usr/bin/other\n")
+	if err := os.WriteFile(path, existing, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHermesConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
+		t.Fatalf("write hermes config: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := map[string]any{}
+	if err := yaml.Unmarshal(b, &root); err != nil {
+		t.Fatalf("unmarshal hermes yaml: %v\n%s", err, string(b))
+	}
+	servers := root["mcp_servers"].(map[string]any)
+	nole := servers["nole"].(map[string]any)
+	if nole["timeout"] != 120 || nole["connect_timeout"] != 60 {
+		t.Fatalf("new nole server should get default timeouts, got timeout=%#v connect_timeout=%#v", nole["timeout"], nole["connect_timeout"])
 	}
 }
 
