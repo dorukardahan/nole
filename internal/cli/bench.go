@@ -12,6 +12,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/brave"
 	"github.com/dorukardahan/nole/internal/providers/ddgs"
 	"github.com/dorukardahan/nole/internal/providers/firecrawl"
+	"github.com/dorukardahan/nole/internal/providers/scrapling"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
 	"github.com/dorukardahan/nole/internal/safeerr"
 	"github.com/spf13/cobra"
@@ -114,17 +115,22 @@ func sortedKeys[V any](m map[string]V) []string {
 }
 
 func runComprehensiveBench(ctx context.Context, maxCases int) bench.Report {
-	providers := map[string]core.Provider{
-		"brave":     brave.New(),
-		"ddgs":      ddgs.New(),
-		"firecrawl": firecrawl.New(),
-		"tavily":    tavily.New(),
-	}
-	return bench.RunComprehensiveLive(ctx, bench.DefaultFixtureSet(), providers, bench.ComprehensiveOptions{
+	loadDefaultNoleEnvFile()
+	return bench.RunComprehensiveLive(ctx, bench.DefaultFixtureSet(), comprehensiveBenchProviders(), bench.ComprehensiveOptions{
 		MaxFixtures:    maxCases,
 		NetworkContext: os.Getenv("BENCH_NETWORK_CONTEXT"),
 		CostPolicy:     string(defaultQuotaPolicyFromEnv().Policy),
 	})
+}
+
+func comprehensiveBenchProviders() map[string]core.Provider {
+	return map[string]core.Provider{
+		"brave":     brave.New(),
+		"ddgs":      ddgs.New(),
+		"firecrawl": firecrawl.New(),
+		"scrapling": scrapling.New(),
+		"tavily":    tavily.New(),
+	}
 }
 
 func runLiveBench(ctx context.Context, maxCases int) bench.Report {

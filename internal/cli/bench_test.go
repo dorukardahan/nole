@@ -2,10 +2,14 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 )
 
@@ -76,6 +80,37 @@ func TestBenchCommandLiveModeRequiresExplicitFlagAndLowLimit(t *testing.T) {
 	}
 	if flag := cmd.Flags().Lookup("evidence-md"); flag == nil {
 		t.Fatal("bench command missing --evidence-md flag")
+	}
+}
+
+func TestComprehensiveBenchProviderSetIncludesLocalScrapling(t *testing.T) {
+	providers := comprehensiveBenchProviders()
+	p, ok := providers["scrapling"]
+	if !ok {
+		t.Fatalf("comprehensive provider set must include scrapling for local extract benchmarks; got %v", sortedKeys(providers))
+	}
+	if !core.HasCapability(p.Capabilities(), core.CapabilityExtract) {
+		t.Fatalf("scrapling comprehensive provider must advertise extract capability, got %v", p.Capabilities())
+	}
+}
+
+func TestRunComprehensiveBenchLoadsDefaultEnvFileBeforeConstructingProviders(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("NOLE_DISABLE_ENV_FILE", "")
+	unsetEnvForTest(t, "BRAVE_API_KEY")
+	envDir := filepath.Join(home, ".config", "nole")
+	if err := os.MkdirAll(envDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(envDir, ".env"), []byte("BRAVE_API_KEY=from-file\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	loadDefaultNoleEnvFile()
+	providers := comprehensiveBenchProviders()
+	if st := providers["brave"].Status(context.Background()); !st.Available {
+		t.Fatalf("brave should be available after loading default env file, got %#v", st)
 	}
 }
 

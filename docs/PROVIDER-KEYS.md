@@ -157,7 +157,7 @@ The wrapper keeps provider keys out of each per-client config file and ensures `
 
 ## Brave Search API
 
-Use for: broad search, docs, news/freshness, pricing and fallback routes.
+Use for: broad search and search fallback routes; current route evidence keeps it first for `general` and near the front for docs, people, pricing and semantic discovery.
 
 Default classification: `free-tier-BYOK`, 1000 calls/month, refilled at the start of each UTC month.
 
@@ -178,7 +178,7 @@ Notes:
 
 ## Tavily
 
-Use for: search, extract, semantic/people/fact-check/pricing tasks depending on evidence and policy.
+Use for: search, extract, academic/code/semantic tasks and fallback routes depending on evidence and policy.
 
 Default classification: `free-tier-BYOK`, 1000 calls/month (Researcher free tier), refilled at the start of each UTC month. No credit card on file.
 
@@ -195,7 +195,7 @@ Notes:
 
 ## Firecrawl
 
-Use for: search and extraction, especially code/social/docs scenarios when evidence supports it.
+Use for: search and extraction, especially docs/news/fact-check/people/pricing/research/social scenarios when evidence supports it.
 
 Default classification: `free-tier-BYOK`, 1000 calls/month, refilled at the start of each UTC month. No credit card on file.
 
@@ -224,7 +224,7 @@ Notes:
 
 ## Scrapling
 
-Use for: local keyless URL extraction fallback.
+Use for: local keyless URL extraction when configured, with remote extract providers as fallback.
 
 Preferred setup:
 
@@ -260,7 +260,7 @@ Manual setup is still supported:
 
 Notes:
 
-- Nólë keeps Tavily and Firecrawl first in the default extract route because that order is backed by existing route evidence. Scrapling is appended as a local fallback until comparable local extraction evidence exists.
+- Current route evidence puts configured local Scrapling first for `extract`, then Firecrawl and Tavily. If Scrapling is not configured, service-level status checks skip it and continue to the remote providers.
 - Nólë does not vendor, copy or redistribute Scrapling code. It optionally installs the user-side Python package into a local venv. Scrapling's PyPI metadata lists BSD-3-Clause licensing; still keep attribution and upstream license notices intact if packaging changes in the future.
 - The service validates public URLs before calling providers. Scrapling still performs a real HTTP request from the local machine, so respect site terms, robots.txt and rate limits.
 - Do not point `NOLE_SCRAPLING_PYTHON` at a shell snippet. It must be an executable Python path; wrappers should exec Python directly and keep secrets out of command lines.

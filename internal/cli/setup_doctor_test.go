@@ -259,6 +259,7 @@ func TestDoctorCommandReportsCostPolicyWithoutSecrets(t *testing.T) {
 
 func TestDoctorCommandFreeTierBYOKByDefault(t *testing.T) {
 	t.Setenv("TAVILY_API_KEY", "placeholder-test-key")
+	t.Setenv("NOLE_QUOTA_LEDGER_PATH", filepath.Join(t.TempDir(), "quota-ledger.json"))
 	cmd := NewRootCommand()
 	var out bytes.Buffer
 	cmd.SetOut(&out)

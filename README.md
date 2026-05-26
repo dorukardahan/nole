@@ -218,7 +218,7 @@ nole bench --live --max-live-cases 3 --json
 nole bench --live --max-live-cases 3 --evidence-md
 ```
 
-Route matrix changes should be backed by sanitized evidence. `docs/ROUTE-EVIDENCE.md` records the current deterministic fixture summary and states what it does not measure. Do not commit raw provider payloads, headers, private URLs or private queries.
+Route matrix changes should be backed by sanitized evidence. `docs/ROUTE-EVIDENCE.md` records the current deterministic fixture summary, dated live task-provider evidence where available, and states what each artifact does not measure. Do not commit raw provider payloads, headers, private URLs or private queries.
 
 See `docs/BENCHMARKS.md`.
 

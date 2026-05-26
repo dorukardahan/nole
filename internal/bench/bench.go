@@ -656,12 +656,17 @@ func defaultOfflineObservations() map[string]map[core.TaskType]Observation {
 			core.TaskResearch:  obs(5, .90, .84, .91, .84, 520),
 		},
 		"firecrawl": {
-			core.TaskGeneral:  obs(5, .86, .76, .86, .80, 850),
-			core.TaskDocs:     obs(5, .88, .82, .88, .78, 820),
-			core.TaskCode:     obs(5, .87, .80, .86, .78, 830),
-			core.TaskSocial:   obs(5, .88, .84, .84, .76, 900),
-			core.TaskResearch: obs(5, .84, .80, .84, .78, 880),
-			core.TaskExtract:  extractObs(.88, .80, .88, .78, 1200),
+			core.TaskGeneral:   obs(5, .86, .76, .86, .80, 850),
+			core.TaskNews:      obs(5, .92, .92, .92, .84, 650),
+			core.TaskDocs:      obs(5, .94, .86, .92, .84, 820),
+			core.TaskCode:      obs(5, .91, .82, .90, .82, 830),
+			core.TaskAcademic:  obs(5, .88, .78, .88, .84, 850),
+			core.TaskFactcheck: obs(5, .92, .86, .92, .84, 650),
+			core.TaskPeople:    obs(5, .92, .84, .90, .84, 950),
+			core.TaskPricing:   obs(5, .93, .90, .92, .84, 650),
+			core.TaskSocial:    obs(5, .90, .86, .84, .78, 700),
+			core.TaskResearch:  obs(5, .90, .84, .88, .84, 950),
+			core.TaskExtract:   extractObs(.88, .80, .88, .78, 1200),
 		},
 		"tavily": {
 			core.TaskGeneral:   obs(5, .82, .82, .84, .78, 1100),
@@ -680,6 +685,9 @@ func defaultOfflineObservations() map[string]map[core.TaskType]Observation {
 			core.TaskFactcheck: obs(5, .78, .76, .76, .74, 940),
 			core.TaskPricing:   obs(5, .78, .80, .78, .72, 930),
 			core.TaskResearch:  obs(5, .76, .74, .76, .72, 940),
+		},
+		"scrapling": {
+			core.TaskExtract: extractObs(.90, .82, .90, .82, 700),
 		},
 	}
 }

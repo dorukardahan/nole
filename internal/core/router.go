@@ -9,22 +9,22 @@ func DefaultRouteMatrix() RouteMatrix {
 	// docs/ROUTE-EVIDENCE.md; do not reorder providers without new evidence.
 	return RouteMatrix{
 		// Search tasks
-		TaskGeneral:   {"brave", "firecrawl", "ddgs", "tavily"},
-		TaskNews:      {"brave", "ddgs", "tavily", "firecrawl"},
-		TaskDocs:      {"brave", "firecrawl", "tavily", "ddgs"},
-		TaskAcademic:  {"brave", "tavily", "firecrawl", "ddgs"},
-		TaskFactcheck: {"brave", "tavily", "ddgs", "firecrawl"},
-		TaskSemantic:  {"tavily", "firecrawl", "brave", "ddgs"},
-		TaskCode:      {"brave", "firecrawl", "ddgs", "tavily"},
-		TaskSocial:    {"firecrawl", "ddgs", "brave", "tavily"},
-		TaskPeople:    {"tavily", "firecrawl", "brave", "ddgs"},
-		TaskPricing:   {"brave", "tavily", "firecrawl", "ddgs"},
-		TaskResearch:  {"brave", "firecrawl", "ddgs", "tavily"},
+		TaskGeneral:   {"brave", "tavily", "firecrawl", "ddgs"},
+		TaskNews:      {"firecrawl", "tavily", "brave", "ddgs"},
+		TaskDocs:      {"firecrawl", "brave", "tavily", "ddgs"},
+		TaskAcademic:  {"tavily", "firecrawl", "brave", "ddgs"},
+		TaskFactcheck: {"firecrawl", "tavily", "brave", "ddgs"},
+		TaskSemantic:  {"tavily", "brave", "firecrawl", "ddgs"},
+		TaskCode:      {"tavily", "firecrawl", "brave", "ddgs"},
+		TaskSocial:    {"firecrawl", "tavily", "brave", "ddgs"},
+		TaskPeople:    {"firecrawl", "brave", "tavily", "ddgs"},
+		TaskPricing:   {"firecrawl", "brave", "tavily", "ddgs"},
+		TaskResearch:  {"firecrawl", "tavily", "brave", "ddgs"},
 		// Extract tasks: only providers with extraction capability. Brave/DDGS are
 		// intentionally excluded even if URL-query benchmark scores are high.
-		// Scrapling is a local keyless fallback; keep the evidence-backed remote
-		// extraction order until local quality evidence supports reordering.
-		TaskExtract: {"tavily", "firecrawl", "scrapling"},
+		// Scrapling is local and keyless when configured. Service-level status
+		// checks skip it automatically when the local runtime is unavailable.
+		TaskExtract: {"scrapling", "firecrawl", "tavily"},
 	}
 }
 

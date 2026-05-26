@@ -2,7 +2,7 @@ package core
 
 import "testing"
 
-func TestRouterGeneralPrefersBraveThenFirecrawl(t *testing.T) {
+func TestRouterGeneralPrefersBrave(t *testing.T) {
 	registry := NewRegistry()
 	_ = registry.Register(fakeProvider{name: "brave"})
 	_ = registry.Register(fakeProvider{name: "firecrawl"})
@@ -55,7 +55,7 @@ func TestRouterReturnsNoFreeQuota(t *testing.T) {
 	}
 }
 
-func TestRouterExtractPrefersTavilyThenFirecrawl(t *testing.T) {
+func TestRouterExtractFallsBackWhenLocalScraplingUnavailable(t *testing.T) {
 	registry := NewRegistry()
 	_ = registry.Register(fakeProvider{name: "tavily"})
 	_ = registry.Register(fakeProvider{name: "firecrawl"})
@@ -67,12 +67,12 @@ func TestRouterExtractPrefersTavilyThenFirecrawl(t *testing.T) {
 	if err != nil {
 		t.Fatalf("select failed: %v", err)
 	}
-	if provider.Name() != "tavily" {
-		t.Fatalf("expected tavily, got %q", provider.Name())
+	if provider.Name() != "firecrawl" {
+		t.Fatalf("expected firecrawl fallback when scrapling is not registered, got %q", provider.Name())
 	}
 }
 
-func TestRouterExtractKeepsEvidenceBackedOrderWithScrapling(t *testing.T) {
+func TestRouterExtractPrefersConfiguredLocalScrapling(t *testing.T) {
 	registry := NewRegistry()
 	_ = registry.Register(fakeProvider{name: "tavily"})
 	_ = registry.Register(fakeProvider{name: "firecrawl"})
@@ -87,15 +87,15 @@ func TestRouterExtractKeepsEvidenceBackedOrderWithScrapling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("select failed: %v", err)
 	}
-	if provider.Name() != "tavily" {
-		t.Fatalf("expected evidence-backed tavily first, got %q with route %#v", provider.Name(), route)
+	if provider.Name() != "scrapling" {
+		t.Fatalf("expected evidence-backed scrapling first, got %q with route %#v", provider.Name(), route)
 	}
-	if len(route) != 3 || route[0] != "tavily" || route[1] != "firecrawl" || route[2] != "scrapling" {
-		t.Fatalf("extract route should append Scrapling as local fallback, got %#v", route)
+	if len(route) != 3 || route[0] != "scrapling" || route[1] != "firecrawl" || route[2] != "tavily" {
+		t.Fatalf("extract route should prefer local Scrapling then remote fallbacks, got %#v", route)
 	}
 }
 
-func TestRouterNewsPrefersBrave(t *testing.T) {
+func TestRouterNewsPrefersFirecrawl(t *testing.T) {
 	registry := NewRegistry()
 	_ = registry.Register(fakeProvider{name: "brave"})
 	_ = registry.Register(fakeProvider{name: "ddgs"})
@@ -111,8 +111,37 @@ func TestRouterNewsPrefersBrave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("select failed: %v", err)
 	}
-	if provider.Name() != "brave" {
-		t.Fatalf("expected brave for news, got %q", provider.Name())
+	if provider.Name() != "firecrawl" {
+		t.Fatalf("expected firecrawl for news, got %q", provider.Name())
+	}
+}
+
+func TestDefaultRouteMatrixMatchesLatestTaskBenchmarkEvidence(t *testing.T) {
+	matrix := DefaultRouteMatrix()
+	want := map[TaskType][]string{
+		TaskGeneral:   {"brave", "tavily", "firecrawl", "ddgs"},
+		TaskNews:      {"firecrawl", "tavily", "brave", "ddgs"},
+		TaskDocs:      {"firecrawl", "brave", "tavily", "ddgs"},
+		TaskAcademic:  {"tavily", "firecrawl", "brave", "ddgs"},
+		TaskFactcheck: {"firecrawl", "tavily", "brave", "ddgs"},
+		TaskSemantic:  {"tavily", "brave", "firecrawl", "ddgs"},
+		TaskCode:      {"tavily", "firecrawl", "brave", "ddgs"},
+		TaskSocial:    {"firecrawl", "tavily", "brave", "ddgs"},
+		TaskPeople:    {"firecrawl", "brave", "tavily", "ddgs"},
+		TaskPricing:   {"firecrawl", "brave", "tavily", "ddgs"},
+		TaskResearch:  {"firecrawl", "tavily", "brave", "ddgs"},
+		TaskExtract:   {"scrapling", "firecrawl", "tavily"},
+	}
+	for task, route := range want {
+		got := matrix[task]
+		if len(got) != len(route) {
+			t.Fatalf("%s route length = %d, want %d: %#v", task, len(got), len(route), got)
+		}
+		for i := range route {
+			if got[i] != route[i] {
+				t.Fatalf("%s route = %#v, want %#v", task, got, route)
+			}
+		}
 	}
 }
 
