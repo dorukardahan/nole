@@ -40,14 +40,16 @@ func hashSessionID(sessionID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// HasExtractCapableConfigured reports whether any BYOK provider that supports
-// the extract capability has its key configured in the environment. Used at
-// MCP tool-registration time to decide whether mcp__nole__extract should be
-// advertised at all. This avoids an expensive provider.Status HTTP probe at
-// startup: we read env vars directly instead. Exported so the doctor command
-// can mirror the MCP server's registration decision for its conditional smoke
-// assertion.
+// HasExtractCapableConfigured reports whether any extract provider is locally
+// configured. Used at MCP tool-registration time to decide whether the extract
+// tool should be advertised at all. For remote BYOK providers this checks keys;
+// for local providers such as Scrapling this checks the configured local runtime.
+// Exported so the doctor command can mirror the MCP server's registration
+// decision for its conditional smoke assertion.
 func HasExtractCapableConfigured() bool {
+	if os.Getenv("NOLE_SCRAPLING_PYTHON") != "" {
+		return true
+	}
 	for _, p := range core.BYOKProviders() {
 		if !p.SupportsExtract {
 			continue

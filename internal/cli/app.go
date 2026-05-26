@@ -16,6 +16,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/ddgs"
 	"github.com/dorukardahan/nole/internal/providers/firecrawl"
 	"github.com/dorukardahan/nole/internal/providers/mock"
+	"github.com/dorukardahan/nole/internal/providers/scrapling"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
 	"github.com/dorukardahan/nole/internal/safeerr"
 )
@@ -54,6 +55,9 @@ func defaultService() *core.Service {
 	// DDGS — keyless free, always available
 	_ = registry.Register(ddgs.New())
 
+	// Scrapling — local Python extractor, keyless/free when installed
+	_ = registry.Register(scrapling.New())
+
 	entries := defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey)
 	ledger := defaultQuotaLedger(defaultQuotaPolicyFromEnv(), entries)
 
@@ -70,6 +74,7 @@ func defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey string) []core.QuotaE
 		providerQuotaEntry("tavily", tavilyKey != ""),
 		providerQuotaEntry("firecrawl", firecrawlKey != ""),
 		{Provider: "ddgs", CostClass: core.CostClassKeylessFree, KeylessFree: true},
+		{Provider: "scrapling", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 	}
 }
 
