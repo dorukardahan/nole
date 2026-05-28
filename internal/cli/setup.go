@@ -334,6 +334,23 @@ func upsertHermesNoleServer(root *yaml.Node, spec launchSpec) error {
 	yamlMappingUpsert(nole, "args", yamlStringSequenceNode(spec.args()))
 	yamlMappingUpsertIfMissing(nole, "timeout", yamlIntNode(120))
 	yamlMappingUpsertIfMissing(nole, "connect_timeout", yamlIntNode(60))
+	if err := ensureHermesNoleToolPolicy(nole); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ensureHermesNoleToolPolicy(nole *yaml.Node) error {
+	tools, ok := yamlMappingLookup(nole, "tools")
+	if !ok {
+		tools = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		yamlMappingUpsert(nole, "tools", tools)
+	}
+	if tools.Kind != yaml.MappingNode {
+		return fmt.Errorf("existing hermes config mcp_servers.nole.tools must be a mapping")
+	}
+	yamlMappingUpsertIfMissing(tools, "resources", yamlBoolNode(false))
+	yamlMappingUpsertIfMissing(tools, "prompts", yamlBoolNode(false))
 	return nil
 }
 
@@ -376,6 +393,10 @@ func yamlStringNode(value string) *yaml.Node {
 
 func yamlIntNode(value int) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprintf("%d", value)}
+}
+
+func yamlBoolNode(value bool) *yaml.Node {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: fmt.Sprintf("%t", value)}
 }
 
 func yamlStringSequenceNode(values []string) *yaml.Node {

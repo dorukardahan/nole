@@ -103,7 +103,7 @@ Codex setup sources `~/.config/nole/.env` before launching `nole mcp`. Other cli
 
 ### Recommended wrapper script
 
-For non-Codex clients, the cleanest pattern is to let Nólë create a tiny env-sourcing wrapper at `~/.local/bin/nole-mcp`:
+For non-Codex clients, the cleanest pattern is to let Nólë create a tiny env-sourcing wrapper at `~/.local/bin/nole-mcp`. Prefer this for Hermes v0.15+ because Hermes filters stdio MCP subprocess environments by default:
 
 ```bash
 nole setup --local-extract

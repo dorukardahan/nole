@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Hermes Agent v2026.5.28 / v0.15.0 release-impact notes now document the
+  unchanged `mcp_servers` config shape, stricter MCP subprocess environment
+  filtering and the wrapper-first setup recommendation for provider keys and
+  local Scrapling.
+
 ### Changed
 
+- `nole setup --hermes` now writes an explicit Hermes MCP tool policy for new
+  Nólë server entries (`tools.resources=false`, `tools.prompts=false`) so the
+  v0.15 utility-tool surface stays limited to Nólë's native search/extract
+  tools unless the user deliberately changes it.
 - OpenClaw client docs now record the 2026-05-28 compatibility re-check on
   OpenClaw 2026.5.27 with the wrapper-backed MCP registry and local Scrapling
   available through the wrapper.

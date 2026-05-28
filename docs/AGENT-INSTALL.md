@@ -261,7 +261,7 @@ nole setup --hermes --local-extract # does both in one command
 nole setup --all        # all client writers above; add --local-extract to prepare Scrapling too
 ```
 
-When `--local-extract` is present and no custom wrapper is provided, setup writes and registers `~/.local/bin/nole-mcp` automatically. Non-Codex writers (and the Codex writer when the flag is given) also accept `--mcp-wrapper /absolute/path/to/nole-mcp` to register a custom env-sourcing wrapper instead of the bare `nole mcp` binary. Use the wrapper form when the client launches without inheriting your interactive shell environment:
+When `--local-extract` is present and no custom wrapper is provided, setup writes and registers `~/.local/bin/nole-mcp` automatically. Non-Codex writers (and the Codex writer when the flag is given) also accept `--mcp-wrapper /absolute/path/to/nole-mcp` to register a custom env-sourcing wrapper instead of the bare `nole mcp` binary. Use the wrapper form when the client launches without inheriting your interactive shell environment. This is the recommended Hermes v0.15+ path because Hermes filters stdio MCP subprocess environments unless variables are explicitly configured:
 
 ```bash
 nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp
@@ -271,6 +271,11 @@ nole setup --claude   --mcp-wrapper /absolute/path/to/nole-mcp   # prints the ma
 ```
 
 For any client, read the generated config before declaring success, and verify tool visibility inside the real client when possible. The Codex writer is the only one that inlines `~/.config/nole/.env` sourcing in its default output; with `--mcp-wrapper` it also defers env sourcing to the wrapper. See `docs/CLIENTS/LIVE-VERIFICATION.md` and `docs/NEXT-STEPS.md` for current per-client status.
+
+For Hermes, the setup writer also sets `tools.resources=false` and
+`tools.prompts=false` on new Nólë entries. That keeps Hermes' MCP utility-tool
+wrappers out of Nólë's search/extract surface unless the user deliberately
+changes the policy.
 
 ## Verification commands
 

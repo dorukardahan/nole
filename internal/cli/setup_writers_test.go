@@ -560,7 +560,7 @@ func TestWriteHermesConfigPreservesExistingNolePolicy(t *testing.T) {
 	}
 }
 
-func TestWriteHermesConfigAddsDefaultTimeoutsForNewNoleServer(t *testing.T) {
+func TestWriteHermesConfigAddsDefaultTimeoutsAndToolPolicyForNewNoleServer(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	existing := []byte("mcp_servers:\n  other:\n    command: /usr/bin/other\n")
 	if err := os.WriteFile(path, existing, 0640); err != nil {
@@ -581,6 +581,13 @@ func TestWriteHermesConfigAddsDefaultTimeoutsForNewNoleServer(t *testing.T) {
 	nole := servers["nole"].(map[string]any)
 	if nole["timeout"] != 120 || nole["connect_timeout"] != 60 {
 		t.Fatalf("new nole server should get default timeouts, got timeout=%#v connect_timeout=%#v", nole["timeout"], nole["connect_timeout"])
+	}
+	tools, ok := nole["tools"].(map[string]any)
+	if !ok {
+		t.Fatalf("new nole server should get explicit Hermes MCP tool policy, got %#v", nole["tools"])
+	}
+	if tools["resources"] != false || tools["prompts"] != false {
+		t.Fatalf("new nole server should disable MCP resource/prompt utility tools, got %#v", tools)
 	}
 }
 

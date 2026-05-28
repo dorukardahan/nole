@@ -1,8 +1,8 @@
 # Live client verification evidence (M11)
 
-Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs, plus a 2026-05-28 OpenClaw compatibility re-check.
+Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs, plus a 2026-05-28 OpenClaw compatibility re-check and Hermes v2026.5.28 source compatibility review.
 Run kind: local maintainer run, real clients launched.
-Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up); 2026-05-28 (OpenClaw 2026.5.27 compatibility re-check).
+Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up); 2026-05-28 (OpenClaw 2026.5.27 compatibility re-check); 2026-05-28 (Hermes Agent v2026.5.28 source compatibility review).
 Host description: macOS arm64 workstation with Go toolchain installed for M11/Cursor, and Ubuntu x86_64 VPS hosts with OpenClaw or Hermes Agent installed for the follow-up runs.
 Cost policy: free-first (default; no policy change during the run).
 Live provider calls: low-limit keyless smoke searches via DDGS only; each follow-up run records its own single search where applicable.
@@ -206,6 +206,16 @@ In addition, a single MCP stdio JSON-RPC round trip was performed against the wr
   - Result URL: `https://pkg.go.dev/net/http`
 - Secret-safety: no provider key values, bearer tokens, auth headers, raw provider payloads, private URLs, machine-specific absolute paths or chat transcripts are recorded. Local runtime logs/transcripts were not committed.
 - Paid spend: none.
+
+### Hermes Agent v2026.5.28 source compatibility review
+
+- Status: source-compatible review only; not a live client verification.
+- Reviewed upstream release: Hermes Agent v2026.5.28 / v0.15.0, published 2026-05-28.
+- Relevant upstream MCP surfaces: `mcp_servers` remains the config root; stdio servers still use `command` and `args`; `timeout`, `connect_timeout`, `tools.resources`, `tools.prompts`, `enabled` and `supports_parallel_tool_calls` are documented config keys.
+- Nólë setup impact: `nole setup --hermes` remains compatible and now writes `tools.resources=false` and `tools.prompts=false` for new Nólë entries so Hermes does not add resource/prompt utility wrappers to Nólë's web-search tool surface.
+- Environment impact: Hermes v0.15 documents stdio MCP subprocess credential filtering. Prefer `nole setup --hermes --local-extract` or `--mcp-wrapper` so Nólë gets `~/.config/nole/.env` through the env-sourcing wrapper instead of putting provider key values in Hermes config.
+- Verification still required before upgrading this status to v0.15 live-verified: run a disposable Hermes v0.15 profile, `hermes mcp test nole`, confirm tools visible, dispatch `mcp_nole_provider_status` and one low-limit search, then record sanitized evidence.
+- Secret-safety: this review records only public source/config shapes and no provider key values, bearer tokens, auth headers, raw provider payloads, private URLs, private paths or chat transcripts.
 
 ## Pending clients on these hosts
 

@@ -2,7 +2,7 @@
 
 Status: verified (Hermes Agent MCP profile path + chat-agent tool dispatch).
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Hermes Agent live verification is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` from a 2026-05-20 run on an Ubuntu x86_64 host with Hermes Agent installed.
+Nólë is a free, local web search router for AI agents and coding CLI tools. Hermes Agent live verification is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` from a 2026-05-20 run on an Ubuntu x86_64 host with Hermes Agent installed. Hermes Agent v2026.5.28 / v0.15.0 source compatibility was reviewed on 2026-05-28; keep the status label at v0.14 live-verified until a real v0.15 client run is recorded.
 
 The verified path used a disposable Hermes profile, not the active default gateway profile. The Nólë MCP server was registered as `nole` with a direct absolute Nólë binary command and `args: ["mcp"]`; committed docs use placeholder paths only.
 
@@ -32,9 +32,27 @@ mcp_servers:
   nole:
     command: /absolute/path/to/nole-mcp
     args: []
+    timeout: 120
+    connect_timeout: 60
+    tools:
+      resources: false
+      prompts: false
 ```
 
-If the Hermes runtime that will launch MCP tools does not inherit provider keys, use a local-only wrapper that sources `~/.config/nole/.env` and execs `nole mcp`, then point Hermes at the wrapper instead. Do not put key values in Hermes config.
+Hermes v0.15 filters stdio MCP subprocess environments by default: only safe baseline variables plus values explicitly placed in the MCP server config are passed through. For Nólë, the safer pattern is still the wrapper/env-file path, not putting provider key values in Hermes config. The wrapper sources `~/.config/nole/.env` and execs `nole mcp`; Nólë also loads that env file on startup. Do not put key values in Hermes config.
+
+The `tools.resources=false` and `tools.prompts=false` policy keeps Hermes from adding MCP resource/prompt utility wrappers for Nólë. Nólë's intended Hermes tool surface is its native MCP tools: `search`, `extract` when an extract provider is configured, `provider_status` and `budget_status`.
+
+## Hermes v0.15 source review
+
+Reviewed upstream release: Hermes Agent v2026.5.28 / v0.15.0, published 2026-05-28.
+
+Findings:
+
+- Required fix: none for the core config schema. Hermes still reads MCP servers from `~/.hermes/config.yaml` under `mcp_servers`, with `command`, `args`, `timeout`, `connect_timeout`, `tools`, and `enabled`.
+- High-value enhancement implemented in Nólë: new Hermes Nólë entries now include `tools.resources=false` and `tools.prompts=false`.
+- Operational note: prefer `nole setup --hermes --local-extract` so local Scrapling and provider keys are available through the wrapper after Hermes' stdio env filtering.
+- Optional exploration: a future upstream Hermes MCP catalog entry could make Nólë discoverable in `hermes mcp`, but that requires a Hermes upstream PR and is not part of this Nólë repo change.
 
 ## Install Nólë first
 
