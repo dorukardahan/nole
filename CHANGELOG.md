@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-05-28
+
 ### Added
 
 - Hermes Agent v2026.5.28 / v0.15.0 release-impact notes now document the
@@ -164,6 +166,10 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/dorukardahan/nole/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/dorukardahan/nole/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/dorukardahan/nole/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/dorukardahan/nole/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/dorukardahan/nole/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dorukardahan/nole/releases/tag/v0.1.0
