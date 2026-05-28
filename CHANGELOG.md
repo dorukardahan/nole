@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- OpenClaw client docs now record the 2026-05-28 compatibility re-check on
+  OpenClaw 2026.5.27 with the wrapper-backed MCP registry and local Scrapling
+  available through the wrapper.
+
 ## [0.2.2] - 2026-05-26
 
 ### Changed

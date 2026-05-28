@@ -1,8 +1,8 @@
 # Live client verification evidence (M11)
 
-Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs.
+Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs, plus a 2026-05-28 OpenClaw compatibility re-check.
 Run kind: local maintainer run, real clients launched.
-Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up).
+Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up); 2026-05-28 (OpenClaw 2026.5.27 compatibility re-check).
 Host description: macOS arm64 workstation with Go toolchain installed for M11/Cursor, and Ubuntu x86_64 VPS hosts with OpenClaw or Hermes Agent installed for the follow-up runs.
 Cost policy: free-first (default; no policy change during the run).
 Live provider calls: low-limit keyless smoke searches via DDGS only; each follow-up run records its own single search where applicable.
@@ -25,7 +25,7 @@ The verification is conservative. A client is only labeled `verified` when its r
 ## Versions and binaries
 
 - Nólë built from this branch; `nole doctor --mcp` reports `mcp: ok`, `stdout: startup-clean (0 bytes before protocol input)`, `protocol: initialize/tools/list (… non-json stdout lines: 0)`, `tools: [budget_status extract provider_status search]`.
-- Clients available on the verification hosts (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run); OpenClaw 2026.5.18 (2026-05-20 follow-up run); Hermes Agent v0.14.0 (2026-05-20 follow-up run).
+- Clients available on the verification hosts (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run); OpenClaw 2026.5.18 (2026-05-20 follow-up run); Hermes Agent v0.14.0 (2026-05-20 follow-up run); OpenClaw 2026.5.27 (2026-05-28 compatibility re-check).
 - Clients absent on the verification hosts (not exercised): generic MCP clients beyond the named clients above.
 
 ## Wrapper and launch patterns used by verified clients
@@ -170,6 +170,17 @@ In addition, a single MCP stdio JSON-RPC round trip was performed against the wr
   - Result URL: `https://pkg.go.dev/net/http`
 - Secret-safety: no key values, bearer tokens, auth headers, raw provider payloads, private URLs or machine-specific absolute paths are recorded. The OpenClaw MCP entry contains no key values; the wrapper sources `~/.config/nole/.env` at launch only.
 - Paid spend: none.
+
+### OpenClaw (2026-05-28 compatibility re-check)
+
+- Status: compatible (OpenClaw wrapper-backed MCP registry path).
+- Client version: OpenClaw 2026.5.27 (`27ae826`).
+- Config schema used by OpenClaw: `mcp.servers.nole`.
+- MCP entry shape: server name `nole`, wrapper command `nole-mcp`, 0 args, no provider key values in OpenClaw config.
+- `nole doctor --mcp` passed with `NOLE_MCP_SMOKE_BINARY` pointed at the OpenClaw wrapper: startup stdout clean, `initialize` and `tools/list` ok, tools `[budget_status extract provider_status search]`.
+- Provider surface through the wrapper: Brave, DDGS, Firecrawl, Scrapling and Tavily available; local Scrapling reported Python package `0.4.8`.
+- Cost policy: `free-first`; paid spend: none.
+- Secret-safety: no key values, bearer tokens, auth headers, raw provider payloads, private URLs or machine-specific absolute paths are recorded. Provider secrets remained in the local wrapper/env file, not in OpenClaw config.
 
 ### Hermes Agent (2026-05-20 follow-up run)
 

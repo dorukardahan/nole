@@ -4,7 +4,7 @@ Status: verified (OpenClaw Gateway/agent MCP path).
 
 Nólë is a free, local web search router for AI agents and coding CLI tools. OpenClaw can use Nólë through its saved outbound MCP server registry and Gateway-backed agent runtime.
 
-Live verification for OpenClaw 2026.5.18 is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md`.
+Live verification for OpenClaw 2026.5.18 and a compatibility re-check for OpenClaw 2026.5.27 are recorded in `docs/CLIENTS/LIVE-VERIFICATION.md`.
 
 ## Verified setup shape
 
@@ -44,6 +44,18 @@ go build -o nole .
 ./nole setup --local-extract
 ./nole doctor --mcp
 ```
+
+## 2026-05-28 Compatibility Re-Check
+
+OpenClaw 2026.5.27 was re-checked against the wrapper-backed MCP registry shape:
+
+- OpenClaw version: 2026.5.27 (`27ae826`).
+- Config surface: `mcp.servers.nole` stored in OpenClaw config.
+- Nólë launch: wrapper-direct command, `command_basename=nole-mcp`, 0 args, 0 env keys in OpenClaw config.
+- `nole doctor --mcp` passed with `NOLE_MCP_SMOKE_BINARY` pointed at the OpenClaw wrapper: startup-clean, `initialize` and `tools/list` ok, tools `[budget_status extract provider_status search]`.
+- Provider surface through the wrapper: Brave, DDGS, Firecrawl, Scrapling and Tavily available; Scrapling was local Python package `0.4.8`.
+- Cost policy: `free-first`; paid spend: none.
+- Secret-safety: provider key values stayed in the wrapper/env file and were not stored in OpenClaw config or recorded in verification notes.
 
 ## What is verified
 
