@@ -51,6 +51,8 @@ Priority v0.1 agent targets:
 | OpenClaw | Verified on OpenClaw 2026.5.18 via the Gateway/agent MCP path; compatibility re-checked on OpenClaw 2026.5.27 with the wrapper-backed MCP registry; see `docs/CLIENTS/LIVE-VERIFICATION.md` | Run `nole setup --local-extract`, then configure OpenClaw with `openclaw mcp set` and the generated env-sourcing wrapper. |
 | Hermes Agent | Verified on Hermes Agent v0.14.0 via disposable profile MCP path and chat-agent dispatch; v2026.5.28 / v0.15.0 source compatibility reviewed; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --hermes --local-extract` writes `~/.hermes/config.yaml`, prepares local Scrapling, uses the env-sourcing wrapper and preserves unrelated config. |
 | Cursor | Verified on macOS Cursor 3.4.20 via GUI MCP path and chat-agent dispatch; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --cursor --local-extract` preserves unrelated MCP servers and emits wrapper-direct config through the generated wrapper. |
+| Gemini CLI | Repo-tested: the `nole setup --gemini` writer and config merge are covered by repo tests; the real Gemini CLI was not launched here, so live tool visibility is unobserved. See `docs/CLIENTS/gemini.md` | `nole setup --gemini` writes `~/.gemini/settings.json` with an object-keyed `mcpServers` entry, merging only the `nole` server and preserving sibling servers and unknown root keys. |
+| Grok CLI | Repo-tested: the `nole setup --grok` writer and array upsert-by-`id` are covered by repo tests; the real Grok CLI was not launched here, so live tool visibility is unobserved. See `docs/CLIENTS/grok.md` | `nole setup --grok` writes `~/.grok/user-settings.json` with an `mcp.servers` array, upserting the `id == "nole"` entry in place (or appending) and preserving other servers and unknown root keys. |
 
 A client is only called verified after config path, tool visibility and `doctor --mcp` behavior are checked without printing credentials.
 
@@ -132,7 +134,7 @@ nole setup --hermes
 nole setup --opencode
 nole setup --codex --local-extract
 nole setup --hermes --local-extract
-# see `nole setup --help` for the full client list (cursor, kimi, windsurf, etc.)
+# see `nole setup --help` for the full client list (cursor, kimi, windsurf, gemini, grok, etc.)
 ```
 
 For unverified or generic clients, use the MCP command template:
@@ -254,7 +256,7 @@ automatically when a `v*.*.*` tag is pushed.
 See:
 
 - `docs/PUBLIC-RELEASE-CHECKLIST.md` for the release decision checklist.
-- `docs/RELEASE-NOTES-v0.2.3.md` for the current release notes.
+- `docs/RELEASE-NOTES-v0.3.0.md` for the current release notes.
 - `docs/PACKAGING.md` for release build automation and future package channels.
 - `docs/COST-QUOTA-CACHE-QUALITY.md` for the cost/quota/cache/output-quality audit.
 

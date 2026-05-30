@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-30
+
 ### Added
 
 - `nole setup --gemini` writer for Gemini CLI (`google-gemini/gemini-cli`):
@@ -20,8 +22,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.grok/user-settings.json`, preserving other servers, unknown per-entry
   fields, user `label`/`enabled`, and unknown root keys. Config shape verified
   from primary source; status is `repo-tested`. See `docs/CLIENTS/grok.md`.
+- `nole version` command, which prints the binary's version, commit, and build
+  date. Release builds now stamp `Commit` and `Date` via `ldflags` (alongside
+  the existing `Version`); a development build reports `unknown` for the
+  unstamped fields. See `scripts/check-release-builds.sh`.
+- `NOLE_CACHE_MAX_ENTRIES` to cap the per-map size of the in-process
+  search/extract cache (default `1024`). Documented in `AGENTS.md`.
 - `docs/ARCHITECTURE.md` (file:line-anchored codebase + dependency map) and
   `docs/RESEARCH-FINDINGS.md` (adversarially-verified improvement findings).
+
+### Changed
+
+- `internal/providers/providerhttp`: transport-level request failures
+  (connection reset, DNS blip, dropped keep-alive) are now retried while
+  attempts remain instead of returning on the first failure (which defeated
+  `MaxAttempts`); a dead context (cancel/deadline) is still not retried. HTTP
+  `408 Request Timeout` is now treated as a transient status and retried,
+  aligning the retry policy with its `statusCategory` label and RFC 9110.
+- The in-process search/extract cache is now bounded: once a map exceeds its
+  entry cap it evicts the oldest entry (FIFO by insertion time), so a
+  long-lived MCP server issuing many distinct queries no longer grows the
+  cache without limit. Default cap is `1024`; override with
+  `NOLE_CACHE_MAX_ENTRIES`.
+- Provider snippet and extracted-content truncation now uses
+  `core.TruncateRunes`, which truncates on a rune boundary instead of
+  byte-slicing, so non-ASCII text can no longer be split mid-UTF-8-sequence
+  into mojibake. Applied across the tavily, firecrawl, ddgs and scrapling
+  providers and the `research` summary synthesis.
+
+### Fixed
+
+- `internal/providers/ddgs`: result snippets could be attached to the wrong
+  result. The parser zipped two independently-collected match slices with a
+  counter that only advanced on kept links, so a skipped ad row (which can
+  carry its own `result__snippet`) shifted every subsequent organic snippet
+  onto the wrong result. Snippets are now paired to the link that physically
+  precedes them in the HTML by byte offset.
+- `internal/core/quota.go`: a future-dated `PeriodStart` (clock skew, or a
+  ledger copied from a host whose clock was ahead) was treated as the current
+  period and left a provider stranded as permanently exhausted. The refresh
+  guard now refills any period that is not exactly the current one,
+  self-healing a future-dated entry by resetting it to the current period.
 
 ## [0.2.4] - 2026-05-28
 
@@ -182,7 +223,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/dorukardahan/nole/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/dorukardahan/nole/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/dorukardahan/nole/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/dorukardahan/nole/compare/v0.2.1...v0.2.2
