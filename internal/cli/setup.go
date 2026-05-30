@@ -45,6 +45,8 @@ func newSetupCommand() *cobra.Command {
 	var windsurf bool
 	var kimi bool
 	var hermes bool
+	var gemini bool
+	var grok bool
 	var localExtract bool
 	var localExtractVenv string
 	var localExtractPython string
@@ -54,15 +56,15 @@ func newSetupCommand() *cobra.Command {
 		Use:   "setup",
 		Short: "Configure AI agents to use nole as MCP server",
 		Long: "Writes MCP server configuration files for supported AI coding agents.\n" +
-			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, or --all.\n" +
+			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --gemini, --grok, or --all.\n" +
 			"Use --local-extract to install an isolated Scrapling runtime and write NOLE_SCRAPLING_PYTHON.\n" +
 			"Use --mcp-wrapper /absolute/path/to/nole-mcp to register an env-sourcing wrapper instead of the bare binary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
-				claude, cursor, codex, opencode, kimi, windsurf, hermes = true, true, true, true, true, true, true
+				claude, cursor, codex, opencode, kimi, windsurf, hermes, gemini, grok = true, true, true, true, true, true, true, true, true
 			}
-			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !localExtract {
-				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --local-extract, or --all")
+			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !gemini && !grok && !localExtract {
+				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --gemini, --grok, --local-extract, or --all")
 			}
 
 			binary, err := os.Executable()
@@ -164,6 +166,22 @@ func newSetupCommand() *cobra.Command {
 					configured++
 				}
 			}
+			if gemini {
+				if err := writeGeminiConfig(spec); err != nil {
+					fmt.Fprintf(errOut, "gemini: %v\n", err)
+				} else {
+					fmt.Fprintln(out, "gemini: configured")
+					configured++
+				}
+			}
+			if grok {
+				if err := writeGrokConfig(spec); err != nil {
+					fmt.Fprintf(errOut, "grok: %v\n", err)
+				} else {
+					fmt.Fprintln(out, "grok: configured")
+					configured++
+				}
+			}
 
 			fmt.Fprintf(out, "\n%d agent(s) configured. Set provider keys before starting:\n", configured)
 			fmt.Fprintln(out, "  export FIRECRAWL_API_KEY=...")
@@ -190,6 +208,8 @@ func newSetupCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&kimi, "kimi", false, "configure Kimi CLI")
 	cmd.Flags().BoolVar(&windsurf, "windsurf", false, "configure Windsurf")
 	cmd.Flags().BoolVar(&hermes, "hermes", false, "configure Hermes Agent")
+	cmd.Flags().BoolVar(&gemini, "gemini", false, "configure Gemini CLI")
+	cmd.Flags().BoolVar(&grok, "grok", false, "configure Grok CLI")
 	cmd.Flags().BoolVar(&localExtract, "local-extract", false, "install an isolated local Scrapling extract runtime and write NOLE_SCRAPLING_PYTHON")
 	cmd.Flags().StringVar(&localExtractVenv, "local-extract-venv", "", "absolute path for the local extract Python virtual environment (default: ~/.local/share/nole/scrapling-venv)")
 	cmd.Flags().StringVar(&localExtractPython, "python", "", "Python 3.10+ executable to use for creating the local extract virtual environment (default: auto-detect python3/python)")
@@ -418,6 +438,154 @@ func writeWindsurfConfig(spec launchSpec) error {
 	}
 	path := filepath.Join(home, ".codeium", "windsurf", "mcp_config.json")
 	return writeMCPJSONConfig(path, spec)
+}
+
+// writeGeminiConfig writes Nólë's MCP entry to Gemini CLI's user-scope config.
+// Gemini CLI (google-gemini/gemini-cli) reads ~/.gemini/settings.json with a
+// top-level "mcpServers" object keyed by server name (object-keyed-by-name,
+// shallow-merged) — structurally identical to Cursor/Windsurf — so the shared
+// JSON writer applies directly and preserves unknown root keys and sibling
+// MCP servers. See docs/CLIENTS/gemini.md for the verified config shape.
+func writeGeminiConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".gemini", "settings.json")
+	return writeGeminiConfigPath(path, spec)
+}
+
+func writeGeminiConfigPath(path string, spec launchSpec) error {
+	return writeMCPJSONConfig(path, spec)
+}
+
+// writeGrokConfig writes Nólë's MCP entry to Grok CLI's user-scope config.
+// Grok CLI (superagent-ai/grok-cli, @vibe-kit/grok-cli) reads
+// ~/.grok/user-settings.json with a top-level "mcp" object whose "servers" is
+// an ARRAY of server objects keyed by an "id" field — unlike the object-keyed
+// schemas every other writer targets. The writer upserts the element with
+// id=="nole" in place (preserving unknown fields on it and all other servers)
+// or appends a new one, and preserves unknown root keys. See
+// docs/CLIENTS/grok.md for the verified config shape.
+func writeGrokConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".grok", "user-settings.json")
+	return writeGrokConfigPath(path, spec)
+}
+
+func writeGrokConfigPath(path string, spec launchSpec) error {
+	root, err := readJSONObject(path)
+	if err != nil {
+		return err
+	}
+	mcp := map[string]json.RawMessage{}
+	if raw, ok := root["mcp"]; ok && len(raw) > 0 {
+		if err := json.Unmarshal(raw, &mcp); err != nil {
+			return fmt.Errorf("parse existing grok mcp: %w", err)
+		}
+	}
+	var servers []json.RawMessage
+	if raw, ok := mcp["servers"]; ok && len(raw) > 0 {
+		if err := json.Unmarshal(raw, &servers); err != nil {
+			return fmt.Errorf("parse existing grok mcp.servers (must be an array): %w", err)
+		}
+	}
+	updated, err := upsertGrokNoleServer(servers, spec)
+	if err != nil {
+		return err
+	}
+	encodedServers, err := json.Marshal(updated)
+	if err != nil {
+		return fmt.Errorf("marshal grok mcp.servers: %w", err)
+	}
+	mcp["servers"] = encodedServers
+	encodedMCP, err := json.Marshal(mcp)
+	if err != nil {
+		return fmt.Errorf("marshal grok mcp: %w", err)
+	}
+	root["mcp"] = encodedMCP
+	return writeJSONConfig(path, root)
+}
+
+// upsertGrokNoleServer returns the servers array with the nole entry inserted
+// or updated in place. Launch-critical fields (id/transport/command/args) are
+// always (re)set so the entry points at the current binary or wrapper, while
+// user-customisable identity/policy fields (label/enabled) and any unknown
+// fields on an existing nole entry are preserved — mirroring the
+// preserve-then-update semantics of the Hermes writer.
+func upsertGrokNoleServer(servers []json.RawMessage, spec launchSpec) ([]json.RawMessage, error) {
+	out := make([]json.RawMessage, len(servers))
+	copy(out, servers)
+
+	idx := -1
+	for i, raw := range servers {
+		var probe struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &probe); err != nil {
+			return nil, fmt.Errorf("parse existing grok mcp.servers[%d]: %w", i, err)
+		}
+		if probe.ID == "nole" {
+			idx = i
+			break
+		}
+	}
+
+	entry := map[string]json.RawMessage{}
+	if idx >= 0 {
+		if err := json.Unmarshal(out[idx], &entry); err != nil {
+			return nil, fmt.Errorf("parse existing grok nole entry: %w", err)
+		}
+	}
+
+	set := func(key string, value any) error {
+		b, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("marshal grok nole.%s: %w", key, err)
+		}
+		entry[key] = b
+		return nil
+	}
+	setIfMissing := func(key string, value any) error {
+		if _, ok := entry[key]; ok {
+			return nil
+		}
+		return set(key, value)
+	}
+
+	for _, kv := range []struct {
+		key   string
+		value any
+	}{
+		{"id", "nole"},
+		{"transport", "stdio"},
+		{"command", spec.command()},
+		{"args", spec.args()},
+	} {
+		if err := set(kv.key, kv.value); err != nil {
+			return nil, err
+		}
+	}
+	if err := setIfMissing("label", "nole"); err != nil {
+		return nil, err
+	}
+	if err := setIfMissing("enabled", true); err != nil {
+		return nil, err
+	}
+
+	encoded, err := json.Marshal(entry)
+	if err != nil {
+		return nil, fmt.Errorf("marshal grok nole entry: %w", err)
+	}
+	if idx >= 0 {
+		out[idx] = encoded
+	} else {
+		out = append(out, encoded)
+	}
+	return out, nil
 }
 
 // resolveHomeDir returns os.UserHomeDir() with a more actionable error message

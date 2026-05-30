@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `nole setup --gemini` writer for Gemini CLI (`google-gemini/gemini-cli`):
+  merges a `nole` entry into `~/.gemini/settings.json`'s `mcpServers` object
+  (keyed by server name), preserving unknown root keys and sibling servers,
+  with `.bak` backup and preserved permissions. Config shape verified from
+  primary source; status is `repo-tested` (the real client was not launched in
+  this environment). See `docs/CLIENTS/gemini.md`.
+- `nole setup --grok` writer for Grok CLI (`superagent-ai/grok-cli`): upserts a
+  `nole` entry into the `mcp.servers` array (keyed by an `id` field) in
+  `~/.grok/user-settings.json`, preserving other servers, unknown per-entry
+  fields, user `label`/`enabled`, and unknown root keys. Config shape verified
+  from primary source; status is `repo-tested`. See `docs/CLIENTS/grok.md`.
+- `docs/ARCHITECTURE.md` (file:line-anchored codebase + dependency map) and
+  `docs/RESEARCH-FINDINGS.md` (adversarially-verified improvement findings).
+
 ## [0.2.4] - 2026-05-28
 
 ### Added

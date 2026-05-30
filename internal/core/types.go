@@ -1,6 +1,25 @@
 package core
 
-import "context"
+import (
+	"context"
+	"unicode/utf8"
+)
+
+// TruncateRunes returns s unchanged when it contains at most max runes;
+// otherwise it truncates on a rune boundary (never mid-UTF-8-sequence) and
+// appends an ellipsis. Provider snippets and extracted content are frequently
+// non-ASCII, so byte-slicing (s[:max]) could split a multibyte rune and emit
+// invalid UTF-8 (mojibake) in the trailing characters. A negative max is
+// treated as 0.
+func TruncateRunes(s string, max int) string {
+	if max < 0 {
+		max = 0
+	}
+	if utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	return string([]rune(s)[:max]) + "..."
+}
 
 type TaskType string
 
