@@ -29,6 +29,9 @@ required=(
   docs/CLIENTS/generic-mcp.md
   docs/CLIENTS/cursor.md
   docs/CLIENTS/kimi.md
+  docs/CLIENTS/gemini.md
+  docs/CLIENTS/grok.md
+  docs/CLIENTS/LIVE-VERIFICATION.md
   docs/CLIENTS/README.md
 )
 

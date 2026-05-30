@@ -91,6 +91,8 @@ When available, use built-in setup writers:
 nole setup --claude
 nole setup --codex
 nole setup --opencode
+nole setup --gemini
+nole setup --grok
 ```
 
 Generic MCP command:
@@ -116,6 +118,8 @@ Client docs:
 - `docs/CLIENTS/hermes.md`
 - `docs/CLIENTS/cursor.md`
 - `docs/CLIENTS/kimi.md`
+- `docs/CLIENTS/gemini.md`
+- `docs/CLIENTS/grok.md`
 - `docs/CLIENTS/generic-mcp.md`
 
 ## MCP smoke test expectations
