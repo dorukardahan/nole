@@ -51,7 +51,19 @@ func DoWithRetry(ctx context.Context, client *http.Client, req *http.Request, op
 		resp, err := client.Do(attemptReq)
 		if err != nil {
 			lastErr = err
-			return nil, err
+			// Transport-level failures (connection reset, DNS blip, dropped
+			// keep-alive) are transient and should be retried while attempts
+			// remain — the previous code returned on the first failure, so a
+			// momentary blip defeated MaxAttempts entirely. A dead context
+			// (cancel/deadline) is not retried: the caller is already gone and
+			// retrying would only burn attempts and obscure the real cause.
+			if ctx.Err() != nil || attempt == opts.MaxAttempts {
+				return nil, err
+			}
+			if sleepErr := opts.Sleep(ctx, retryDelay(http.Header{}, opts, attempt)); sleepErr != nil {
+				return nil, sleepErr
+			}
+			continue
 		}
 		if !isTransientStatus(resp.StatusCode) || attempt == opts.MaxAttempts {
 			return resp, nil
@@ -120,7 +132,9 @@ func capDelay(delay, max time.Duration) time.Duration {
 
 func isTransientStatus(status int) bool {
 	switch status {
-	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	// 408 is labelled "transient" by statusCategory (errors.go) and is
+	// retry-safe per RFC 9110; keep the retry policy aligned with that label.
+	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	default:
 		return false

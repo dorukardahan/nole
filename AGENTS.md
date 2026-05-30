@@ -56,6 +56,7 @@ Optional local state controls for long-running agent sessions:
 ```bash
 export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"  # local quota/cost ledger
 export NOLE_CACHE_TTL="5m"                                                # in-process normalized search/extract cache
+export NOLE_CACHE_MAX_ENTRIES="1024"                                      # optional per-map cache entry cap (default 1024)
 ```
 
 The quota ledger is file-backed by default at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json`). Override `NOLE_QUOTA_LEDGER_PATH` to point at a different path, or set it to `memory`/`off`/`none` to opt out of persistence (per-restart reset). The ledger and cache must not contain provider keys, auth headers or raw provider payloads.
@@ -91,6 +92,8 @@ When available, use built-in setup writers:
 nole setup --claude
 nole setup --codex
 nole setup --opencode
+nole setup --gemini
+nole setup --grok
 ```
 
 Generic MCP command:
@@ -116,6 +119,8 @@ Client docs:
 - `docs/CLIENTS/hermes.md`
 - `docs/CLIENTS/cursor.md`
 - `docs/CLIENTS/kimi.md`
+- `docs/CLIENTS/gemini.md`
+- `docs/CLIENTS/grok.md`
 - `docs/CLIENTS/generic-mcp.md`
 
 ## MCP smoke test expectations

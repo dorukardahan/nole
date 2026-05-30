@@ -90,30 +90,38 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 	html := string(bodyBytes)
 
-	// Extract result links (skip ad links containing duckduckgo.com/y.js)
-	linkMatches := reResultLink.FindAllStringSubmatch(html, -1)
-	snippetMatches := reResultSnippet.FindAllStringSubmatch(html, -1)
+	// Pair each result link with the snippet that physically follows it in the
+	// HTML, bounded by the next link's offset. The previous parser zipped two
+	// independently-collected slices with a counter that only advanced on kept
+	// links, so a skipped ad row — which can carry its own result__snippet —
+	// shifted every subsequent organic snippet onto the wrong result. Matching
+	// by byte offset keeps each snippet anchored to the link it belongs to.
+	linkMatches := reResultLink.FindAllStringSubmatchIndex(html, -1)
+	snippetMatches := reResultSnippet.FindAllStringSubmatchIndex(html, -1)
 
 	results := make([]core.SearchResult, 0)
-	snippetIdx := 0
 
-	for _, match := range linkMatches {
-		href := match[1]
-		title := cleanHTML(match[2])
+	for i, lm := range linkMatches {
+		href := html[lm[2]:lm[3]]
+		title := cleanHTML(html[lm[4]:lm[5]])
 
 		// Skip ad redirects
 		if strings.Contains(href, "duckduckgo.com/y.js") || strings.Contains(href, "bing.com/aclick") {
 			continue
 		}
 
+		nextLinkStart := len(html)
+		if i+1 < len(linkMatches) {
+			nextLinkStart = linkMatches[i+1][0]
+		}
 		snippet := ""
-		if snippetIdx < len(snippetMatches) {
-			snippet = cleanHTML(snippetMatches[snippetIdx][1])
-			snippetIdx++
+		for _, sm := range snippetMatches {
+			if sm[0] >= lm[0] && sm[0] < nextLinkStart {
+				snippet = cleanHTML(html[sm[2]:sm[3]])
+				break
+			}
 		}
-		if len(snippet) > 300 {
-			snippet = snippet[:300] + "..."
-		}
+		snippet = core.TruncateRunes(snippet, 300)
 
 		results = append(results, core.SearchResult{
 			Title:    title,

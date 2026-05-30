@@ -131,11 +131,9 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 }
 
 func sanitizeError(s string) string {
-	s = strings.TrimSpace(s)
-	if len(s) > 500 {
-		s = s[:500] + "..."
-	}
-	return s
+	// Python subprocess stderr can contain non-ASCII; truncate on a rune
+	// boundary so the trailing characters never become invalid UTF-8.
+	return core.TruncateRunes(strings.TrimSpace(s), 500)
 }
 
 const extractScript = `
