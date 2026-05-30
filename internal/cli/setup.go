@@ -45,6 +45,7 @@ func newSetupCommand() *cobra.Command {
 	var windsurf bool
 	var kimi bool
 	var hermes bool
+	var gemini bool
 	var localExtract bool
 	var localExtractVenv string
 	var localExtractPython string
@@ -54,15 +55,15 @@ func newSetupCommand() *cobra.Command {
 		Use:   "setup",
 		Short: "Configure AI agents to use nole as MCP server",
 		Long: "Writes MCP server configuration files for supported AI coding agents.\n" +
-			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, or --all.\n" +
+			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --gemini, or --all.\n" +
 			"Use --local-extract to install an isolated Scrapling runtime and write NOLE_SCRAPLING_PYTHON.\n" +
 			"Use --mcp-wrapper /absolute/path/to/nole-mcp to register an env-sourcing wrapper instead of the bare binary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
-				claude, cursor, codex, opencode, kimi, windsurf, hermes = true, true, true, true, true, true, true
+				claude, cursor, codex, opencode, kimi, windsurf, hermes, gemini = true, true, true, true, true, true, true, true
 			}
-			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !localExtract {
-				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --local-extract, or --all")
+			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !gemini && !localExtract {
+				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --gemini, --local-extract, or --all")
 			}
 
 			binary, err := os.Executable()
@@ -164,6 +165,14 @@ func newSetupCommand() *cobra.Command {
 					configured++
 				}
 			}
+			if gemini {
+				if err := writeGeminiConfig(spec); err != nil {
+					fmt.Fprintf(errOut, "gemini: %v\n", err)
+				} else {
+					fmt.Fprintln(out, "gemini: configured")
+					configured++
+				}
+			}
 
 			fmt.Fprintf(out, "\n%d agent(s) configured. Set provider keys before starting:\n", configured)
 			fmt.Fprintln(out, "  export FIRECRAWL_API_KEY=...")
@@ -190,6 +199,7 @@ func newSetupCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&kimi, "kimi", false, "configure Kimi CLI")
 	cmd.Flags().BoolVar(&windsurf, "windsurf", false, "configure Windsurf")
 	cmd.Flags().BoolVar(&hermes, "hermes", false, "configure Hermes Agent")
+	cmd.Flags().BoolVar(&gemini, "gemini", false, "configure Gemini CLI")
 	cmd.Flags().BoolVar(&localExtract, "local-extract", false, "install an isolated local Scrapling extract runtime and write NOLE_SCRAPLING_PYTHON")
 	cmd.Flags().StringVar(&localExtractVenv, "local-extract-venv", "", "absolute path for the local extract Python virtual environment (default: ~/.local/share/nole/scrapling-venv)")
 	cmd.Flags().StringVar(&localExtractPython, "python", "", "Python 3.10+ executable to use for creating the local extract virtual environment (default: auto-detect python3/python)")
@@ -417,6 +427,25 @@ func writeWindsurfConfig(spec launchSpec) error {
 		return err
 	}
 	path := filepath.Join(home, ".codeium", "windsurf", "mcp_config.json")
+	return writeMCPJSONConfig(path, spec)
+}
+
+// writeGeminiConfig writes Nólë's MCP entry to Gemini CLI's user-scope config.
+// Gemini CLI (google-gemini/gemini-cli) reads ~/.gemini/settings.json with a
+// top-level "mcpServers" object keyed by server name (object-keyed-by-name,
+// shallow-merged) — structurally identical to Cursor/Windsurf — so the shared
+// JSON writer applies directly and preserves unknown root keys and sibling
+// MCP servers. See docs/CLIENTS/gemini.md for the verified config shape.
+func writeGeminiConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".gemini", "settings.json")
+	return writeGeminiConfigPath(path, spec)
+}
+
+func writeGeminiConfigPath(path string, spec launchSpec) error {
 	return writeMCPJSONConfig(path, spec)
 }
 
