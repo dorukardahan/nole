@@ -116,7 +116,9 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		if snippet == "" {
 			snippet = r.Markdown
 		}
-		snippet = core.TruncateRunes(snippet, 300)
+		if len(snippet) > 300 {
+			snippet = snippet[:300] + "..."
+		}
 		results = append(results, core.SearchResult{
 			Title:    r.Title,
 			URL:      r.URL,

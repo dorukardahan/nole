@@ -595,13 +595,7 @@ func (l *MemoryQuotaLedger) refreshExpiredEntriesLocked(now string) bool {
 		if entry.FreeQuota <= 0 {
 			continue
 		}
-		// Skip only when there is no period or it is exactly the current
-		// period. A PeriodStart that differs from now is refreshed — this
-		// covers the normal past→current monthly rollover AND a future-dated
-		// PeriodStart (clock skew or a ledger copied from a host whose clock
-		// was ahead), which the previous `>= now` guard left stranded as
-		// permanently exhausted. Resetting to the current period self-heals it.
-		if entry.PeriodStart == "" || entry.PeriodStart == now {
+		if entry.PeriodStart == "" || entry.PeriodStart >= now {
 			continue
 		}
 		entry.FreeRemaining = entry.FreeQuota

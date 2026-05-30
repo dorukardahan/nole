@@ -199,7 +199,9 @@ func synthesizeSummary(question string, sources []ResearchSource, extracts []Res
 				}
 			}
 			content = strings.TrimSpace(content)
-			content = core.TruncateRunes(content, 300)
+			if len(content) > 300 {
+				content = content[:300] + "..."
+			}
 			sb.WriteString(fmt.Sprintf("%d. [%s](%s): %s\n\n", i+1, title, ext.URL, content))
 		}
 	}

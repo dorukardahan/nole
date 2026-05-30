@@ -20,9 +20,11 @@ func TestMessageNilReturnsEmpty(t *testing.T) {
 }
 
 func TestMessageRedactsPlainError(t *testing.T) {
-	err := errors.New("provider call failed: Authorization: Bearer super-secret-token-value")
+	// Fixture token uses a FAKE- prefix so the repo secret scanner allowlists
+	// it as an obvious non-secret; the Redact regex still matches and strips it.
+	err := errors.New("provider call failed: Authorization: Bearer FAKE-bearer-token-value")
 	got := Message(err)
-	if strings.Contains(got, "super-secret-token-value") {
+	if strings.Contains(got, "FAKE-bearer-token-value") {
 		t.Fatalf("Message leaked a bearer token: %q", got)
 	}
 	if !strings.Contains(got, "[REDACTED]") {
@@ -35,7 +37,10 @@ func TestMessageHTTPStatusErrorBypassesRedactAndStaysBodyFree(t *testing.T) {
 	// text rather than being run through the regex Redact path. This documents
 	// the intentional contract that the outer fmt.Errorf wrapping context is
 	// dropped (see safeerr.go: errors.As returns the inner status error).
-	base := providerhttp.NewHTTPStatusError("brave", "search", 503, []byte("api_key=leak-me-123456 secret body"))
+	// Fixture body uses FAKE- prefixed tokens so the repo secret scanner
+	// allowlists them; NewHTTPStatusError never stores the body anyway, so the
+	// assertion below proves the body content cannot reach the message text.
+	base := providerhttp.NewHTTPStatusError("brave", "search", 503, []byte("api_key=FAKEKEY-leak-me-123456 FAKE-body-content"))
 	wrapped := fmt.Errorf("brave provider call context: %w", base)
 
 	got := Message(wrapped)
@@ -45,7 +50,7 @@ func TestMessageHTTPStatusErrorBypassesRedactAndStaysBodyFree(t *testing.T) {
 	if !strings.Contains(got, "HTTP 503") || !strings.Contains(got, "response body redacted") {
 		t.Fatalf("structured status error text missing expected markers: %q", got)
 	}
-	if strings.Contains(got, "leak-me-123456") || strings.Contains(got, "secret body") {
+	if strings.Contains(got, "FAKEKEY-leak-me-123456") || strings.Contains(got, "FAKE-body-content") {
 		t.Fatalf("Message leaked raw response body content: %q", got)
 	}
 }

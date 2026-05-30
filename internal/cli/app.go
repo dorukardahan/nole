@@ -153,27 +153,10 @@ func defaultQuotaLedgerPath() string {
 }
 
 func defaultResponseCacheFromEnv() core.ResponseCache {
-	ttl := defaultCacheTTL()
-	if ttl <= 0 {
-		return nil
+	if ttl := defaultCacheTTL(); ttl > 0 {
+		return core.NewMemoryResponseCache(ttl)
 	}
-	cache := core.NewMemoryResponseCache(ttl)
-	if max := defaultCacheMaxEntries(); max > 0 {
-		cache.SetMaxEntries(max)
-	}
-	return cache
-}
-
-// defaultCacheMaxEntries reads an optional per-map cache size cap from
-// NOLE_CACHE_MAX_ENTRIES. Returns 0 (use the built-in DefaultCacheMaxEntries
-// bound) when unset or invalid.
-func defaultCacheMaxEntries() int {
-	if raw := strings.TrimSpace(os.Getenv("NOLE_CACHE_MAX_ENTRIES")); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			return n
-		}
-	}
-	return 0
+	return nil
 }
 
 func defaultCacheTTL() time.Duration {

@@ -118,7 +118,10 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 
 	results := make([]core.SearchResult, 0, len(tresp.Results))
 	for _, r := range tresp.Results {
-		snippet := core.TruncateRunes(r.Content, 300)
+		snippet := r.Content
+		if len(snippet) > 300 {
+			snippet = snippet[:300] + "..."
+		}
 		results = append(results, core.SearchResult{
 			Title:    r.Title,
 			URL:      r.URL,

@@ -12,13 +12,6 @@ const (
 	CacheStatusMiss = "miss"
 )
 
-// DefaultCacheMaxEntries bounds each of the search/extract cache maps so a
-// long-lived MCP server issuing many distinct queries cannot grow the cache
-// without limit (entries were previously only freed lazily on a Get that found
-// them TTL-expired, which may never happen for one-off queries). Override via
-// NOLE_CACHE_MAX_ENTRIES.
-const DefaultCacheMaxEntries = 1024
-
 type ResponseCache interface {
 	GetSearch(SearchRequest) (SearchResponse, bool)
 	SetSearch(SearchRequest, SearchResponse)
@@ -27,12 +20,11 @@ type ResponseCache interface {
 }
 
 type MemoryResponseCache struct {
-	mu         sync.Mutex
-	ttl        time.Duration
-	now        func() time.Time
-	maxEntries int
-	search     map[string]cachedSearchResponse
-	extract    map[string]cachedExtractResponse
+	mu      sync.Mutex
+	ttl     time.Duration
+	now     func() time.Time
+	search  map[string]cachedSearchResponse
+	extract map[string]cachedExtractResponse
 }
 
 type cachedSearchResponse struct {
@@ -54,23 +46,11 @@ func NewMemoryResponseCacheWithClock(ttl time.Duration, now func() time.Time) *M
 		now = time.Now
 	}
 	return &MemoryResponseCache{
-		ttl:        ttl,
-		now:        now,
-		maxEntries: DefaultCacheMaxEntries,
-		search:     map[string]cachedSearchResponse{},
-		extract:    map[string]cachedExtractResponse{},
+		ttl:     ttl,
+		now:     now,
+		search:  map[string]cachedSearchResponse{},
+		extract: map[string]cachedExtractResponse{},
 	}
-}
-
-// SetMaxEntries overrides the per-map entry cap. Values <= 0 are ignored so the
-// built-in DefaultCacheMaxEntries bound always remains in force.
-func (c *MemoryResponseCache) SetMaxEntries(n int) {
-	if c == nil || n <= 0 {
-		return
-	}
-	c.mu.Lock()
-	c.maxEntries = n
-	c.mu.Unlock()
 }
 
 func (c *MemoryResponseCache) GetSearch(req SearchRequest) (SearchResponse, bool) {
@@ -99,26 +79,6 @@ func (c *MemoryResponseCache) SetSearch(req SearchRequest, resp SearchResponse) 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.search[key] = cachedSearchResponse{storedAt: c.now(), resp: cloneSearchResponse(resp)}
-	for c.maxEntries > 0 && len(c.search) > c.maxEntries {
-		c.evictOldestSearchLocked()
-	}
-}
-
-// evictOldestSearchLocked removes the entry with the earliest storedAt. Callers
-// hold c.mu. Eviction is FIFO-by-insertion-time, which suits a TTL cache: the
-// oldest entry is also the closest to expiry.
-func (c *MemoryResponseCache) evictOldestSearchLocked() {
-	var oldestKey string
-	var oldest time.Time
-	found := false
-	for k, v := range c.search {
-		if !found || v.storedAt.Before(oldest) {
-			oldest, oldestKey, found = v.storedAt, k, true
-		}
-	}
-	if found {
-		delete(c.search, oldestKey)
-	}
 }
 
 func (c *MemoryResponseCache) GetExtract(req ExtractRequest) (ExtractResponse, bool) {
@@ -147,25 +107,6 @@ func (c *MemoryResponseCache) SetExtract(req ExtractRequest, resp ExtractRespons
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.extract[key] = cachedExtractResponse{storedAt: c.now(), resp: cloneExtractResponse(resp)}
-	for c.maxEntries > 0 && len(c.extract) > c.maxEntries {
-		c.evictOldestExtractLocked()
-	}
-}
-
-// evictOldestExtractLocked removes the extract entry with the earliest
-// storedAt. Callers hold c.mu.
-func (c *MemoryResponseCache) evictOldestExtractLocked() {
-	var oldestKey string
-	var oldest time.Time
-	found := false
-	for k, v := range c.extract {
-		if !found || v.storedAt.Before(oldest) {
-			oldest, oldestKey, found = v.storedAt, k, true
-		}
-	}
-	if found {
-		delete(c.extract, oldestKey)
-	}
 }
 
 func searchCacheKey(req SearchRequest) string {
