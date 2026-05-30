@@ -13,9 +13,9 @@ The process entrypoint is `main.go`, which builds the Cobra command tree and ren
 | Element | Anchor | Notes |
 |---|---|---|
 | `main` (process entry) | `main.go:11` | Builds root via `cli.NewRootCommand()`, executes, on error prints `safeerr.Message(err)` to stderr then `os.Exit(1)`. |
-| `NewRootCommand` (cobra root) | `internal/cli/root.go:7` | `Use="nole"`, `SilenceUsage+SilenceErrors=true`. Registers all 11 subcommands. |
+| `NewRootCommand` (cobra root) | `internal/cli/root.go:7` | `Use="nole"`, `SilenceUsage+SilenceErrors=true`. Registers all 12 subcommands. |
 
-Subcommands (registered `internal/cli/root.go:14-24`):
+Subcommands (registered `internal/cli/root.go:14-25`):
 
 | Subcommand | Constructor | Anchor | Role |
 |---|---|---|---|
@@ -29,9 +29,10 @@ Subcommands (registered `internal/cli/root.go:14-24`):
 | `doctor` | `newDoctorCommand` | `internal/cli/doctor.go:50` | Health + secret-presence + budget + optional `--mcp` smoke checks. |
 | `mcp` | `newMCPCommand` | `internal/cli/mcp.go:9` | stdio MCP transport: `server.ServeStdio(mcpserver.New(...))`. |
 | `serve` | `newServeCommand` | `internal/cli/serve.go:9` | HTTP server (requires `--mcp`); exposes `/mcp` JSON-RPC + REST + `/health`. |
-| `setup` | `newSetupCommand` | `internal/cli/setup.go:39` | Writes MCP client configs for 7 agents + optional local Scrapling bootstrap. |
+| `setup` | `newSetupCommand` | `internal/cli/setup.go:39` | Writes MCP client configs for 9 platforms (8 file writers + Claude instruction-only) + optional local Scrapling bootstrap. |
+| `version` | `newVersionCommand` | `internal/cli/version.go` | Prints `version.Version`/`Commit`/`Date`; the runtime consumer for the otherwise build-only stamp vars (added in this release). |
 
-There is no `version` subcommand and no cobra `Version` field, even though `internal/version` exists and is build-stamped (improvement seed below).
+The `version` subcommand (added in this release) lets the CLI report build identity; the MCP server also reports `version.Version`.
 
 ---
 
@@ -39,12 +40,12 @@ There is no `version` subcommand and no cobra `Version` field, even though `inte
 
 ### Area: entry-cli — CLI entrypoint + composition root (`main`, `cli/app`, `cli/root`, `version`)
 
-**Purpose.** Process entrypoint and dependency-composition root. `main.go` runs the Cobra tree and renders redacted errors to stderr. `cli/root.go` assembles the 11 subcommands. `cli/app.go` is the wiring layer that reads environment variables and constructs a fully-configured `core.Service` (provider registry, quota ledger, response cache, route matrix) plus shared JSON/insight/task-parsing helpers used by every subcommand. `internal/version` holds build-stamped identity vars consumed by the MCP server.
+**Purpose.** Process entrypoint and dependency-composition root. `main.go` runs the Cobra tree and renders redacted errors to stderr. `cli/root.go` assembles the 12 subcommands. `cli/app.go` is the wiring layer that reads environment variables and constructs a fully-configured `core.Service` (provider registry, quota ledger, response cache, route matrix) plus shared JSON/insight/task-parsing helpers used by every subcommand. `internal/version` holds build-stamped identity vars consumed by the MCP server.
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|
 | `main` | func | `main.go:11` | Entrypoint; builds root, executes, prints redacted error to stderr + `os.Exit(1)`. stdout clean on failure. |
-| `NewRootCommand` | func | `internal/cli/root.go:7` | Root cobra.Command; registers all 11 subcommands. |
+| `NewRootCommand` | func | `internal/cli/root.go:7` | Root cobra.Command; registers all 12 subcommands. |
 | `defaultService` | func | `internal/cli/app.go:24` | Central composition root: loads `.env`, builds `core.Registry`, registers real-or-mock providers + keyless ddgs/scrapling, assembles quota ledger + optional cache, returns `core.NewService(...)`. Discards every `registry.Register` error via `_ =`. |
 | `defaultQuotaLedger` | func | `internal/cli/app.go:83` | Selects ledger backend: memory/off/none → in-memory; else file-backed at `NOLE_QUOTA_LEDGER_PATH` or default path, with memory fallback. Has a redundant error branch (lines 120-125). |
 | `defaultQuotaLedgerPath` | func | `internal/cli/app.go:144` | Resolves on-disk ledger location; honors `XDG_STATE_HOME` only when absolute, else `~/.local/state/nole/quota-ledger.json`; "" when no home. |
@@ -57,7 +58,7 @@ There is no `version` subcommand and no cobra `Version` field, even though `inte
 | `runSearch` | func | `internal/cli/app.go:388` | Thin search facade; rejects empty query, calls `defaultService().Search` with `context.Background()`. Builds a new Service per call. |
 | `version` vars | var | `internal/version/version.go:3` | Build-stamped `Version`/`Commit`/`Date`. Only `Version` is read (`mcpserver/server.go:10`) and only `Version` is ldflag-stamped (`scripts/check-release-builds.sh:44`); Commit/Date are dead. |
 
-**Data flow.** `os/shell` → `main.main` (`main.go:11`) → `cli.NewRootCommand().Execute()`. Cobra dispatches to one of 11 subcommands. Each calls `defaultService()` (`app.go:24`) → `loadDefaultNoleEnvFile()` reads provider keys → `core.NewRegistry()` + `registry.Register(real-or-mock)` → `defaultQuotaEntries` (`app.go:73`) → per-provider `providerQuotaEntry` (`app.go:205`) → `defaultQuotaLedger` (`app.go:83`) → `defaultResponseCacheFromEnv`/`defaultCacheTTL` (`app.go:155/162`) → `core.NewService(registry, ledger, core.DefaultRouteMatrix(), opts)`. Output flows through `writeJSON` or `applyXxxInsightMode` + `writeHumanRoutingInsight` (`app.go:290-347`). Errors bubble to `main`, get redacted by `safeerr.Message` (`safeerr.go:18`), print to stderr. `version.Version` flows separately into `mcpserver.NewMCPServer`.
+**Data flow.** `os/shell` → `main.main` (`main.go:11`) → `cli.NewRootCommand().Execute()`. Cobra dispatches to one of 12 subcommands. Each calls `defaultService()` (`app.go:24`) → `loadDefaultNoleEnvFile()` reads provider keys → `core.NewRegistry()` + `registry.Register(real-or-mock)` → `defaultQuotaEntries` (`app.go:73`) → per-provider `providerQuotaEntry` (`app.go:205`) → `defaultQuotaLedger` (`app.go:83`) → `defaultResponseCacheFromEnv`/`defaultCacheTTL` (`app.go:155/162`) → `core.NewService(registry, ledger, core.DefaultRouteMatrix(), opts)`. Output flows through `writeJSON` or `applyXxxInsightMode` + `writeHumanRoutingInsight` (`app.go:290-347`). Errors bubble to `main`, get redacted by `safeerr.Message` (`safeerr.go:18`), print to stderr. `version.Version` flows separately into `mcpserver.NewMCPServer`.
 
 ### Area: core-routing — `internal/core` routing engine (route matrix, registry, deterministic planner, shared types, insight formatting)
 
@@ -176,7 +177,7 @@ There is no `version` subcommand and no cobra `Version` field, even though `inte
 
 ### Area: cli-setup — `nole setup` MCP client config writers + local-extract Scrapling bootstrap
 
-**Purpose.** Implements `nole setup`, registering Nole as an MCP server across seven AI coding agents (Claude, Cursor, Codex, OpenCode, Kimi, Windsurf, Hermes) and optionally bootstrapping an isolated local Scrapling runtime. Each agent has a bespoke writer that merges Nole's entry into the agent's native user-scope config (JSON/TOML/YAML) preserving unknown fields, file permissions, a `.bak` backup, and writing atomically. `--local-extract` provisions a Python venv, installs `scrapling[fetchers]`, persists `NOLE_SCRAPLING_PYTHON` to `~/.config/nole/.env`, and emits an env-sourcing shell wrapper.
+**Purpose.** Implements `nole setup`, registering Nole as an MCP server across nine AI coding agents (Claude, Cursor, Codex, OpenCode, Kimi, Windsurf, Hermes, Gemini, Grok) and optionally bootstrapping an isolated local Scrapling runtime. Each agent has a bespoke writer that merges Nole's entry into the agent's native user-scope config (JSON/TOML/YAML) preserving unknown fields, file permissions, a `.bak` backup, and writing atomically. `--local-extract` provisions a Python venv, installs `scrapling[fetchers]`, persists `NOLE_SCRAPLING_PYTHON` to `~/.config/nole/.env`, and emits an env-sourcing shell wrapper.
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|
@@ -343,24 +344,21 @@ Tracing a search request end to end (extract follows the same shape with an extr
 
 ## Setup-writer subsystem
 
-`nole setup` (`setup.go:39`) registers Nole as an MCP server across seven agents. Each writer merges only the `nole` entry into the agent's native user-scope config, preserving unknown sibling fields/comments, writing atomically via `atomicWriteFile` (`setup.go:768`) with a `.bak` backup and `configWriteMode` (`setup.go:759`) permission preservation.
+`nole setup` (`setup.go:39`) registers Nole as an MCP server across nine platforms (Claude is instruction-only, so eight write a file). Each writer merges only the `nole` entry into the agent's native user-scope config, preserving unknown sibling fields/comments, writing atomically via `atomicWriteFile` (`setup.go:936`) with a `.bak` backup and `configWriteMode` (`setup.go:927`) permission preservation.
 
 | Platform | Config path family | Serialization | Writer anchor | Notes |
 |---|---|---|---|---|
-| Claude | Managed by Claude Code CLI (no file written) | n/a (CLI command printed) | `printClaudeInstructions` `internal/cli/setup.go:204` | Instruction-only; prints `claude mcp add nole -s user -- ...`; not counted in configured total. |
-| Cursor | Cursor user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:438` | Shared with Windsurf; preserves unknown server fields via RawMessage map, replaces only `nole`. |
-| Windsurf | Windsurf user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:438` | Same shared JSON writer as Cursor. |
-| Codex | Codex TOML config | TOML | `writeCodexConfigPath` `internal/cli/setup.go:472` | Hand-rolled `[mcp_servers.nole]` table via `upsertCodexTomlTable` (508); `codexMCPServerBlock` (489) embeds `/bin/sh -lc 'set -a; . .env; exec nole mcp'` unless wrapper set. |
-| OpenCode | OpenCode JSON config (`mcp` key) | JSON | `writeOpenCodeConfigPath` `internal/cli/setup.go:566` | `{type:local, command:[bin,mcp], enabled, environment}` shape (`openCodeEntry` 591). |
-| Kimi | Kimi JSON config (`mcpServers` key) | JSON | `writeKimiConfigPath` `internal/cli/setup.go:639` | `{command}` in wrapper mode or `{command,args}` bare (`kimiEntryRaw` 663), matching `kimi mcp add` output. |
-| Hermes | Hermes YAML config (`mcp_servers.nole`) | YAML (`yaml.Node` tree) | `writeHermesConfigPath` `internal/cli/setup.go:253` | Comment-preserving via `yamlMappingUpsert` (369); `upsertHermesNoleServer` (314) sets command/args + default timeout=120/connect_timeout=60 + tools policy. |
+| Claude | Managed by Claude Code CLI (no file written) | n/a (CLI command printed) | `printClaudeInstructions` `internal/cli/setup.go:224` | Instruction-only; prints `claude mcp add nole -s user -- ...`; not counted in configured total. |
+| Cursor | Cursor user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:606` | Shared with Windsurf/Gemini; preserves unknown server fields via RawMessage map, replaces only `nole`. |
+| Windsurf | Windsurf user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:606` | Same shared JSON writer as Cursor. |
+| Codex | Codex TOML config | TOML | `writeCodexConfigPath` `internal/cli/setup.go:640` | Hand-rolled `[mcp_servers.nole]` table via `upsertCodexTomlTable`/`codexMCPServerBlock`; embeds `/bin/sh -lc 'set -a; . .env; exec nole mcp'` unless wrapper set. |
+| OpenCode | OpenCode JSON config (`mcp` key) | JSON | `writeOpenCodeConfigPath` `internal/cli/setup.go:734` | `{type:local, command:[bin,mcp], enabled, environment}` shape (`openCodeEntry`). |
+| Kimi | Kimi JSON config (`mcpServers` key) | JSON | `writeKimiConfigPath` `internal/cli/setup.go:807` | `{command}` in wrapper mode or `{command,args}` bare (`kimiEntryRaw`), matching `kimi mcp add` output. |
+| Hermes | Hermes YAML config (`mcp_servers.nole`) | YAML (`yaml.Node` tree) | `writeHermesConfigPath` `internal/cli/setup.go:273` | Comment-preserving via `yamlMappingUpsert`; `upsertHermesNoleServer` sets command/args + default timeout=120/connect_timeout=60 + tools policy. |
+| Gemini | `~/.gemini/settings.json` (`mcpServers` object keyed by name) | JSON | `writeGeminiConfig` `internal/cli/setup.go:449` | Delegates to `writeMCPJSONConfig` (same shape as Cursor). Status `repo-tested`; see `docs/CLIENTS/gemini.md`. |
+| Grok | `~/.grok/user-settings.json` (`mcp.servers` array keyed by `id`) | JSON | `writeGrokConfig` `internal/cli/setup.go:470` | Array upsert-by-`id` via `upsertGrokNoleServer`, preserving other servers + unknown fields. Status `repo-tested`; see `docs/CLIENTS/grok.md`. |
 
-**Not yet implemented (explicit new targets for Phase 2):**
-
-| Platform | Status | Notes |
-|---|---|---|
-| Gemini | NOT implemented | No writer in `setup.go`, no entry in the per-agent dispatch, no doc. Explicit new target. |
-| Grok | NOT implemented | No writer in `setup.go`, no entry in the per-agent dispatch, no doc. Explicit new target. |
+> **Update (this release):** Gemini and Grok — listed as Phase-2 targets when this map was first written — now have implemented, tested setup writers (rows above). Per-symbol anchors elsewhere in this Phase-1 map are point-in-time (see the note at the top); verify before relying on them. See `docs/RESEARCH-FINDINGS.md` and the CHANGELOG.
 
 Optional `--local-extract` (`setupLocalExtract` `setup_local_extract.go:26`) provisions an isolated Python venv, installs `scrapling[fetchers]`, persists `NOLE_SCRAPLING_PYTHON` to `~/.config/nole/.env`, and emits a 0700 POSIX `/bin/sh` env-sourcing wrapper (`writeMCPWrapper` `setup_local_extract.go:195`) so MCP clients that do not inherit shell env still find provider keys.
 
@@ -390,7 +388,7 @@ Optional `--local-extract` (`setupLocalExtract` `setup_local_extract.go:26`) pro
 | Module | Version | Role |
 |---|---|---|
 | `github.com/mark3labs/mcp-go` | v0.43.1 | MCP server library: `NewMCPServer`, `AddTool`, `ServeStdio`, in-process sessions, `HandleMessage`, JSON-RPC tool result/error types. Backbone of `internal/mcpserver` + the HTTP MCP bridge. |
-| `github.com/spf13/cobra` | v1.10.2 | CLI command framework for the root command and all 11 subcommands. |
+| `github.com/spf13/cobra` | v1.10.2 | CLI command framework for the root command and all 12 subcommands. |
 | `gopkg.in/yaml.v3` | v3.0.1 | `yaml.Node` tree parsing/marshaling for the comment-preserving Hermes setup writer. |
 | `github.com/bahlo/generic-list-go` | v0.2.0 (indirect) | Transitive dep of mcp-go / jsonschema tooling. |
 | `github.com/buger/jsonparser` | v1.1.1 (indirect) | Transitive (mcp-go JSON handling). |
@@ -440,11 +438,18 @@ Build toolchain: `go 1.25.10`. CI also invokes `golang.org/x/vuln/cmd/govulnchec
 
 This feeds Phase 2 research. Only seeds present in the area maps are listed.
 
+> **Note:** This is the Phase-1 snapshot. Several of these seeds were verified and
+> implemented in this same release — including the `version` command (consuming
+> `Commit`/`Date`), transport-error/408 retry, rune-safe truncation, the DDGS
+> snippet-alignment fix, the bounded cache, and the future-dated `PeriodStart`
+> self-heal. See `docs/RESEARCH-FINDINGS.md` (verified vs. proposed) and the
+> CHANGELOG for what shipped vs. what remains proposed.
+
 | Title | Area | Anchor | Confidence | Rationale |
 |---|---|---|---|---|
 | version.Commit and version.Date are dead code | quality | `internal/version/version.go:5` | high | Only `version.Version` is read (`mcpserver/server.go:10`) and only Version is ldflag-stamped (`check-release-builds.sh:44`); Commit/Date are declared but never consumed and always stay "unknown". Wire them in or remove. |
 | Redundant/unreachable error branch in defaultQuotaLedger | quality | `internal/cli/app.go:120` | high | `if err != nil && ledger != nil { return ledger }` (120-122) is identical to the following `if ledger != nil` (123-125); `NewFileQuotaLedgerWithPolicy` always returns non-nil, so the memory-fallback at 126-130 is unreachable for a non-empty path. |
-| No top-level version command despite version package | docs | `internal/cli/root.go:14` | medium | Root registers 11 subcommands but no `version` subcommand and no cobra Version field, though `internal/version` is build-stamped. CLI users/agents cannot query the running version. |
+| No top-level version command despite version package | docs | `internal/cli/root.go:14` | medium | Root registers 12 subcommands but no `version` subcommand and no cobra Version field, though `internal/version` is build-stamped. CLI users/agents cannot query the running version. |
 | defaultService() reconstructs the whole Service on every call | latency | `internal/cli/app.go:24` | medium | `runSearch` and other subcommands rebuild registry, re-open the file-backed ledger (disk read + lock), and allocate a fresh cache per invocation. Acceptable for per-turn MCP spawn; any in-process multi-call path pays full reconstruction + cold cache. No memoization. |
 | All registry.Register errors are silently discarded | stability | `internal/cli/app.go:38` | medium | Every `registry.Register(...)` discards its error with `_ =` (38,40,45,47,52,54,58,61). A duplicate/invariant violation is invisible at startup, surfacing only as a missing provider at routing time with no breadcrumb. |
 | Router.Select is dead code in production | quality | `internal/core/router.go:41` | high | `.Select(` appears only in `router_test.go`; `service.go` reads `s.router.matrix` directly (`service.go:260`) and re-walks providers itself. The two paths can drift; well-tested Select gives false confidence the runtime path is covered. |
