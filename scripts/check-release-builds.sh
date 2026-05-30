@@ -7,6 +7,8 @@ set -euo pipefail
 ROOT=$(git rev-parse --show-toplevel)
 OUT_DIR=${NOLE_BUILD_OUT:-"$(mktemp -d)"}
 VERSION=${NOLE_BUILD_VERSION:-"dev-build-check"}
+COMMIT=${NOLE_BUILD_COMMIT:-"$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"}
+DATE=${NOLE_BUILD_DATE:-"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
 TARGETS=(
   "linux/amd64"
   "linux/arm64"
@@ -41,7 +43,7 @@ for target in "${TARGETS[@]}"; do
     cd "$ROOT"
     CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build \
       -trimpath \
-      -ldflags "-s -w -X github.com/dorukardahan/nole/internal/version.Version=${VERSION}" \
+      -ldflags "-s -w -X github.com/dorukardahan/nole/internal/version.Version=${VERSION} -X github.com/dorukardahan/nole/internal/version.Commit=${COMMIT} -X github.com/dorukardahan/nole/internal/version.Date=${DATE}" \
       -o "$OUT_DIR/$name" .
   )
   test -s "$OUT_DIR/$name"
