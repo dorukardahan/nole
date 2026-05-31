@@ -3,7 +3,6 @@ package ddgs
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -76,15 +75,15 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		// included). Build a sanitized single-shot error here instead: it
 		// keeps the "rate limited" marker AND drops the raw body, recording
 		// only its size so observers know something was redacted.
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxSearchResponseBytes)
 		return core.SearchResponse{}, fmt.Errorf("ddgs: rate limited (HTTP 202; response body redacted, %d bytes)", len(body))
 	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxSearchResponseBytes)
 		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("ddgs", "search", resp.StatusCode, body)
 	}
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxSearchResponseBytes)
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("ddgs: read response: %w", err)
 	}
@@ -102,7 +101,13 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	results := make([]core.SearchResult, 0)
 
 	for i, lm := range linkMatches {
-		href := html[lm[2]:lm[3]]
+		// DDG HTML-escapes ampersands in the href attribute (e.g. a URL with
+		// multiple query params arrives as `?a=1&amp;b=2`). cleanHTML normalizes
+		// &amp; for title/snippet, but href must stay a raw URL — so apply ONLY
+		// the &amp;->& normalization here, not the full tag-strip/entity pass.
+		// (No uddg/redirect unwrap: html.duckduckgo.com/html/ never emits uddg
+		// or /l/ redirect wrappers, so QueryUnescape decoding would be dead code.)
+		href := reHTMLEntity.ReplaceAllString(html[lm[2]:lm[3]], "&")
 		title := cleanHTML(html[lm[4]:lm[5]])
 
 		// Skip ad redirects

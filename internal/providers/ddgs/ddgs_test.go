@@ -76,6 +76,39 @@ func TestDDGSSearchParsesHTMLWithoutNetwork(t *testing.T) {
 	}
 }
 
+func TestDDGSSearchDecodesAmpEntityInHref(t *testing.T) {
+	// DDG HTML-escapes ampersands in the href attribute, so a multi-param result
+	// URL arrives as `?a=1&amp;b=2`. The captured href must have &amp; normalized
+	// to & (the same normalization cleanHTML applies to title/snippet) so the
+	// emitted URL is a usable raw URL, not one carrying a literal entity.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`
+<html><body>
+<a class="result__a" href="https://example.com/p?a=1&amp;b=2&amp;c=3">Result</a>
+<a class="result__snippet" href="https://example.com/p">Snippet</a>
+</body></html>`))
+	}))
+	defer srv.Close()
+
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}}
+	resp, err := p.Search(context.Background(), core.SearchRequest{Query: "nole", Limit: 5})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(resp.Results))
+	}
+	got := resp.Results[0].URL
+	want := "https://example.com/p?a=1&b=2&c=3"
+	if got != want {
+		t.Fatalf("href = %q, want %q (&amp; must be normalized)", got, want)
+	}
+	if strings.Contains(got, "&amp;") {
+		t.Fatalf("href still carries literal &amp; entity: %q", got)
+	}
+}
+
 func TestDDGSSearchHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "blocked", http.StatusTooManyRequests)

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"time"
@@ -81,6 +80,12 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	if limit <= 0 {
 		limit = 5
 	}
+	// Defense in depth: clamp max_results to Tavily's documented ceiling (20)
+	// so an over-large caller limit degrades to the cap instead of risking a
+	// provider-side 4xx. Mirrors the brave provider's [1,20] clamp.
+	if limit > 20 {
+		limit = 20
+	}
 
 	body := tavilySearchRequest{
 		Query:         req.Query,
@@ -107,12 +112,12 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxSearchResponseBytes)
 		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("tavily", "search", resp.StatusCode, respBody)
 	}
 
 	var tresp tavilySearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tresp); err != nil {
+	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxSearchResponseBytes, &tresp); err != nil {
 		return core.SearchResponse{}, fmt.Errorf("tavily: decode response: %w", err)
 	}
 
@@ -177,12 +182,12 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxExtractResponseBytes)
 		return core.ExtractResponse{}, providerhttp.NewHTTPStatusError("tavily", "extract", resp.StatusCode, respBody)
 	}
 
 	var tresp tavilyExtractResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tresp); err != nil {
+	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxExtractResponseBytes, &tresp); err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("tavily: decode response: %w", err)
 	}
 

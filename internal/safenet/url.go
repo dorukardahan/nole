@@ -3,11 +3,33 @@ package safenet
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 )
 
 var lookupIP = net.LookupIP
+
+// extraBlockedPrefixes covers ranges that Go's net.IP classifiers (IsPrivate,
+// IsLoopback, IsLinkLocal*, IsMulticast, IsUnspecified) do NOT reject but that
+// are still unsafe SSRF targets: shared/CGNAT space, "this network", IETF
+// protocol assignments, benchmarking ranges, NAT64, and documentation ranges.
+// They are checked alongside the existing net.IP classifiers in validateIP.
+var extraBlockedPrefixes = func() []netip.Prefix {
+	cidrs := []string{
+		"100.64.0.0/10", // RFC 6598 shared address space (CGNAT)
+		"0.0.0.0/8",     // RFC 1122 "this network"
+		"192.0.0.0/24",  // RFC 6890 IETF protocol assignments
+		"198.18.0.0/15", // RFC 2544 benchmarking
+		"64:ff9b::/96",  // RFC 6052 NAT64 well-known prefix
+		"2001:db8::/32", // RFC 3849 documentation
+	}
+	prefixes := make([]netip.Prefix, 0, len(cidrs))
+	for _, c := range cidrs {
+		prefixes = append(prefixes, netip.MustParsePrefix(c))
+	}
+	return prefixes
+}()
 
 // ValidateURL performs a local, best-effort URL preflight before Nólë asks a
 // provider to fetch a URL. It blocks non-http(s) schemes, obvious local
@@ -39,6 +61,16 @@ func ValidateURL(rawURL string) error {
 			return fmt.Errorf("host %q is a blocked address: %w", host, err)
 		}
 		return nil
+	}
+
+	// Parser-differential SSRF guard: hosts like 0177.0.0.1, 0x7f.0.0.1, or
+	// 017700000001 fail Go's strict net.ParseIP but are read as 127.0.0.1 by
+	// libc/inet_aton-style resolvers. Such all-numeric (decimal, octal, or
+	// hex) dotted strings are never valid DNS names per RFC 3696/952, so we
+	// block them before they can fall through to lookupIP and resolve as a
+	// public-looking name.
+	if looksLikeNumericIP(host) {
+		return fmt.Errorf("host %q is a malformed or ambiguous numeric IP", host)
 	}
 
 	// Hostnames are resolved and every answer must be public. Blocking on DNS
@@ -75,7 +107,67 @@ func validateIP(ip net.IP) error {
 	if ip.Equal(net.ParseIP("169.254.169.254")) {
 		return fmt.Errorf("cloud metadata address %s is not allowed", ip)
 	}
+	if addr, ok := netip.AddrFromSlice(ip); ok {
+		addr = addr.Unmap()
+		for _, p := range extraBlockedPrefixes {
+			if p.Contains(addr) {
+				return fmt.Errorf("reserved address %s (%s) is not allowed", ip, p)
+			}
+		}
+	}
 	return nil
+}
+
+// looksLikeNumericIP reports whether host is a dotted string whose every label
+// is an all-decimal, octal (leading 0), or 0x-hex digit run. Such strings are
+// numeric IP attempts that failed strict net.ParseIP but may still be resolved
+// as an IP by libc/inet_aton backends; they are never valid DNS names per
+// RFC 3696/952. Real hostnames (3com.com, 123abc.com, a1.b2.c3) contain at
+// least one non-numeric label and are not matched.
+func looksLikeNumericIP(host string) bool {
+	// Strip a single trailing dot (FQDN form) so the numeric-IP forms this guard
+	// blocks are also caught when written as "0177.0.0.1." etc.
+	host = strings.TrimSuffix(host, ".")
+	if host == "" {
+		return false
+	}
+	for _, label := range strings.Split(host, ".") {
+		if !isNumericLabel(label) {
+			return false
+		}
+	}
+	return true
+}
+
+// isNumericLabel reports whether a single dot-separated label is a pure numeric
+// run: decimal digits, an octal form (leading 0 then octal digits), or a 0x/0X
+// hex form. A label containing any letter outside a valid hex run (e.g. "3com",
+// "123abc") is not numeric.
+func isNumericLabel(label string) bool {
+	if label == "" {
+		return false
+	}
+	// 0x / 0X hex form: at least one hex digit after the prefix.
+	if len(label) > 2 && label[0] == '0' && (label[1] == 'x' || label[1] == 'X') {
+		for _, c := range label[2:] {
+			if !isHexDigit(c) {
+				return false
+			}
+		}
+		return true
+	}
+	// Decimal or octal form: digits only. Octal (leading 0) is a strict subset
+	// of decimal digits here, so a single digit-only check covers both.
+	for _, c := range label {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isHexDigit(c rune) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }
 
 // IsBlockedHost performs a quick check on hostname without DNS resolution.

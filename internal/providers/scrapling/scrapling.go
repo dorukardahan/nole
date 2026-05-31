@@ -14,6 +14,56 @@ import (
 	"github.com/dorukardahan/nole/internal/core"
 )
 
+// Output caps bound the memory a single subprocess can consume. The ctx
+// timeout already bounds runtime; these bound RAM so a runaway or hostile
+// local fetch cannot OOM the host process. stdout is generous because it
+// carries extracted page content; stderr is small because it only carries
+// diagnostics.
+const (
+	maxStdoutBytes = 64 << 20 // 64 MiB
+	maxStderrBytes = 64 << 10 // 64 KiB
+)
+
+// cappedBuffer is an io.Writer that buffers at most max bytes. Once the cap is
+// exceeded it stops buffering and flags truncation; cmd.Run reports the write
+// error so callers can surface a clear "output too large" message instead of
+// growing without bound.
+type cappedBuffer struct {
+	buf       bytes.Buffer
+	max       int
+	truncated bool
+}
+
+func newCappedBuffer(max int) *cappedBuffer { return &cappedBuffer{max: max} }
+
+// Write appends up to the remaining capacity and returns an error once the cap
+// is exceeded. Returning a non-nil error makes os/exec abandon further reads,
+// so the buffer never grows past max.
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	if c.truncated {
+		return 0, errCapExceeded
+	}
+	remaining := c.max - c.buf.Len()
+	if len(p) <= remaining {
+		return c.buf.Write(p)
+	}
+	// Keep whatever still fits, then signal the overflow.
+	if remaining > 0 {
+		c.buf.Write(p[:remaining])
+	}
+	c.truncated = true
+	return remaining, errCapExceeded
+}
+
+func (c *cappedBuffer) Bytes() []byte   { return c.buf.Bytes() }
+func (c *cappedBuffer) String() string  { return c.buf.String() }
+func (c *cappedBuffer) Truncated() bool { return c.truncated }
+
+// errCapExceeded is the sentinel returned by cappedBuffer.Write once the cap is
+// hit. It is never surfaced to users directly; callers translate it into a
+// redaction-safe "output too large" message.
+var errCapExceeded = errors.New("scrapling: output exceeded size cap")
+
 type Provider struct {
 	python     string
 	configured bool
@@ -75,12 +125,16 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 
 	cmd := exec.CommandContext(ctx, p.python, "-c", extractScript)
 	cmd.Stdin = bytes.NewReader(stdin)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdout := newCappedBuffer(maxStdoutBytes)
+	stderr := newCappedBuffer(maxStderrBytes)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
 			return core.ExtractResponse{}, fmt.Errorf("scrapling: extract timed out after %s", p.timeout)
+		}
+		if stdout.Truncated() || stderr.Truncated() {
+			return core.ExtractResponse{}, errors.New("scrapling: output too large")
 		}
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
@@ -111,10 +165,14 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, p.python, "-c", `import scrapling; from scrapling.fetchers import Fetcher; print(getattr(scrapling, "__version__", "unknown"))`)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdout := newCappedBuffer(maxStdoutBytes)
+	stderr := newCappedBuffer(maxStderrBytes)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
+		if stdout.Truncated() || stderr.Truncated() {
+			return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: "scrapling: output too large"}
+		}
 		reason := "scrapling Python package not available"
 		if strings.Contains(stderr.String(), "ModuleNotFoundError") || strings.Contains(stderr.String(), "No module named") {
 			reason = `scrapling Python package not available; install with: pip install "scrapling[fetchers]"`

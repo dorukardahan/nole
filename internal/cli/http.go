@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -33,17 +34,40 @@ func newHTTPHandler(svc *core.Service) (*httpHandler, error) {
 	}, nil
 }
 
-func (h *httpHandler) start(addr string) error {
+// allowReadMethods gates a read-only endpoint to GET/HEAD, writing a 405 and
+// returning false otherwise. The POST /api/{search,extract} handlers gate
+// themselves; this keeps the read endpoints consistent with them on the
+// remote-exposed surface instead of executing on any method.
+func allowReadMethods(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return false
+	}
+	return true
+}
+
+func logEncodeErr(endpoint string, err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "nole serve: encode %s response: %v\n", endpoint, err)
+	}
+}
+
+// buildMux registers every route on a fresh ServeMux. Split out from start so
+// the routing table is constructed independently of listener/lifecycle setup.
+func (h *httpHandler) buildMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Health endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if !allowReadMethods(w, r) {
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		status := map[string]interface{}{
 			"status":    "ok",
 			"timestamp": time.Now().Format(time.RFC3339),
 		}
-		json.NewEncoder(w).Encode(status)
+		logEncodeErr("/health", json.NewEncoder(w).Encode(status))
 	})
 
 	// MCP Streamable HTTP endpoint
@@ -53,16 +77,21 @@ func (h *httpHandler) start(addr string) error {
 
 	// Provider status endpoint
 	mux.HandleFunc("/api/providers", func(w http.ResponseWriter, r *http.Request) {
+		if !allowReadMethods(w, r) {
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		ctx := r.Context()
-		resp := h.svc.ProviderStatus(ctx)
-		json.NewEncoder(w).Encode(resp)
+		resp := h.svc.ProviderStatus(r.Context())
+		logEncodeErr("/api/providers", json.NewEncoder(w).Encode(resp))
 	})
 
 	// Budget status endpoint
 	mux.HandleFunc("/api/budget", func(w http.ResponseWriter, r *http.Request) {
+		if !allowReadMethods(w, r) {
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(h.svc.BudgetStatus())
+		logEncodeErr("/api/budget", json.NewEncoder(w).Encode(h.svc.BudgetStatus()))
 	})
 
 	// Search API endpoint
@@ -97,7 +126,7 @@ func (h *httpHandler) start(addr string) error {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		logEncodeErr("/api/search", json.NewEncoder(w).Encode(resp))
 	})
 
 	// Extract API endpoint
@@ -124,11 +153,15 @@ func (h *httpHandler) start(addr string) error {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		logEncodeErr("/api/extract", json.NewEncoder(w).Encode(resp))
 	})
 
+	return mux
+}
+
+func (h *httpHandler) start(ctx context.Context, addr string) error {
 	h.server = &http.Server{
-		Handler: mux,
+		Handler: h.buildMux(),
 		// Slowloris-class hardening. Defaults are 0 which means "no limit";
 		// matter most when the user passes --listen 0.0.0.0:port, but cheap
 		// to set unconditionally.
@@ -152,7 +185,36 @@ func (h *httpHandler) start(addr string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "nole HTTP server ready on %s\n", addr)
-	return h.server.Serve(listener)
+
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- h.server.Serve(listener)
+	}()
+
+	select {
+	case err := <-serveErr:
+		// Serve only returns ErrServerClosed after a Shutdown; any other error
+		// is a real listen/serve failure.
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		// SIGINT/SIGTERM: stop accepting new connections and give in-flight
+		// handlers a bounded window to drain instead of hard-killing them. The
+		// drain budget is intentionally shorter than WriteTimeout (300s): if a
+		// slow provider-backed handler outlasts it, Shutdown returns
+		// DeadlineExceeded — we log that and still exit cleanly (the listener is
+		// already closed and the process is going away), rather than reporting a
+		// shutdown failure for what is a normal Ctrl-C during a slow request.
+		fmt.Fprintln(os.Stderr, "nole HTTP server: shutting down, draining in-flight requests...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := h.server.Shutdown(shutdownCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "nole HTTP server: drain did not finish (%v); exiting\n", err)
+		}
+		return nil
+	}
 }
 
 func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {

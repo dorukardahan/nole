@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"strconv"
@@ -15,6 +16,13 @@ type RetryOptions struct {
 	BaseDelay   time.Duration
 	MaxDelay    time.Duration
 	Sleep       func(context.Context, time.Duration) error
+	// Jitter, when non-nil, perturbs the computed exponential backoff so a fleet
+	// of clients that hit a transient error at the same instant do not all retry
+	// on the identical schedule (thundering herd / synchronized retry). It is
+	// applied ONLY to the exponential delay, never to a server-provided
+	// Retry-After value. Injectable so tests can stay deterministic; leave nil to
+	// disable jitter entirely.
+	Jitter func(time.Duration) time.Duration
 }
 
 func DefaultRetryOptions() RetryOptions {
@@ -34,7 +42,21 @@ func DefaultRetryOptions() RetryOptions {
 		BaseDelay:   baseDelay,
 		MaxDelay:    5 * time.Second,
 		Sleep:       sleepContext,
+		Jitter:      fullJitter,
 	}
+}
+
+// fullJitter returns a random duration in [d/2, d]: half the computed backoff
+// plus a random share of the remaining half ("equal jitter"). This spreads
+// synchronized retries without ever waiting longer than the cap-bounded
+// exponential delay. math/rand/v2 is sufficient — this is load-spreading, not a
+// security primitive, so no crypto-strength randomness is required.
+func fullJitter(d time.Duration) time.Duration {
+	if d <= 0 {
+		return d
+	}
+	half := d / 2
+	return half + time.Duration(rand.Int64N(int64(d-half)+1))
 }
 
 func DoWithRetry(ctx context.Context, client *http.Client, req *http.Request, opts RetryOptions) (*http.Response, error) {
@@ -117,10 +139,20 @@ func retryDelay(headers http.Header, opts RetryOptions, attempt int) time.Durati
 	for i := 1; i < attempt; i++ {
 		delay *= 2
 		if opts.MaxDelay > 0 && delay > opts.MaxDelay {
-			return opts.MaxDelay
+			delay = opts.MaxDelay
+			break
 		}
 	}
-	return capDelay(delay, opts.MaxDelay)
+	delay = capDelay(delay, opts.MaxDelay)
+	// Jitter applies only to the computed exponential delay (never to a
+	// server-provided Retry-After), and only when the caller supplied a jitter
+	// func — tests that build RetryOptions by hand without one keep getting
+	// exact, deterministic values. The result is re-capped so jitter can never
+	// push the wait above MaxDelay.
+	if opts.Jitter != nil {
+		delay = capDelay(opts.Jitter(delay), opts.MaxDelay)
+	}
+	return delay
 }
 
 func capDelay(delay, max time.Duration) time.Duration {

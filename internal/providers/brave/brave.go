@@ -2,9 +2,7 @@ package brave
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -71,8 +69,11 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		return core.SearchResponse{}, fmt.Errorf("brave: BRAVE_API_KEY not set")
 	}
 
+	// Brave documents a hard max of 20 for `count`; anything above yields a
+	// guaranteed non-retryable HTTP 422. Clamp to [1,20] so an over-large caller
+	// limit degrades to the cap instead of failing the whole request.
 	u := fmt.Sprintf("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d",
-		url.QueryEscape(req.Query), clampMin(req.Limit, 1))
+		url.QueryEscape(req.Query), clampRange(req.Limit, 1, 20))
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -88,12 +89,12 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxSearchResponseBytes)
 		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("brave", "search", resp.StatusCode, respBody)
 	}
 
 	var bresp braveSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&bresp); err != nil {
+	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxSearchResponseBytes, &bresp); err != nil {
 		return core.SearchResponse{}, fmt.Errorf("brave: decode response: %w", err)
 	}
 
@@ -137,9 +138,15 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 	}
 }
 
-func clampMin(a, b int) int {
-	if a > b {
-		return a
+// clampRange constrains v to [min, max] inclusive. Brave's `count` parameter is
+// documented to accept 1..20; values outside that band produce a non-retryable
+// HTTP 422, so the request builder clamps rather than passes them through.
+func clampRange(v, min, max int) int {
+	if v < min {
+		return min
 	}
-	return b
+	if v > max {
+		return max
+	}
+	return v
 }

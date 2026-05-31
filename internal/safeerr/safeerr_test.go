@@ -36,6 +36,21 @@ func TestRedactRemovesCommonCredentialFormats(t *testing.T) {
 			input:   "request failed: https://example.invalid/private?token=fake-url-token",
 			secrets: []string{"https://example.invalid/private?token=fake-url-token", "fake-url-token"},
 		},
+		{
+			name:    "set-cookie session token",
+			input:   "Set-Cookie: session=abc123; Path=/; HttpOnly",
+			secrets: []string{"session=abc123", "abc123"},
+		},
+		{
+			name:    "bare cookie header",
+			input:   "Cookie: session=fake-cookie-value",
+			secrets: []string{"session=fake-cookie-value", "fake-cookie-value"},
+		},
+		{
+			name:    "non-http scheme userinfo credentials",
+			input:   "dial error: ftp://user:pass@host/x",
+			secrets: []string{"ftp://user:pass@host/x", "user:pass"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -48,6 +63,30 @@ func TestRedactRemovesCommonCredentialFormats(t *testing.T) {
 			}
 			if !strings.Contains(got, "[REDACTED]") {
 				t.Fatalf("expected redaction marker in %q", got)
+			}
+		})
+	}
+}
+
+func TestRedactDoesNotOverRedactBenignText(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "i love cookies", input: "I love cookies"},
+		{name: "cookie crumbles", input: "cookie crumbles"},
+		{name: "bare word ftp", input: "ftp"},
+		{name: "ftp word in sentence", input: "please use the ftp upload form"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Redact(tt.input)
+			if got != strings.TrimSpace(tt.input) {
+				t.Fatalf("benign text %q was modified to %q", tt.input, got)
+			}
+			if strings.Contains(got, "[REDACTED]") {
+				t.Fatalf("benign text %q triggered redaction: %q", tt.input, got)
 			}
 		})
 	}

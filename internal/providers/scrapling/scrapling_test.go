@@ -110,6 +110,79 @@ func TestScraplingSearchUnsupported(t *testing.T) {
 	}
 }
 
+func TestCappedBufferUnderCapPreservesBytes(t *testing.T) {
+	c := newCappedBuffer(16)
+	n, err := c.Write([]byte("hello"))
+	if err != nil {
+		t.Fatalf("unexpected error under cap: %v", err)
+	}
+	if n != 5 {
+		t.Fatalf("expected 5 bytes written, got %d", n)
+	}
+	if _, err := c.Write([]byte(" world")); err != nil {
+		t.Fatalf("unexpected error under cap: %v", err)
+	}
+	if c.Truncated() {
+		t.Fatal("did not expect truncation under cap")
+	}
+	if got := c.String(); got != "hello world" {
+		t.Fatalf("expected %q, got %q", "hello world", got)
+	}
+	if got := string(c.Bytes()); got != "hello world" {
+		t.Fatalf("Bytes mismatch: got %q", got)
+	}
+}
+
+func TestCappedBufferStopsAtCapAndFlagsTruncation(t *testing.T) {
+	c := newCappedBuffer(8)
+	// Fill exactly to the cap; this must still succeed.
+	if _, err := c.Write([]byte("12345678")); err != nil {
+		t.Fatalf("unexpected error at exact cap: %v", err)
+	}
+	if c.Truncated() {
+		t.Fatal("did not expect truncation when exactly at cap")
+	}
+	// The next byte overflows: it keeps what fits (nothing here) and flags.
+	n, err := c.Write([]byte("9"))
+	if err == nil {
+		t.Fatal("expected error once cap exceeded")
+	}
+	if n != 0 {
+		t.Fatalf("expected 0 bytes buffered past cap, got %d", n)
+	}
+	if !c.Truncated() {
+		t.Fatal("expected truncation flag after overflow")
+	}
+	if c.buf.Len() != 8 {
+		t.Fatalf("buffer grew past cap: len=%d", c.buf.Len())
+	}
+	// Subsequent writes are rejected without buffering anything more.
+	if n, err := c.Write([]byte("more")); err == nil || n != 0 {
+		t.Fatalf("expected rejected write after truncation, got n=%d err=%v", n, err)
+	}
+	if c.buf.Len() != 8 {
+		t.Fatalf("buffer grew after truncation: len=%d", c.buf.Len())
+	}
+}
+
+func TestCappedBufferPartialFillThenOverflow(t *testing.T) {
+	c := newCappedBuffer(8)
+	// A single write larger than the cap keeps exactly the remaining capacity.
+	n, err := c.Write([]byte("0123456789"))
+	if err == nil {
+		t.Fatal("expected error when single write exceeds cap")
+	}
+	if n != 8 {
+		t.Fatalf("expected 8 bytes retained, got %d", n)
+	}
+	if !c.Truncated() {
+		t.Fatal("expected truncation flag")
+	}
+	if got := c.String(); got != "01234567" {
+		t.Fatalf("expected first 8 bytes %q, got %q", "01234567", got)
+	}
+}
+
 func writeFakePython(t *testing.T, script string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
