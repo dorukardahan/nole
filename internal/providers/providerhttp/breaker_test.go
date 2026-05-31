@@ -19,20 +19,40 @@ func statusResponse(code int) *http.Response {
 	}
 }
 
+// failCall / succeedCall simulate one full breaker-gated call (admit via Allow,
+// then record with the admitted generation), mirroring DoWithRetryBreaker. They
+// no-op if Allow denies (open within cooldown / a probe already in flight).
+func failCall(b *Breaker) {
+	if ok, gen := b.Allow(); ok {
+		b.RecordFailure(gen)
+	}
+}
+
+func succeedCall(b *Breaker) {
+	if ok, gen := b.Allow(); ok {
+		b.RecordSuccess(gen)
+	}
+}
+
+func allowed(b *Breaker) bool {
+	ok, _ := b.Allow()
+	return ok
+}
+
 func TestBreakerTripsAfterNConsecutiveFailures(t *testing.T) {
 	now := time.Unix(0, 0)
 	b := NewBreaker(BreakerOptions{Threshold: 3, Cooldown: time.Minute, now: func() time.Time { return now }})
 
-	if !b.Allow() {
+	if !allowed(b) {
 		t.Fatal("a fresh (closed) breaker must allow")
 	}
-	b.RecordFailure()
-	b.RecordFailure()
-	if !b.Allow() {
+	failCall(b)
+	failCall(b)
+	if !allowed(b) {
 		t.Fatal("breaker must stay closed below the threshold")
 	}
-	b.RecordFailure() // 3rd consecutive → trip
-	if b.Allow() {
+	failCall(b) // 3rd consecutive → trip
+	if allowed(b) {
 		t.Fatal("breaker must be open once the threshold is reached")
 	}
 	if !b.IsOpen() {
@@ -41,12 +61,12 @@ func TestBreakerTripsAfterNConsecutiveFailures(t *testing.T) {
 
 	// A success resets the counter even after partial accumulation.
 	b2 := NewBreaker(BreakerOptions{Threshold: 3, Cooldown: time.Minute, now: func() time.Time { return now }})
-	b2.RecordFailure()
-	b2.RecordFailure()
-	b2.RecordSuccess()
-	b2.RecordFailure()
-	b2.RecordFailure()
-	if !b2.Allow() {
+	failCall(b2)
+	failCall(b2)
+	succeedCall(b2)
+	failCall(b2)
+	failCall(b2)
+	if !allowed(b2) {
 		t.Fatal("a success must reset the consecutive-failure counter")
 	}
 }
@@ -54,7 +74,7 @@ func TestBreakerTripsAfterNConsecutiveFailures(t *testing.T) {
 func TestBreakerOpenShortCircuitsWithoutCallingDownstream(t *testing.T) {
 	now := time.Unix(0, 0)
 	b := NewBreaker(BreakerOptions{Threshold: 1, Cooldown: time.Minute, now: func() time.Time { return now }})
-	b.RecordFailure() // threshold 1 → open immediately
+	failCall(b) // threshold 1 → open immediately
 
 	var calls int
 	client := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
@@ -79,16 +99,17 @@ func TestBreakerHalfOpenAllowsExactlyOneProbe(t *testing.T) {
 	now := time.Unix(0, 0)
 	clock := func() time.Time { return now }
 	b := NewBreaker(BreakerOptions{Threshold: 1, Cooldown: time.Minute, now: clock})
-	b.RecordFailure() // open at t=0
+	failCall(b) // open at t=0
 
-	if b.Allow() {
+	if allowed(b) {
 		t.Fatal("within cooldown, open breaker must deny")
 	}
 	now = now.Add(2 * time.Minute) // past cooldown
-	if !b.Allow() {
+	ok, _ := b.Allow()
+	if !ok {
 		t.Fatal("after cooldown, the first Allow must permit a single probe")
 	}
-	if b.Allow() {
+	if allowed(b) {
 		t.Fatal("a second Allow during the in-flight probe must be denied")
 	}
 }
@@ -99,42 +120,40 @@ func TestBreakerHalfOpenOutcomeClosesOrReopens(t *testing.T) {
 
 	// Probe success closes the breaker.
 	b := NewBreaker(BreakerOptions{Threshold: 1, Cooldown: time.Minute, now: clock})
-	b.RecordFailure()
+	failCall(b)
 	now = now.Add(2 * time.Minute)
-	if !b.Allow() {
-		t.Fatal("probe should be allowed after cooldown")
-	}
-	b.RecordSuccess()
-	if !b.Allow() {
+	succeedCall(b) // half-open probe succeeds → closed
+	if !allowed(b) {
 		t.Fatal("a successful probe must close the breaker")
 	}
 
 	// Probe failure re-opens the breaker and restarts the cooldown.
+	now = time.Unix(0, 0)
 	b2 := NewBreaker(BreakerOptions{Threshold: 1, Cooldown: time.Minute, now: clock})
-	b2.RecordFailure()
+	failCall(b2)
 	now = now.Add(2 * time.Minute)
-	if !b2.Allow() {
-		t.Fatal("probe should be allowed after cooldown")
-	}
-	b2.RecordFailure() // probe failed
-	if b2.Allow() {
+	failCall(b2) // half-open probe fails → re-open
+	if allowed(b2) {
 		t.Fatal("a failed probe must re-open the breaker for a fresh cooldown")
 	}
 }
 
 // A success admitted while the breaker was CLOSED can return LATE, after
 // concurrent failures already tripped it OPEN (the lock-free I/O window). That
-// stale success must NOT re-close the breaker.
+// stale success carries an old generation and must be ignored — it must not
+// re-close the breaker.
 func TestBreakerStaleSuccessDoesNotReopenTrippedBreaker(t *testing.T) {
 	now := time.Unix(0, 0)
 	b := NewBreaker(BreakerOptions{Threshold: 2, Cooldown: time.Minute, now: func() time.Time { return now }})
-	b.RecordFailure()
-	b.RecordFailure() // → open
-	if b.Allow() {
+
+	_, genA := b.Allow() // call A admitted while closed (gen 0)
+	failCall(b)          // two concurrent failures trip the breaker (new generation)
+	failCall(b)
+	if allowed(b) {
 		t.Fatal("breaker should be open after reaching the threshold")
 	}
-	b.RecordSuccess() // stale success landing after the trip
-	if b.Allow() {
+	b.RecordSuccess(genA) // A finishes success with its stale generation
+	if allowed(b) {
 		t.Fatal("a stale success must not re-close a breaker that just tripped open")
 	}
 	if !b.IsOpen() {
@@ -142,18 +161,49 @@ func TestBreakerStaleSuccessDoesNotReopenTrippedBreaker(t *testing.T) {
 	}
 }
 
-// Symmetric to the stale-success case: a failure that lands while already OPEN
-// (a call admitted before the trip) must not bump openedAt and extend the
-// cooldown beyond the original open time.
+// The P2 case: a call admitted while CLOSED finishes successfully AFTER the
+// breaker has opened, the cooldown elapsed, and a half-open probe is in flight.
+// The stale success (old generation) must NOT be mistaken for the probe and
+// close the breaker — only the actual probe's outcome governs recovery.
+func TestBreakerStaleSuccessDuringHalfOpenIsIgnored(t *testing.T) {
+	now := time.Unix(0, 0)
+	clock := func() time.Time { return now }
+	b := NewBreaker(BreakerOptions{Threshold: 1, Cooldown: time.Minute, now: clock})
+
+	_, genStale := b.Allow() // call A admitted while closed (gen 0)
+	failCall(b)              // trip → open at t=0 (new generation)
+
+	now = now.Add(2 * time.Minute) // cooldown elapses
+	okProbe, genProbe := b.Allow() // probe P admitted → half-open (newer generation)
+	if !okProbe {
+		t.Fatal("a probe should be admitted after the cooldown")
+	}
+
+	b.RecordSuccess(genStale) // stale success lands during half-open — must be ignored
+	if allowed(b) {
+		t.Fatal("a stale success during half-open must not close the breaker; the probe is still in flight")
+	}
+
+	b.RecordFailure(genProbe) // the real probe fails → breaker re-opens
+	if !b.IsOpen() {
+		t.Fatal("the actual probe outcome must govern: a failed probe re-opens the breaker")
+	}
+}
+
+// A failure admitted while OPEN/CLOSED that lands after a transition carries a
+// stale generation and must not bump openedAt / extend the cooldown.
 func TestBreakerStaleFailureDoesNotExtendCooldown(t *testing.T) {
 	now := time.Unix(0, 0)
 	clock := func() time.Time { return now }
 	b := NewBreaker(BreakerOptions{Threshold: 1, Cooldown: time.Minute, now: clock})
-	b.RecordFailure() // open at t=0
+
+	_, genStale := b.Allow() // admitted while closed (gen 0)
+	failCall(b)              // trip → open at t=0 (generation bumped)
+
 	now = now.Add(30 * time.Second)
-	b.RecordFailure()               // stale failure mid-cooldown — must NOT reset openedAt
+	b.RecordFailure(genStale)       // stale failure mid-cooldown — ignored, openedAt unchanged
 	now = now.Add(30 * time.Second) // t=60s: original cooldown has elapsed
-	if !b.Allow() {
+	if !allowed(b) {
 		t.Fatal("a stale failure must not extend the cooldown past the original open time")
 	}
 }
@@ -224,7 +274,7 @@ func TestDoWithRetryBreakerRecordsOneOutcomePerCall(t *testing.T) {
 	}
 	// One logical failure recorded → with threshold 2 the breaker is still
 	// closed. Per-retry counting would have recorded 3 and tripped it open.
-	if !b.Allow() {
+	if !allowed(b) {
 		t.Fatal("breaker tripped after one logical call: failures counted per-retry, not per-call")
 	}
 
@@ -233,7 +283,7 @@ func TestDoWithRetryBreakerRecordsOneOutcomePerCall(t *testing.T) {
 	if resp2 != nil {
 		resp2.Body.Close()
 	}
-	if b.Allow() {
+	if allowed(b) {
 		t.Fatal("breaker must be open after two logical failing calls (threshold 2)")
 	}
 }
@@ -261,7 +311,7 @@ func TestDoWithRetryBreakerTripsOnClientTimeout(t *testing.T) {
 			t.Fatalf("attempt %d: expected a client-timeout error", i)
 		}
 	}
-	if b.Allow() {
+	if allowed(b) {
 		t.Fatal("breaker must trip after consecutive client timeouts — catching hung upstreams is its core purpose")
 	}
 }

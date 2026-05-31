@@ -56,11 +56,20 @@ func DefaultBreakerOptions() BreakerOptions {
 // one half-open probe whose outcome closes it (success) or re-opens it
 // (failure). It is in-memory only (no disk persistence) and safe for concurrent
 // use. A nil *Breaker is a valid no-op (Allow always true, Record* no-ops).
+//
+// generation is bumped on every state transition. A caller captures the
+// generation at Allow and passes it back to Record*; an outcome whose
+// generation no longer matches is from a call admitted in a previous regime
+// (the lock-free I/O window in DoWithRetryBreaker lets a stale call finish after
+// the breaker has moved on) and is ignored, so it can never be mis-attributed —
+// e.g. a slow call admitted while CLOSED cannot masquerade as the half-open
+// probe and prematurely close a still-unhealthy upstream.
 type Breaker struct {
 	mu          sync.Mutex
 	state       breakerState
 	consecFails int
 	openedAt    time.Time
+	generation  uint64
 	threshold   int
 	cooldown    time.Duration
 	now         func() time.Time
@@ -86,76 +95,96 @@ func NewBreaker(opts BreakerOptions) *Breaker {
 	}
 }
 
-// Allow reports whether a call may proceed. A closed breaker always allows. An
-// open breaker allows once the cooldown has elapsed, transitioning to half-open
-// and handing out exactly one probe token; a second concurrent Allow during the
-// in-flight probe returns false so a flood cannot stampede a recovering upstream.
-func (b *Breaker) Allow() bool {
+// Allow reports whether a call may proceed and returns the breaker generation
+// the call is admitted under. The generation MUST be passed back to
+// RecordSuccess/RecordFailure so an outcome from a call admitted in a previous
+// regime is ignored rather than mis-attributed (see the Breaker doc). A closed
+// breaker always allows. An open breaker allows once the cooldown has elapsed,
+// transitioning to half-open and handing out exactly one probe token; a second
+// concurrent Allow during the in-flight probe returns false so a flood cannot
+// stampede a recovering upstream.
+func (b *Breaker) Allow() (bool, uint64) {
 	if b == nil {
-		return true
+		return true, 0
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	switch b.state {
 	case breakerOpen:
 		if b.now().Sub(b.openedAt) >= b.cooldown {
-			b.state = breakerHalfOpen // consume the single probe token
-			return true
+			b.toHalfOpenLocked() // admit exactly one probe under a fresh generation
+			return true, b.generation
 		}
-		return false
+		return false, b.generation
 	case breakerHalfOpen:
-		return false // a probe is already in flight
+		return false, b.generation // a probe is already in flight
 	default: // closed
-		return true
+		return true, b.generation
 	}
 }
 
-// RecordSuccess registers a successful call. It is state-aware to be safe
-// against the lock-free I/O window in DoWithRetryBreaker (Allow releases the
-// mutex before the call, Record re-acquires it after): a call admitted while
-// CLOSED can return success LATE, after concurrent failures have already
-// tripped the breaker OPEN. Such a stale success must NOT re-close a breaker
-// that just opened — only a half-open probe (the legitimate recovery path) may
-// close it. From CLOSED a success simply breaks the consecutive-failure streak.
-func (b *Breaker) RecordSuccess() {
+// RecordSuccess registers a successful call admitted under generation gen. If
+// the breaker has since changed regime (gen != current) the outcome is stale
+// and ignored. Otherwise: a half-open probe success closes the breaker; a
+// closed-state success breaks the consecutive-failure streak.
+func (b *Breaker) RecordSuccess(gen uint64) {
 	if b == nil {
 		return
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if gen != b.generation {
+		return // outcome from a previous regime — not the admitted call we track
+	}
 	switch b.state {
 	case breakerHalfOpen:
-		b.state = breakerClosed
-		b.consecFails = 0
+		b.toClosedLocked() // the probe succeeded
 	case breakerClosed:
 		b.consecFails = 0
-	default: // breakerOpen: stale success that raced the trip — ignore.
 	}
 }
 
-// RecordFailure advances the breaker toward open. A half-open probe failure
-// re-opens it and restarts the cooldown; from CLOSED the consecutive-failure
-// count trips it open at the threshold. A failure that lands while already OPEN
-// is a stale call that raced the trip — it is ignored so it cannot indefinitely
-// extend the cooldown window (symmetric with the stale-success case above).
-func (b *Breaker) RecordFailure() {
+// RecordFailure registers a failed call admitted under generation gen. Stale
+// outcomes (gen mismatch) are ignored. Otherwise: a half-open probe failure
+// re-opens the breaker and restarts the cooldown; a closed-state failure trips
+// it open once the consecutive-failure threshold is reached.
+func (b *Breaker) RecordFailure(gen uint64) {
 	if b == nil {
 		return
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if gen != b.generation {
+		return
+	}
 	switch b.state {
 	case breakerHalfOpen:
-		b.state = breakerOpen
-		b.openedAt = b.now()
+		b.toOpenLocked() // the probe failed
 	case breakerClosed:
 		b.consecFails++
 		if b.consecFails >= b.threshold {
-			b.state = breakerOpen
-			b.openedAt = b.now()
+			b.toOpenLocked()
 		}
-	default: // breakerOpen: stale failure that raced the trip — ignore.
 	}
+}
+
+// Transition helpers bump the generation so any in-flight call admitted under
+// the prior regime is ignored when it reports. Callers hold b.mu.
+func (b *Breaker) toOpenLocked() {
+	b.state = breakerOpen
+	b.openedAt = b.now()
+	b.generation++
+}
+
+func (b *Breaker) toHalfOpenLocked() {
+	b.state = breakerHalfOpen
+	b.generation++
+}
+
+func (b *Breaker) toClosedLocked() {
+	b.state = breakerClosed
+	b.consecFails = 0
+	b.generation++
 }
 
 // IsOpen reports whether the breaker is currently short-circuiting calls,
@@ -216,14 +245,15 @@ func DoWithRetryBreaker(ctx context.Context, client *http.Client, req *http.Requ
 	if b == nil {
 		return DoWithRetry(ctx, client, req, opts)
 	}
-	if !b.Allow() {
+	allowed, gen := b.Allow()
+	if !allowed {
 		return nil, ErrCircuitOpen
 	}
 	resp, err := DoWithRetry(ctx, client, req, opts)
 	if ShouldTrip(statusCodeOf(resp), err, ctx) {
-		b.RecordFailure()
+		b.RecordFailure(gen)
 	} else {
-		b.RecordSuccess()
+		b.RecordSuccess(gen)
 	}
 	return resp, err
 }

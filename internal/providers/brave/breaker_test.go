@@ -16,7 +16,8 @@ import (
 // so no network access occurs even though the provider holds its real client.
 func TestBraveSearchShortCircuitsOpenBreaker(t *testing.T) {
 	b := providerhttp.NewBreaker(providerhttp.BreakerOptions{Threshold: 1, Cooldown: time.Hour})
-	b.RecordFailure() // trip open
+	_, gen := b.Allow()
+	b.RecordFailure(gen) // trip open (threshold 1)
 
 	p := New(WithAPIKey("test-key"), WithBreaker(b))
 	_, err := p.Search(context.Background(), core.SearchRequest{Query: "anything", Task: core.TaskGeneral, Limit: 5})
