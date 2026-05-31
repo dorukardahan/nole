@@ -6,14 +6,29 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/dorukardahan/nole/internal/safenet"
 )
+
+// maxSearchLimit caps the requested result count across every entry point
+// (MCP, HTTP, CLI). It matches Brave's documented per-request maximum, so a
+// caller asking for more never produces a guaranteed provider 422; a value
+// <= 0 falls back to a sensible default instead of leaking through to a
+// provider as "no limit".
+const maxSearchLimit = 20
 
 type Service struct {
 	registry *Registry
 	ledger   QuotaLedger
 	router   *Router
 	cache    ResponseCache
+	// sfSearch/sfExtract collapse concurrent identical requests into a single
+	// upstream fetch and a single quota debit (cache-miss stampede guard). The
+	// zero value is ready to use; keys match the cache keys so coalescing and
+	// caching agree on request identity.
+	sfSearch  singleflight.Group
+	sfExtract singleflight.Group
 }
 
 type ServiceOption func(*Service)
@@ -38,9 +53,12 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 	if req.Task == "" {
 		req.Task = TaskGeneral
 	}
-	var lastErr error
+	if req.Limit <= 0 {
+		req.Limit = 5
+	} else if req.Limit > maxSearchLimit {
+		req.Limit = maxSearchLimit
+	}
 	route := s.routeFor(req.Task)
-	trace := make([]RouteAttempt, 0, len(route)+1)
 	if s.cache != nil {
 		if cached, ok := s.cache.GetSearch(req); ok {
 			cached.Query = req.Query
@@ -52,9 +70,40 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 			cached.RoutingInsight = BuildSearchRoutingInsight(cached)
 			return cached, nil
 		}
+	}
+	// Collapse concurrent identical queries into one upstream fetch + one
+	// quota debit. Without this, N goroutines issuing the same query (browser
+	// retries, client fan-out, an abusive caller on a widened --listen) each
+	// miss the cache and each debit the free tier, defeating the monthly
+	// free-quota cap. singleflight drops the key once the leader returns, so
+	// distinct queries still run fully in parallel and sequential calls are
+	// never coalesced.
+	key := searchCacheKey(req)
+	v, err, _ := s.sfSearch.Do(key, func() (any, error) {
+		return s.searchUncached(ctx, req, route)
+	})
+	resp := v.(SearchResponse)
+	resp.Query = req.Query
+	resp.Task = req.Task
+	return resp, err
+}
+
+func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route []string) (SearchResponse, error) {
+	var lastErr error
+	trace := make([]RouteAttempt, 0, len(route)+1)
+	if s.cache != nil {
 		trace = append(trace, cacheMissAttempt())
 	}
 	for _, name := range route {
+		// A cancelled/disconnected caller stops the route walk immediately
+		// instead of probing every remaining provider and returning the last
+		// provider's context error: surface cancellation as a first-class
+		// outcome and keep the trace free of misleading provider_error rows.
+		if err := ctx.Err(); err != nil {
+			resp := SearchResponse{Query: req.Query, Task: req.Task, Route: append([]string(nil), route...), RouteTrace: trace}
+			resp.RoutingInsight = BuildErrorRoutingInsight("search", resp.Route, resp.RouteTrace)
+			return resp, err
+		}
 		provider, ok := s.registry.Get(name)
 		if !ok {
 			trace = append(trace, skippedAttempt(name, "not_registered"))
@@ -144,7 +193,6 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 		return ExtractResponse{}, fmt.Errorf("url validation: %w", err)
 	}
 	route := s.routeFor(TaskExtract)
-	trace := make([]RouteAttempt, 0, len(route)+1)
 	if s.cache != nil {
 		if cached, ok := s.cache.GetExtract(req); ok {
 			cached.URL = req.URL
@@ -155,10 +203,30 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 			cached.RoutingInsight = BuildExtractRoutingInsight(cached)
 			return cached, nil
 		}
+	}
+	// See Search: collapse concurrent identical extracts into one fetch + one
+	// debit. Keyed by the extract cache key so coalescing matches caching.
+	key := extractCacheKey(req)
+	v, err, _ := s.sfExtract.Do(key, func() (any, error) {
+		return s.extractUncached(ctx, req, route)
+	})
+	resp := v.(ExtractResponse)
+	resp.URL = req.URL
+	return resp, err
+}
+
+func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route []string) (ExtractResponse, error) {
+	trace := make([]RouteAttempt, 0, len(route)+1)
+	if s.cache != nil {
 		trace = append(trace, cacheMissAttempt())
 	}
 	var lastErr error
 	for _, name := range route {
+		if err := ctx.Err(); err != nil {
+			resp := ExtractResponse{URL: req.URL, Route: append([]string(nil), route...), RouteTrace: trace}
+			resp.RoutingInsight = BuildErrorRoutingInsight("extract", resp.Route, resp.RouteTrace)
+			return resp, err
+		}
 		provider, ok := s.registry.Get(name)
 		if !ok {
 			trace = append(trace, skippedAttempt(name, "not_registered"))
