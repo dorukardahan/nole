@@ -316,6 +316,54 @@ func TestDoWithRetryBreakerTripsOnClientTimeout(t *testing.T) {
 	}
 }
 
+// A call aborted by the caller's own cancellation is neither success nor
+// failure: it must not reset a closed-state failure streak (recording it as a
+// spurious success would).
+func TestDoWithRetryBreakerRecordsNeitherOnCallerCancellation(t *testing.T) {
+	now := time.Unix(0, 0)
+	b := NewBreaker(BreakerOptions{Threshold: 2, Cooldown: time.Minute, now: func() time.Time { return now }})
+	failCall(b) // one real failure: consecFails = 1 (threshold 2, still closed)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return nil, context.Canceled
+	})}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://provider.invalid/", nil)
+	_, _ = DoWithRetryBreaker(ctx, client, req, RetryOptions{MaxAttempts: 1, BaseDelay: time.Millisecond, Sleep: noSleep}, b)
+
+	// The cancelled call must have recorded nothing. One more real failure should
+	// now reach the threshold (1 + 1 = 2). If the cancellation had been recorded
+	// as a success, the streak would have reset and this would NOT trip.
+	failCall(b)
+	if allowed(b) {
+		t.Fatal("a caller-cancelled call must record neither success nor failure (it reset the streak)")
+	}
+}
+
+// A half-open probe that never reports its outcome (e.g. caller cancelled) must
+// not wedge the breaker: after a cooldown, Allow re-arms a fresh probe.
+func TestBreakerHalfOpenReArmsAbandonedProbe(t *testing.T) {
+	now := time.Unix(0, 0)
+	clock := func() time.Time { return now }
+	b := NewBreaker(BreakerOptions{Threshold: 1, Cooldown: time.Minute, now: clock})
+	failCall(b) // open at t=0
+
+	now = now.Add(time.Minute)
+	if ok, _ := b.Allow(); !ok {
+		t.Fatal("first probe should be admitted after the cooldown")
+	}
+	if allowed(b) {
+		t.Fatal("a second probe must be denied while the first is in flight")
+	}
+	// The probe never records its outcome. After another cooldown the breaker
+	// must re-arm rather than stay wedged half-open forever.
+	now = now.Add(time.Minute)
+	if ok, _ := b.Allow(); !ok {
+		t.Fatal("half-open breaker must re-arm an abandoned probe after the cooldown")
+	}
+}
+
 func TestDoWithRetryBreakerNilIsPassthrough(t *testing.T) {
 	var calls int
 	client := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {

@@ -117,7 +117,16 @@ func (b *Breaker) Allow() (bool, uint64) {
 		}
 		return false, b.generation
 	case breakerHalfOpen:
-		return false, b.generation // a probe is already in flight
+		// Normally exactly one probe is in flight. But if it has been outstanding
+		// for a full cooldown without reporting an outcome (its caller cancelled,
+		// it panicked, or the result was dropped — see DoWithRetryBreaker, which
+		// records nothing for a caller-cancelled call), re-arm with a fresh probe
+		// under a new generation so the breaker can never wedge half-open forever.
+		if b.now().Sub(b.openedAt) >= b.cooldown {
+			b.toHalfOpenLocked()
+			return true, b.generation
+		}
+		return false, b.generation
 	default: // closed
 		return true, b.generation
 	}
@@ -178,6 +187,7 @@ func (b *Breaker) toOpenLocked() {
 
 func (b *Breaker) toHalfOpenLocked() {
 	b.state = breakerHalfOpen
+	b.openedAt = b.now() // probe-start time, for the half-open re-arm in Allow
 	b.generation++
 }
 
@@ -250,6 +260,16 @@ func DoWithRetryBreaker(ctx context.Context, client *http.Client, req *http.Requ
 		return nil, ErrCircuitOpen
 	}
 	resp, err := DoWithRetry(ctx, client, req, opts)
+	// A call aborted by the CALLER's own cancellation/deadline is neither a
+	// provider success nor failure: a disconnecting client must not heal a
+	// failing breaker (record-success) nor reset a closed-state failure streak,
+	// and a cancelled half-open probe must not close the breaker. Record nothing;
+	// the half-open re-arm in Allow recovers a probe abandoned this way. (A
+	// client-side http.Client.Timeout has a LIVE caller ctx here, so it still
+	// flows to ShouldTrip and trips — only genuine caller cancellation is skipped.)
+	if ctx != nil && ctx.Err() != nil {
+		return resp, err
+	}
 	if ShouldTrip(statusCodeOf(resp), err, ctx) {
 		b.RecordFailure(gen)
 	} else {
