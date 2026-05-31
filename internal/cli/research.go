@@ -99,6 +99,12 @@ func researchPipeline(ctx context.Context, svc *core.Service, question string, m
 			Limit: 5,
 		})
 		if err != nil {
+			// A cancelled/expired context (Ctrl-C / SIGTERM) is fatal: surface it
+			// instead of logging a "failed step" and returning a partial report
+			// with a success exit code.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			// Log but continue with other task types
 			fmt.Fprintf(os.Stderr, "research: search step %d (%s) failed: %s\n", i+1, task, safeerr.Message(err))
 			continue
@@ -143,6 +149,9 @@ func researchPipeline(ctx context.Context, svc *core.Service, question string, m
 			Format: "markdown",
 		})
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			fmt.Fprintf(os.Stderr, "research: extract step failed: %s\n", safeerr.Message(err))
 			continue
 		}
