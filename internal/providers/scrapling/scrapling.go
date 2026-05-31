@@ -284,9 +284,15 @@ try:
         # the next hop is fetched. The Go caller drives the redirect walk.
         page = fetch(url, follow_redirects=False)
     except TypeError:
-        # Older Scrapling builds may not accept follow_redirects; fall back and
-        # rely on the Go side validating final_url as a backstop.
-        page = fetch(url)
+        # Fail closed: a Scrapling build that does not accept follow_redirects
+        # cannot guarantee a redirect target is re-validated before it is
+        # fetched. Refuse rather than retry with redirects enabled, which would
+        # let a public->internal 302 perform the SSRF request before Go can
+        # inspect it (the final_url backstop only blocks returning the body, not
+        # the request). SystemExit is a BaseException, so the outer
+        # 'except Exception' below does not swallow it. Upgrade scrapling for
+        # redirect-safe extract.
+        raise SystemExit('scrapling: installed build does not support follow_redirects=False; upgrade scrapling for redirect-safe extract')
 except Exception as exc:
     raise SystemExit(f'Fetcher.fetch/get failed: {exc}')
 
