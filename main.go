@@ -19,6 +19,17 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Restore default signal handling once the first interrupt has cancelled the
+	// context, so a SECOND Ctrl-C / SIGTERM force-exits the process instead of
+	// being swallowed (re-cancelling an already-cancelled context) while a slow
+	// graceful shutdown is in progress — e.g. `nole serve` draining in-flight
+	// requests for up to 30s, or a wedged child/extract path. The first signal
+	// stays graceful; the second hits the default terminate disposition.
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+
 	if err := cli.NewRootCommand().ExecuteContext(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, safeerr.Message(err))
 		os.Exit(1)
