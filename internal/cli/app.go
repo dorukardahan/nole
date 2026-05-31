@@ -16,6 +16,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/ddgs"
 	"github.com/dorukardahan/nole/internal/providers/firecrawl"
 	"github.com/dorukardahan/nole/internal/providers/mock"
+	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 	"github.com/dorukardahan/nole/internal/providers/scrapling"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
 	"github.com/dorukardahan/nole/internal/safeerr"
@@ -33,23 +34,32 @@ func defaultService() *core.Service {
 	}
 	tavilyKey := os.Getenv("TAVILY_API_KEY")
 
+	// One circuit breaker per remote API provider. In a long-lived `nole serve`
+	// / MCP process, a persistently-failing upstream trips its breaker and is
+	// short-circuited (fail fast, no burned timeout, no quota debit) until a
+	// cooldown probe recovers it. State is in-memory and per-process; one-shot
+	// CLI invocations never accumulate enough failures to trip. The keyless DDGS
+	// fallback and the local Scrapling extractor are intentionally left
+	// unbreakered so the free last-resort path is never short-circuited.
+	breakerOpts := providerhttp.DefaultBreakerOptions()
+
 	// Firecrawl — real adapter (search + extract)
 	if firecrawlKey != "" {
-		_ = registry.Register(firecrawl.New(firecrawl.WithAPIKey(firecrawlKey)))
+		_ = registry.Register(firecrawl.New(firecrawl.WithAPIKey(firecrawlKey), firecrawl.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
 	} else {
 		_ = registry.Register(mock.NewUnavailable("firecrawl"))
 	}
 
 	// Brave — real adapter (search only)
 	if braveKey != "" {
-		_ = registry.Register(brave.New(brave.WithAPIKey(braveKey)))
+		_ = registry.Register(brave.New(brave.WithAPIKey(braveKey), brave.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
 	} else {
 		_ = registry.Register(mock.NewUnavailable("brave"))
 	}
 
 	// Tavily — real adapter (search + extract)
 	if tavilyKey != "" {
-		_ = registry.Register(tavily.New(tavily.WithAPIKey(tavilyKey)))
+		_ = registry.Register(tavily.New(tavily.WithAPIKey(tavilyKey), tavily.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
 	} else {
 		_ = registry.Register(mock.NewUnavailable("tavily"))
 	}
@@ -402,9 +412,9 @@ func parseTaskStrict(raw string) (core.TaskType, bool) {
 	}
 }
 
-func runSearch(query string, task core.TaskType, limit int) (core.SearchResponse, error) {
+func runSearch(ctx context.Context, query string, task core.TaskType, limit int) (core.SearchResponse, error) {
 	if query == "" {
 		return core.SearchResponse{}, fmt.Errorf("query is required")
 	}
-	return defaultService().Search(context.Background(), core.SearchRequest{Query: query, Task: task, Limit: limit})
+	return defaultService().Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit})
 }

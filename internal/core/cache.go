@@ -31,17 +31,25 @@ type MemoryResponseCache struct {
 	ttl        time.Duration
 	now        func() time.Time
 	maxEntries int
+	// seqCounter is a monotonic insertion counter (bumped under mu on every
+	// Set) used to break storedAt ties during eviction deterministically. Two
+	// entries can share a storedAt under a coarse/frozen clock or two Sets in
+	// the same time tick; without a tiebreak, eviction would fall back to
+	// randomized Go map iteration order.
+	seqCounter uint64
 	search     map[string]cachedSearchResponse
 	extract    map[string]cachedExtractResponse
 }
 
 type cachedSearchResponse struct {
 	storedAt time.Time
+	seq      uint64
 	resp     SearchResponse
 }
 
 type cachedExtractResponse struct {
 	storedAt time.Time
+	seq      uint64
 	resp     ExtractResponse
 }
 
@@ -98,22 +106,26 @@ func (c *MemoryResponseCache) SetSearch(req SearchRequest, resp SearchResponse) 
 	key := searchCacheKey(req)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.search[key] = cachedSearchResponse{storedAt: c.now(), resp: cloneSearchResponse(resp)}
+	c.seqCounter++
+	c.search[key] = cachedSearchResponse{storedAt: c.now(), seq: c.seqCounter, resp: cloneSearchResponse(resp)}
 	for c.maxEntries > 0 && len(c.search) > c.maxEntries {
 		c.evictOldestSearchLocked()
 	}
 }
 
-// evictOldestSearchLocked removes the entry with the earliest storedAt. Callers
+// evictOldestSearchLocked removes the entry with the earliest storedAt, breaking
+// ties by lowest insertion seq so eviction is deterministic even when entries
+// share a storedAt (frozen/coarse clock, or two Sets in the same tick). Callers
 // hold c.mu. Eviction is FIFO-by-insertion-time, which suits a TTL cache: the
 // oldest entry is also the closest to expiry.
 func (c *MemoryResponseCache) evictOldestSearchLocked() {
 	var oldestKey string
 	var oldest time.Time
+	var oldestSeq uint64
 	found := false
 	for k, v := range c.search {
-		if !found || v.storedAt.Before(oldest) {
-			oldest, oldestKey, found = v.storedAt, k, true
+		if !found || v.storedAt.Before(oldest) || (v.storedAt.Equal(oldest) && v.seq < oldestSeq) {
+			oldest, oldestSeq, oldestKey, found = v.storedAt, v.seq, k, true
 		}
 	}
 	if found {
@@ -146,21 +158,23 @@ func (c *MemoryResponseCache) SetExtract(req ExtractRequest, resp ExtractRespons
 	key := extractCacheKey(req)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.extract[key] = cachedExtractResponse{storedAt: c.now(), resp: cloneExtractResponse(resp)}
+	c.seqCounter++
+	c.extract[key] = cachedExtractResponse{storedAt: c.now(), seq: c.seqCounter, resp: cloneExtractResponse(resp)}
 	for c.maxEntries > 0 && len(c.extract) > c.maxEntries {
 		c.evictOldestExtractLocked()
 	}
 }
 
 // evictOldestExtractLocked removes the extract entry with the earliest
-// storedAt. Callers hold c.mu.
+// storedAt, breaking ties by lowest insertion seq. Callers hold c.mu.
 func (c *MemoryResponseCache) evictOldestExtractLocked() {
 	var oldestKey string
 	var oldest time.Time
+	var oldestSeq uint64
 	found := false
 	for k, v := range c.extract {
-		if !found || v.storedAt.Before(oldest) {
-			oldest, oldestKey, found = v.storedAt, k, true
+		if !found || v.storedAt.Before(oldest) || (v.storedAt.Equal(oldest) && v.seq < oldestSeq) {
+			oldest, oldestSeq, oldestKey, found = v.storedAt, v.seq, k, true
 		}
 	}
 	if found {

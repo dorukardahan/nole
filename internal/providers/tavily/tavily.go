@@ -16,12 +16,20 @@ import (
 type Provider struct {
 	apiKey     string
 	httpClient *http.Client
+	breaker    *providerhttp.Breaker
 }
 
 type Option func(*Provider)
 
 func WithAPIKey(key string) Option {
 	return func(p *Provider) { p.apiKey = key }
+}
+
+// WithBreaker attaches a circuit breaker so persistent upstream failures
+// short-circuit fast instead of burning the per-call timeout + retry budget. A
+// nil breaker (the default) leaves behaviour unchanged.
+func WithBreaker(b *providerhttp.Breaker) Option {
+	return func(p *Provider) { p.breaker = b }
 }
 
 func New(opts ...Option) Provider {
@@ -105,7 +113,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
+	resp, err := providerhttp.DoWithRetryBreaker(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions(), p.breaker)
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("tavily: search request failed: %w", err)
 	}
@@ -175,7 +183,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
+	resp, err := providerhttp.DoWithRetryBreaker(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions(), p.breaker)
 	if err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("tavily: extract request failed: %w", err)
 	}

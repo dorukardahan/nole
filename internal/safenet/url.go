@@ -114,8 +114,61 @@ func validateIP(ip net.IP) error {
 				return fmt.Errorf("reserved address %s (%s) is not allowed", ip, p)
 			}
 		}
+		// A genuine IPv6 literal can smuggle an IPv4 address that the classifiers
+		// and prefix table above do not reject on the v6 form: IPv4-compatible
+		// (::a.b.c.d), 6to4 (2002::/16), and NAT64 with a network-specific prefix
+		// (RFC 6052/8215, beyond the well-known 64:ff9b::/96 already in the
+		// table). Decode any embedded IPv4 and re-validate it so a v6 wrapper
+		// around 169.254.169.254 / 10.0.0.1 / etc. is blocked too. v4-mapped
+		// (::ffff:a.b.c.d) is already collapsed by Unmap/net.ParseIP, so Is6()
+		// skips it here.
+		if addr.Is6() {
+			for _, v4 := range embeddedV4Candidates(addr) {
+				if err := validateIP(v4); err != nil {
+					return fmt.Errorf("IPv6 %s embeds blocked IPv4 %s: %w", ip, v4, err)
+				}
+			}
+		}
 	}
 	return nil
+}
+
+// embeddedV4Candidates extracts candidate IPv4 addresses embedded in an IPv6
+// address via the well-known transitional encodings (IPv4-compatible, 6to4,
+// NAT64). It returns 4-byte net.IPs (possibly none); a generic public IPv6
+// matches no pattern and yields an empty slice, so genuine v6 hosts are never
+// affected. The branches are disjoint by leading bytes.
+func embeddedV4Candidates(addr netip.Addr) []net.IP {
+	b := addr.As16()
+	add := func(p0, p1, p2, p3 byte) []net.IP {
+		return []net.IP{net.IPv4(p0, p1, p2, p3).To4()}
+	}
+	switch {
+	// IPv4-compatible ::a.b.c.d (RFC 4291, top 96 bits zero, NOT ::ffff:); the
+	// embedded v4 is in the low 32 bits. Loopback/unspecified ::/:: forms are
+	// already rejected by the classifiers before this point.
+	case isZeroBytes(b[0:12]):
+		return add(b[12], b[13], b[14], b[15])
+	// 6to4 2002::/16 (RFC 3056): embedded v4 in bytes 2..5.
+	case b[0] == 0x20 && b[1] == 0x02:
+		return add(b[2], b[3], b[4], b[5])
+	// NAT64 64:ff9b::/32 (RFC 6052 well-known + RFC 8215 local-use). The
+	// well-known /96 already sits in extraBlockedPrefixes; this additionally
+	// catches network-specific-prefix forms that embed the v4 in the low 32
+	// bits, e.g. 64:ff9b:1::a9fe:a9fe.
+	case b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xff && b[3] == 0x9b:
+		return add(b[12], b[13], b[14], b[15])
+	}
+	return nil
+}
+
+func isZeroBytes(bs []byte) bool {
+	for _, x := range bs {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // looksLikeNumericIP reports whether host is a dotted string whose every label

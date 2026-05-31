@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -30,7 +31,7 @@ Defaults to free-first/no-hidden-paid-spend routing. Explicit cost policy settin
 		RunE: func(cmd *cobra.Command, args []string) error {
 			question := strings.Join(args, " ")
 			svc := defaultService()
-			ctx := context.Background()
+			ctx := cmd.Context()
 
 			report, err := researchPipeline(ctx, svc, question, maxSteps)
 			if err != nil {
@@ -172,6 +173,10 @@ func researchPipeline(ctx context.Context, svc *core.Service, question string, m
 	for p := range providerSet {
 		report.Providers = append(report.Providers, p)
 	}
+	// Map iteration order is randomized; sort so the providers_used array in the
+	// --json output (and the human report) is stable across otherwise-identical
+	// runs.
+	sort.Strings(report.Providers)
 
 	// Step 3: Synthesize summary from extracts and source snippets
 	report.Summary = synthesizeSummary(question, report.Sources, report.Extracts)

@@ -637,15 +637,25 @@ func (l *MemoryQuotaLedger) persistLocked() error {
 		return err
 	}
 	payload = append(payload, '\n')
-	tmp := l.path + ".tmp"
+	return atomicWriteFile(l.path, payload)
+}
+
+// atomicWriteFile writes payload durably to path via a temp file + rename so a
+// crash mid-write never leaves a partially-written ledger. It is a package var
+// so tests can inject a persist failure to exercise recordLocked's rollback
+// (mirrors the backupCorruptLedger test-seam convention below).
+var atomicWriteFile = defaultAtomicWriteFile
+
+func defaultAtomicWriteFile(path string, payload []byte) error {
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, payload, 0o600); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, l.path); err != nil {
+	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
-	return os.Chmod(l.path, 0o600)
+	return os.Chmod(path, 0o600)
 }
 
 func (l *MemoryQuotaLedger) markUnavailableLocked(err error) {
