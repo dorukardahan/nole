@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-31
+
 ### Added
 
 - Response-body size caps across all providers: `providerhttp.ReadAllLimited`
@@ -320,7 +322,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/dorukardahan/nole/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/dorukardahan/nole/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/dorukardahan/nole/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/dorukardahan/nole/compare/v0.2.2...v0.2.3
