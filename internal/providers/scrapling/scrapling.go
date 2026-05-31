@@ -12,7 +12,26 @@ import (
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/safenet"
 )
+
+// maxScraplingRedirects bounds how many redirect hops Extract will follow. Each
+// hop's target is re-validated against the SSRF preflight before it is fetched,
+// so a public URL that 30x-redirects to a private/metadata host is rejected at
+// the redirecting hop instead of being fetched locally.
+const maxScraplingRedirects = 5
+
+// hopOutput is the parsed result of a single subprocess fetch. Exactly one of
+// Redirect or Content is meaningful: the script emits Redirect (the resolved,
+// absolute Location) on a 3xx with follow-redirects disabled, otherwise Content
+// plus the FinalURL the fetcher actually landed on (a backstop for a Scrapling
+// build that ignores the no-follow request).
+type hopOutput struct {
+	Redirect string            `json:"redirect"`
+	Content  string            `json:"content"`
+	Metadata map[string]string `json:"metadata"`
+	FinalURL string            `json:"final_url"`
+}
 
 // Output caps bound the memory a single subprocess can consume. The ctx
 // timeout already bounds runtime; these bound RAM so a runaway or hostile
@@ -68,6 +87,10 @@ type Provider struct {
 	python     string
 	configured bool
 	timeout    time.Duration
+	// hopFn overrides the real subprocess fetch for a single hop. Nil in
+	// production (execHop runs the Python subprocess); tests set it to simulate
+	// redirect chains without a live Scrapling runtime.
+	hopFn func(ctx context.Context, url, format string) (hopOutput, error)
 }
 
 type Option func(*Provider)
@@ -114,13 +137,68 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	if !p.configured {
 		return core.ExtractResponse{}, errors.New("scrapling: NOLE_SCRAPLING_PYTHON is not configured")
 	}
+	// One timeout budget across the whole redirect walk so a chain of hops
+	// cannot extend total runtime beyond the provider timeout.
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
-	payload := map[string]string{"url": req.URL, "format": req.Format}
+	current := strings.TrimSpace(req.URL)
+	for hop := 0; ; hop++ {
+		if hop > maxScraplingRedirects {
+			return core.ExtractResponse{}, fmt.Errorf("scrapling: too many redirects (>%d)", maxScraplingRedirects)
+		}
+		// Service.Extract already validated the initial URL, so only REDIRECT
+		// targets (hop > 0) need re-validation here: the local fetcher following
+		// a 30x to 169.254.169.254 or an internal host is the classic
+		// redirect-based SSRF, and the target must pass the preflight before it
+		// is fetched.
+		if hop > 0 {
+			if err := safenet.ValidateURL(current); err != nil {
+				return core.ExtractResponse{}, fmt.Errorf("scrapling: blocked URL: %w", err)
+			}
+		}
+		out, err := p.runHop(ctx, current, req.Format)
+		if err != nil {
+			return core.ExtractResponse{}, err
+		}
+		if out.Redirect != "" {
+			current = out.Redirect
+			continue
+		}
+		// Backstop: if a Scrapling build ignored the no-follow request and
+		// landed somewhere other than we asked, validate that final URL before
+		// returning any content — otherwise a redirect to a private host would
+		// still leak its body. The same-URL common case is already validated.
+		if out.FinalURL != "" && out.FinalURL != current {
+			if err := safenet.ValidateURL(out.FinalURL); err != nil {
+				return core.ExtractResponse{}, fmt.Errorf("scrapling: blocked redirect target: %w", err)
+			}
+		}
+		return core.ExtractResponse{
+			URL:      req.URL,
+			Provider: "scrapling",
+			Content:  strings.TrimSpace(out.Content),
+			Metadata: out.Metadata,
+		}, nil
+	}
+}
+
+// runHop fetches a single URL (no internal redirect following) and returns the
+// parsed result. Tests inject hopFn; production uses execHop.
+func (p Provider) runHop(ctx context.Context, url, format string) (hopOutput, error) {
+	if p.hopFn != nil {
+		return p.hopFn(ctx, url, format)
+	}
+	return p.execHop(ctx, url, format)
+}
+
+// execHop runs the Python subprocess for one fetch and parses its single JSON
+// line into a hopOutput.
+func (p Provider) execHop(ctx context.Context, url, format string) (hopOutput, error) {
+	payload := map[string]string{"url": url, "format": format}
 	stdin, err := json.Marshal(payload)
 	if err != nil {
-		return core.ExtractResponse{}, fmt.Errorf("scrapling: marshal request: %w", err)
+		return hopOutput{}, fmt.Errorf("scrapling: marshal request: %w", err)
 	}
 
 	cmd := exec.CommandContext(ctx, p.python, "-c", extractScript)
@@ -131,31 +209,23 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
-			return core.ExtractResponse{}, fmt.Errorf("scrapling: extract timed out after %s", p.timeout)
+			return hopOutput{}, fmt.Errorf("scrapling: extract timed out after %s", p.timeout)
 		}
 		if stdout.Truncated() || stderr.Truncated() {
-			return core.ExtractResponse{}, errors.New("scrapling: output too large")
+			return hopOutput{}, errors.New("scrapling: output too large")
 		}
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = err.Error()
 		}
-		return core.ExtractResponse{}, fmt.Errorf("scrapling: extract failed: %s", sanitizeError(msg))
+		return hopOutput{}, fmt.Errorf("scrapling: extract failed: %s", sanitizeError(msg))
 	}
 
-	var out struct {
-		Content  string            `json:"content"`
-		Metadata map[string]string `json:"metadata"`
-	}
+	var out hopOutput
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-		return core.ExtractResponse{}, fmt.Errorf("scrapling: decode response: %w", err)
+		return hopOutput{}, fmt.Errorf("scrapling: decode response: %w", err)
 	}
-	return core.ExtractResponse{
-		URL:      req.URL,
-		Provider: "scrapling",
-		Content:  strings.TrimSpace(out.Content),
-		Metadata: out.Metadata,
-	}, nil
+	return out, nil
 }
 
 func (p Provider) Status(ctx context.Context) core.ProviderStatus {
@@ -197,6 +267,7 @@ func sanitizeError(s string) string {
 const extractScript = `
 import json, sys, re
 from html.parser import HTMLParser
+from urllib.parse import urljoin
 
 req = json.load(sys.stdin)
 url = req.get('url', '')
@@ -207,9 +278,41 @@ except Exception as exc:
 
 try:
     fetch = getattr(Fetcher, 'fetch', None) or getattr(Fetcher, 'get')
-    page = fetch(url)
+    try:
+        # Do NOT follow redirects inside the fetcher: a redirect to an internal
+        # / metadata host must be re-validated by the Go SSRF preflight before
+        # the next hop is fetched. The Go caller drives the redirect walk.
+        page = fetch(url, follow_redirects=False)
+    except TypeError:
+        # Fail closed: a Scrapling build that does not accept follow_redirects
+        # cannot guarantee a redirect target is re-validated before it is
+        # fetched. Refuse rather than retry with redirects enabled, which would
+        # let a public->internal 302 perform the SSRF request before Go can
+        # inspect it (the final_url backstop only blocks returning the body, not
+        # the request). SystemExit is a BaseException, so the outer
+        # 'except Exception' below does not swallow it. Upgrade scrapling for
+        # redirect-safe extract.
+        raise SystemExit('scrapling: installed build does not support follow_redirects=False; upgrade scrapling for redirect-safe extract')
 except Exception as exc:
     raise SystemExit(f'Fetcher.fetch/get failed: {exc}')
+
+# On a 3xx (redirect-following disabled), surface the resolved absolute Location
+# so the Go caller can re-run the preflight on it before fetching the next hop.
+status = getattr(page, 'status', None)
+if isinstance(status, int) and 300 <= status < 400:
+    location = None
+    headers = getattr(page, 'headers', None) or {}
+    try:
+        header_items = list(headers.items())
+    except Exception:
+        header_items = []
+    for hk, hv in header_items:
+        if str(hk).lower() == 'location':
+            location = hv
+            break
+    if location:
+        print(json.dumps({'redirect': urljoin(url, str(location))}, ensure_ascii=False))
+        raise SystemExit(0)
 
 def first_attr(obj, names):
     for name in names:
@@ -284,5 +387,8 @@ title = selector_text(page, 'title::text')
 metadata = {'mode': 'fetcher', 'ai_targeted': 'true'}
 if title:
     metadata['title'] = title.strip()
-print(json.dumps({'content': content, 'metadata': metadata}, ensure_ascii=False))
+# final_url is the URL the fetcher actually landed on; the Go caller validates
+# it as a backstop in case a Scrapling build ignored follow_redirects=False.
+final_url = getattr(page, 'url', url) or url
+print(json.dumps({'content': content, 'metadata': metadata, 'final_url': str(final_url)}, ensure_ascii=False))
 `
