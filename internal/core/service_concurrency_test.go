@@ -179,6 +179,96 @@ func TestServiceExtractShortCircuitsCancelledContext(t *testing.T) {
 	}
 }
 
+// gateProvider blocks the leader inside Search until release is closed, then
+// fails — so the route falls through to the next provider. entered is closed
+// once, when the (single) leader goroutine enters Search.
+type gateProvider struct {
+	name    string
+	entered chan struct{}
+	release chan struct{}
+	calls   atomic.Int64
+}
+
+func (p *gateProvider) Name() string { return p.name }
+func (p *gateProvider) Capabilities() []Capability {
+	return []Capability{CapabilitySearch, CapabilityStatus}
+}
+func (p *gateProvider) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
+	if p.calls.Add(1) == 1 {
+		close(p.entered)
+	}
+	<-p.release
+	return SearchResponse{}, errors.New("gate provider failed")
+}
+func (p *gateProvider) Extract(ctx context.Context, req ExtractRequest) (ExtractResponse, error) {
+	return ExtractResponse{}, errors.New("gate provider has no extract")
+}
+func (p *gateProvider) Status(ctx context.Context) ProviderStatus {
+	return ProviderStatus{Name: p.name, Available: true, Capabilities: p.Capabilities()}
+}
+
+func TestServiceSearchCoalescedFollowerSurvivesLeaderCancel(t *testing.T) {
+	// Regression for the coalescing availability bug: when the leader of a
+	// coalesced query cancels mid-flight, a follower with a live context must
+	// still get a successful result (its own request did not cancel), not the
+	// leader's context.Canceled. Without DoChan + context.WithoutCancel the
+	// leader's cancellation was broadcast to every coalesced follower.
+	gate := &gateProvider{name: "gate", entered: make(chan struct{}), release: make(chan struct{})}
+	ok := &instrumentedProvider{name: "ok", resultsN: 1}
+	registry := NewRegistry()
+	_ = registry.Register(gate)
+	_ = registry.Register(ok)
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "gate", FreeRemaining: 5})
+	ledger.Set(QuotaEntry{Provider: "ok", CostClass: CostClassFreeTierBYOK, FreeRemaining: 5, FreeQuota: 5, RefreshWindow: RefreshMonthly, PeriodStart: CurrentMonthISO()})
+	service := NewService(registry, ledger, RouteMatrix{TaskGeneral: {"gate", "ok"}}, WithResponseCache(NewMemoryResponseCache(5*time.Minute)))
+
+	type result struct {
+		resp SearchResponse
+		err  error
+	}
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	leaderCh := make(chan result, 1)
+	go func() {
+		r, e := service.Search(leaderCtx, SearchRequest{Query: "hot", Task: TaskGeneral, Limit: 5})
+		leaderCh <- result{r, e}
+	}()
+	<-gate.entered // leader is inside the gate provider; the singleflight key is registered
+
+	followerCh := make(chan result, 1)
+	go func() {
+		r, e := service.Search(context.Background(), SearchRequest{Query: "hot", Task: TaskGeneral, Limit: 5})
+		followerCh <- result{r, e}
+	}()
+	time.Sleep(50 * time.Millisecond) // let the follower coalesce behind the in-flight leader
+
+	cancelLeader()      // leader disconnects mid-flight
+	close(gate.release) // gate fails -> detached fetch falls through to "ok"
+
+	select {
+	case fr := <-followerCh:
+		if fr.err != nil {
+			t.Fatalf("coalesced follower must not inherit the leader's cancellation; got err %v", fr.err)
+		}
+		if fr.resp.Provider != "ok" {
+			t.Fatalf("follower should have fallen through to ok, got provider %q", fr.resp.Provider)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("follower did not complete within 5s")
+	}
+	if ok.calls.Load() < 1 {
+		t.Fatalf("ok provider should have been tried by the detached fetch, calls=%d", ok.calls.Load())
+	}
+	select {
+	case lr := <-leaderCh:
+		if !errors.Is(lr.err, context.Canceled) {
+			t.Fatalf("leader should observe its own cancellation, got %v", lr.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("leader did not return within 5s")
+	}
+}
+
 func TestServiceSearchClampsLimit(t *testing.T) {
 	// limit is clamped centrally to [1,maxSearchLimit] so an over-large value
 	// can't force a guaranteed provider 422 and a non-positive value can't leak

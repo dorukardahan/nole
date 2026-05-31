@@ -59,6 +59,11 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		req.Limit = maxSearchLimit
 	}
 	route := s.routeFor(req.Task)
+	// A caller that is already cancelled does no work and surfaces its own
+	// cancellation immediately.
+	if err := ctx.Err(); err != nil {
+		return cancelledSearchResponse(req, route), err
+	}
 	if s.cache != nil {
 		if cached, ok := s.cache.GetSearch(req); ok {
 			cached.Query = req.Query
@@ -71,21 +76,38 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 			return cached, nil
 		}
 	}
-	// Collapse concurrent identical queries into one upstream fetch + one
-	// quota debit. Without this, N goroutines issuing the same query (browser
-	// retries, client fan-out, an abusive caller on a widened --listen) each
-	// miss the cache and each debit the free tier, defeating the monthly
-	// free-quota cap. singleflight drops the key once the leader returns, so
-	// distinct queries still run fully in parallel and sequential calls are
-	// never coalesced.
+	// Collapse concurrent identical queries into one upstream fetch + one quota
+	// debit (browser retries, client fan-out, or an abusive caller on a widened
+	// --listen would otherwise each miss the cache and each debit the free
+	// tier). Two correctness requirements drive the shape:
+	//   - DoChan + a per-caller select: each caller observes ITS OWN
+	//     cancellation, so one client disconnecting never fails its peers.
+	//   - context.WithoutCancel for the shared fetch: a leaving/flaky leader (or
+	//     one with a tighter deadline) must not poison live followers with its
+	//     cancellation/deadline. The detached fetch stays bounded by the
+	//     per-provider HTTP client timeouts. singleflight drops the key once the
+	//     fetch returns, so distinct/sequential queries are never coalesced.
 	key := searchCacheKey(req)
-	v, err, _ := s.sfSearch.Do(key, func() (any, error) {
-		return s.searchUncached(ctx, req, route)
+	ch := s.sfSearch.DoChan(key, func() (any, error) {
+		return s.searchUncached(context.WithoutCancel(ctx), req, route)
 	})
-	resp := v.(SearchResponse)
-	resp.Query = req.Query
-	resp.Task = req.Task
-	return resp, err
+	select {
+	case <-ctx.Done():
+		return cancelledSearchResponse(req, route), ctx.Err()
+	case res := <-ch:
+		resp := res.Val.(SearchResponse)
+		resp.Query = req.Query
+		resp.Task = req.Task
+		return resp, res.Err
+	}
+}
+
+// cancelledSearchResponse builds the minimal response returned when the caller's
+// context is already done, so callers can still read Query/Task/Route.
+func cancelledSearchResponse(req SearchRequest, route []string) SearchResponse {
+	resp := SearchResponse{Query: req.Query, Task: req.Task, Route: append([]string(nil), route...)}
+	resp.RoutingInsight = BuildErrorRoutingInsight("search", resp.Route, nil)
+	return resp
 }
 
 func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route []string) (SearchResponse, error) {
@@ -94,16 +116,11 @@ func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route [
 	if s.cache != nil {
 		trace = append(trace, cacheMissAttempt())
 	}
+	// This walk runs on a context detached from any single caller (see Search):
+	// caller-facing cancellation is handled at the wrapper boundary via DoChan +
+	// select, so the walk completes for the benefit of all coalesced callers and
+	// the cache, bounded by per-provider client timeouts.
 	for _, name := range route {
-		// A cancelled/disconnected caller stops the route walk immediately
-		// instead of probing every remaining provider and returning the last
-		// provider's context error: surface cancellation as a first-class
-		// outcome and keep the trace free of misleading provider_error rows.
-		if err := ctx.Err(); err != nil {
-			resp := SearchResponse{Query: req.Query, Task: req.Task, Route: append([]string(nil), route...), RouteTrace: trace}
-			resp.RoutingInsight = BuildErrorRoutingInsight("search", resp.Route, resp.RouteTrace)
-			return resp, err
-		}
 		provider, ok := s.registry.Get(name)
 		if !ok {
 			trace = append(trace, skippedAttempt(name, "not_registered"))
@@ -193,6 +210,9 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 		return ExtractResponse{}, fmt.Errorf("url validation: %w", err)
 	}
 	route := s.routeFor(TaskExtract)
+	if err := ctx.Err(); err != nil {
+		return cancelledExtractResponse(req, route), err
+	}
 	if s.cache != nil {
 		if cached, ok := s.cache.GetExtract(req); ok {
 			cached.URL = req.URL
@@ -204,15 +224,27 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 			return cached, nil
 		}
 	}
-	// See Search: collapse concurrent identical extracts into one fetch + one
-	// debit. Keyed by the extract cache key so coalescing matches caching.
+	// See Search for the DoChan + context.WithoutCancel rationale: each caller
+	// observes its own cancellation, and a leaving leader cannot poison live
+	// followers coalesced on the same extract.
 	key := extractCacheKey(req)
-	v, err, _ := s.sfExtract.Do(key, func() (any, error) {
-		return s.extractUncached(ctx, req, route)
+	ch := s.sfExtract.DoChan(key, func() (any, error) {
+		return s.extractUncached(context.WithoutCancel(ctx), req, route)
 	})
-	resp := v.(ExtractResponse)
-	resp.URL = req.URL
-	return resp, err
+	select {
+	case <-ctx.Done():
+		return cancelledExtractResponse(req, route), ctx.Err()
+	case res := <-ch:
+		resp := res.Val.(ExtractResponse)
+		resp.URL = req.URL
+		return resp, res.Err
+	}
+}
+
+func cancelledExtractResponse(req ExtractRequest, route []string) ExtractResponse {
+	resp := ExtractResponse{URL: req.URL, Route: append([]string(nil), route...)}
+	resp.RoutingInsight = BuildErrorRoutingInsight("extract", resp.Route, nil)
+	return resp
 }
 
 func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route []string) (ExtractResponse, error) {
@@ -221,12 +253,9 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 		trace = append(trace, cacheMissAttempt())
 	}
 	var lastErr error
+	// See searchUncached: runs on a detached context; caller cancellation is
+	// handled at the Extract wrapper boundary.
 	for _, name := range route {
-		if err := ctx.Err(); err != nil {
-			resp := ExtractResponse{URL: req.URL, Route: append([]string(nil), route...), RouteTrace: trace}
-			resp.RoutingInsight = BuildErrorRoutingInsight("extract", resp.Route, resp.RouteTrace)
-			return resp, err
-		}
 		provider, ok := s.registry.Get(name)
 		if !ok {
 			trace = append(trace, skippedAttempt(name, "not_registered"))
