@@ -53,6 +53,52 @@ func TestBraveSearchHappyPath(t *testing.T) {
 	}
 }
 
+func TestBraveSearchClampsCountToBraveMax(t *testing.T) {
+	// Brave documents a hard max of 20 for `count`; an over-large limit must be
+	// clamped to 20 in the built request rather than passed through (which yields
+	// a guaranteed non-retryable HTTP 422).
+	var gotCount string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCount = r.URL.Query().Get("count")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(braveSearchResponse{Web: nil})
+	}))
+	defer srv.Close()
+
+	p := Provider{
+		apiKey:     "test-key",
+		httpClient: &http.Client{Transport: newRedirectTransport(srv.URL)},
+	}
+	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "test", Limit: 100}); err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if gotCount != "20" {
+		t.Fatalf("count = %q, want clamped to 20 for over-large limit", gotCount)
+	}
+}
+
+func TestBraveSearchClampsCountFloorToOne(t *testing.T) {
+	// A zero/unset limit must floor to 1 (the documented minimum), not 0.
+	var gotCount string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCount = r.URL.Query().Get("count")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(braveSearchResponse{Web: nil})
+	}))
+	defer srv.Close()
+
+	p := Provider{
+		apiKey:     "test-key",
+		httpClient: &http.Client{Transport: newRedirectTransport(srv.URL)},
+	}
+	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "test", Limit: 0}); err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if gotCount != "1" {
+		t.Fatalf("count = %q, want floored to 1 for zero limit", gotCount)
+	}
+}
+
 func TestBraveSearchNoAPIKey(t *testing.T) {
 	p := Provider{apiKey: ""}
 	_, err := p.Search(context.Background(), core.SearchRequest{Query: "test"})

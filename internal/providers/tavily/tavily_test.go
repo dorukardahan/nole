@@ -65,6 +65,27 @@ func TestTavilySearchHappyPath(t *testing.T) {
 	}
 }
 
+func TestTavilySearchClampsMaxResults(t *testing.T) {
+	// Defense in depth: an over-large caller limit must be clamped to Tavily's
+	// documented ceiling (20) in the built request body, mirroring brave's
+	// [1,20] count clamp.
+	var receivedBody tavilySearchRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tavilySearchResponse{Query: receivedBody.Query})
+	}))
+	defer srv.Close()
+
+	p := Provider{apiKey: "test-key", httpClient: &http.Client{Transport: &testTransport{srv.URL}}}
+	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "test", Limit: 100}); err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if receivedBody.MaxResults != 20 {
+		t.Fatalf("max_results = %d, want clamped to 20 for over-large limit", receivedBody.MaxResults)
+	}
+}
+
 func TestTavilySearchNoAPIKey(t *testing.T) {
 	p := Provider{apiKey: ""}
 	_, err := p.Search(context.Background(), core.SearchRequest{Query: "test"})

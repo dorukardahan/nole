@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"time"
@@ -101,12 +100,12 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxSearchResponseBytes)
 		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("firecrawl", "search", resp.StatusCode, respBody)
 	}
 
 	var fcresp firecrawlSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&fcresp); err != nil {
+	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxSearchResponseBytes, &fcresp); err != nil {
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: decode response: %w", err)
 	}
 
@@ -176,12 +175,12 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxExtractResponseBytes)
 		return core.ExtractResponse{}, providerhttp.NewHTTPStatusError("firecrawl", "extract", resp.StatusCode, respBody)
 	}
 
 	var fcresp firecrawlScrapeResponse
-	if err := json.NewDecoder(resp.Body).Decode(&fcresp); err != nil {
+	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxExtractResponseBytes, &fcresp); err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("firecrawl: decode response: %w", err)
 	}
 
