@@ -1,6 +1,7 @@
 package safenet
 
 import (
+	"context"
 	"net"
 	"net/url"
 	"testing"
@@ -45,7 +46,7 @@ func FuzzValidateURL(f *testing.F) {
 		// Hermetic resolver: never hit real DNS; record if it was reached.
 		var resolved bool
 		old := lookupIP
-		lookupIP = func(string) ([]net.IP, error) {
+		lookupIP = func(context.Context, string) ([]net.IP, error) {
 			resolved = true
 			return []net.IP{net.ParseIP("93.184.216.34")}, nil
 		}

@@ -1,6 +1,7 @@
 package safenet
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
@@ -8,7 +9,12 @@ import (
 	"strings"
 )
 
-var lookupIP = net.LookupIP
+// lookupIP resolves a host using a context-aware resolver so a slow or wedged
+// DNS lookup is interruptible by caller cancellation (Ctrl-C / SIGTERM) instead
+// of blocking the preflight until the resolver returns. Overridable in tests.
+var lookupIP = func(ctx context.Context, host string) ([]net.IP, error) {
+	return net.DefaultResolver.LookupIP(ctx, "ip", host)
+}
 
 // extraBlockedPrefixes covers ranges that Go's net.IP classifiers (IsPrivate,
 // IsLoopback, IsLinkLocal*, IsMulticast, IsUnspecified) do NOT reject but that
@@ -31,13 +37,22 @@ var extraBlockedPrefixes = func() []netip.Prefix {
 	return prefixes
 }()
 
-// ValidateURL performs a local, best-effort URL preflight before Nólë asks a
-// provider to fetch a URL. It blocks non-http(s) schemes, obvious local
-// hostnames, loopback, private IPs, link-local addresses, multicast,
-// unspecified addresses, and cloud metadata IPs. This is not a complete SSRF
-// sandbox: remote providers resolve and fetch URLs from their own networks, so
-// split-horizon DNS or DNS rebinding can still differ from this local check.
+// ValidateURL is ValidateURLContext with a background context. Use it from call
+// sites that have no context to thread; prefer ValidateURLContext where a
+// request/command context is available so the DNS preflight is cancellable.
 func ValidateURL(rawURL string) error {
+	return ValidateURLContext(context.Background(), rawURL)
+}
+
+// ValidateURLContext performs a local, best-effort URL preflight before Nólë
+// asks a provider to fetch a URL. It blocks non-http(s) schemes, obvious local
+// hostnames, loopback, private IPs, link-local addresses, multicast,
+// unspecified addresses, and cloud metadata IPs. The DNS resolution honors ctx,
+// so a caller that cancels (Ctrl-C / SIGTERM) is not left blocked on a slow or
+// wedged resolver. This is not a complete SSRF sandbox: remote providers resolve
+// and fetch URLs from their own networks, so split-horizon DNS or DNS rebinding
+// can still differ from this local check.
+func ValidateURLContext(ctx context.Context, rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("invalid URL: %w", err)
@@ -75,7 +90,7 @@ func ValidateURL(rawURL string) error {
 
 	// Hostnames are resolved and every answer must be public. Blocking on DNS
 	// failures is safer than letting providers fetch ambiguous targets.
-	ips, err := lookupIP(host)
+	ips, err := lookupIP(ctx, host)
 	if err != nil {
 		return fmt.Errorf("cannot resolve host %q: %w", host, err)
 	}
