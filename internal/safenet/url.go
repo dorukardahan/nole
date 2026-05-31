@@ -116,12 +116,12 @@ func validateIP(ip net.IP) error {
 		}
 		// A genuine IPv6 literal can smuggle an IPv4 address that the classifiers
 		// and prefix table above do not reject on the v6 form: IPv4-compatible
-		// (::a.b.c.d), 6to4 (2002::/16), and NAT64 with a network-specific prefix
-		// (RFC 6052/8215, beyond the well-known 64:ff9b::/96 already in the
-		// table). Decode any embedded IPv4 and re-validate it so a v6 wrapper
-		// around 169.254.169.254 / 10.0.0.1 / etc. is blocked too. v4-mapped
-		// (::ffff:a.b.c.d) is already collapsed by Unmap/net.ParseIP, so Is6()
-		// skips it here.
+		// (::a.b.c.d) and 6to4 (2002::/16). Decode any embedded IPv4 and
+		// re-validate it so a v6 wrapper around 169.254.169.254 / 10.0.0.1 / etc.
+		// is blocked too. v4-mapped (::ffff:a.b.c.d) is already collapsed by
+		// Unmap/net.ParseIP, so Is6() skips it here. (NAT64 is handled by the
+		// 64:ff9b::/96 prefix entry above — see embeddedV4Candidates for why NSP
+		// forms are intentionally left to best-effort.)
 		if addr.Is6() {
 			for _, v4 := range embeddedV4Candidates(addr) {
 				if err := validateIP(v4); err != nil {
@@ -134,10 +134,20 @@ func validateIP(ip net.IP) error {
 }
 
 // embeddedV4Candidates extracts candidate IPv4 addresses embedded in an IPv6
-// address via the well-known transitional encodings (IPv4-compatible, 6to4,
-// NAT64). It returns 4-byte net.IPs (possibly none); a generic public IPv6
-// matches no pattern and yields an empty slice, so genuine v6 hosts are never
-// affected. The branches are disjoint by leading bytes.
+// address via the well-known transitional encodings (IPv4-compatible, 6to4). It
+// returns 4-byte net.IPs (possibly none); a generic public IPv6 matches no
+// pattern and yields an empty slice, so genuine v6 hosts are never affected. The
+// branches are disjoint by leading bytes.
+//
+// NAT64 is deliberately NOT decoded here. The well-known prefix 64:ff9b::/96 is
+// already blocked wholesale by extraBlockedPrefixes. For network-specific-prefix
+// forms the embedded-v4 byte position depends on the prefix length, which is not
+// knowable from the literal: decoding any fixed layout (e.g. the low 32 bits)
+// would reject legitimate PUBLIC NAT64 translations where those bytes belong to
+// the prefix (a /48 translation of 8.8.8.8 leaves the low 32 bits 0.0.0.0).
+// ValidateURL is documented best-effort, so a rare non-/96 NSP metadata literal
+// is left to the provider's own network policy rather than risking false
+// positives that break reachable public URLs.
 func embeddedV4Candidates(addr netip.Addr) []net.IP {
 	b := addr.As16()
 	add := func(p0, p1, p2, p3 byte) []net.IP {
@@ -152,18 +162,6 @@ func embeddedV4Candidates(addr netip.Addr) []net.IP {
 	// 6to4 2002::/16 (RFC 3056): embedded v4 in bytes 2..5.
 	case b[0] == 0x20 && b[1] == 0x02:
 		return add(b[2], b[3], b[4], b[5])
-	// NAT64 64:ff9b::/96 well-known prefix (RFC 6052): the embedded IPv4 is in
-	// the low 32 bits. The /96 also sits in extraBlockedPrefixes; this
-	// re-validates the embedded v4 for completeness. We decode ONLY the /96
-	// (low-32) layout on purpose: network-specific-prefix forms place the v4 at a
-	// position that depends on the prefix length, which is not knowable from the
-	// literal, and guessing every RFC 6052 layout would reject legitimate PUBLIC
-	// NAT64 translations (e.g. a /48 prefix embedding 8.8.8.8 has prefix bytes
-	// that look like 0.x.x.x). ValidateURL is documented best-effort, so a rare
-	// non-/96 NSP metadata literal is left to the provider's own network policy
-	// rather than risking false positives that break reachable public URLs.
-	case b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xff && b[3] == 0x9b:
-		return add(b[12], b[13], b[14], b[15])
 	}
 	return nil
 }

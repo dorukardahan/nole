@@ -117,16 +117,7 @@ func (b *Breaker) Allow() (bool, uint64) {
 		}
 		return false, b.generation
 	case breakerHalfOpen:
-		// Normally exactly one probe is in flight. But if it has been outstanding
-		// for a full cooldown without reporting an outcome (its caller cancelled,
-		// it panicked, or the result was dropped — see DoWithRetryBreaker, which
-		// records nothing for a caller-cancelled call), re-arm with a fresh probe
-		// under a new generation so the breaker can never wedge half-open forever.
-		if b.now().Sub(b.openedAt) >= b.cooldown {
-			b.toHalfOpenLocked()
-			return true, b.generation
-		}
-		return false, b.generation
+		return false, b.generation // exactly one probe in flight
 	default: // closed
 		return true, b.generation
 	}
@@ -177,6 +168,28 @@ func (b *Breaker) RecordFailure(gen uint64) {
 	}
 }
 
+// RecordCancellation registers that a call admitted under gen was aborted by
+// the CALLER (not the provider) — e.g. a client disconnect. Stale outcomes (gen
+// mismatch) are ignored. A closed-state cancellation is a no-op: the caller
+// leaving must not reset the consecutive-failure streak (recording it as a
+// success would). A half-open probe that is cancelled is INCONCLUSIVE — no
+// healthy upstream response was observed — so the breaker re-opens
+// conservatively rather than closing on it or wedging half-open with no probe
+// in flight.
+func (b *Breaker) RecordCancellation(gen uint64) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if gen != b.generation {
+		return
+	}
+	if b.state == breakerHalfOpen {
+		b.toOpenLocked()
+	}
+}
+
 // Transition helpers bump the generation so any in-flight call admitted under
 // the prior regime is ignored when it reports. Callers hold b.mu.
 func (b *Breaker) toOpenLocked() {
@@ -187,7 +200,6 @@ func (b *Breaker) toOpenLocked() {
 
 func (b *Breaker) toHalfOpenLocked() {
 	b.state = breakerHalfOpen
-	b.openedAt = b.now() // probe-start time, for the half-open re-arm in Allow
 	b.generation++
 }
 
@@ -260,14 +272,16 @@ func DoWithRetryBreaker(ctx context.Context, client *http.Client, req *http.Requ
 		return nil, ErrCircuitOpen
 	}
 	resp, err := DoWithRetry(ctx, client, req, opts)
-	// A call aborted by the CALLER's own cancellation/deadline is neither a
-	// provider success nor failure: a disconnecting client must not heal a
-	// failing breaker (record-success) nor reset a closed-state failure streak,
-	// and a cancelled half-open probe must not close the breaker. Record nothing;
-	// the half-open re-arm in Allow recovers a probe abandoned this way. (A
-	// client-side http.Client.Timeout has a LIVE caller ctx here, so it still
-	// flows to ShouldTrip and trips — only genuine caller cancellation is skipped.)
+	// A call aborted by the CALLER's own cancellation/deadline is not a provider
+	// success: a disconnecting client must not heal a failing breaker or reset a
+	// closed-state failure streak. RecordCancellation handles it — a no-op when
+	// closed, a conservative re-open when it was the half-open probe (so the
+	// breaker neither closes on an unobserved upstream nor wedges with no probe
+	// in flight). A client-side http.Client.Timeout has a LIVE caller ctx here,
+	// so it does NOT take this branch — it flows to ShouldTrip and trips, which
+	// is exactly how a slow/hung upstream is caught.
 	if ctx != nil && ctx.Err() != nil {
+		b.RecordCancellation(gen)
 		return resp, err
 	}
 	if ShouldTrip(statusCodeOf(resp), err, ctx) {

@@ -341,26 +341,32 @@ func TestDoWithRetryBreakerRecordsNeitherOnCallerCancellation(t *testing.T) {
 	}
 }
 
-// A half-open probe that never reports its outcome (e.g. caller cancelled) must
-// not wedge the breaker: after a cooldown, Allow re-arms a fresh probe.
-func TestBreakerHalfOpenReArmsAbandonedProbe(t *testing.T) {
+// A half-open probe aborted by caller cancellation is inconclusive: it must
+// re-open the breaker (conservative), not close it and not wedge it half-open
+// with no probe in flight.
+func TestBreakerCancelledProbeReopens(t *testing.T) {
 	now := time.Unix(0, 0)
 	clock := func() time.Time { return now }
 	b := NewBreaker(BreakerOptions{Threshold: 1, Cooldown: time.Minute, now: clock})
 	failCall(b) // open at t=0
 
-	now = now.Add(time.Minute)
-	if ok, _ := b.Allow(); !ok {
-		t.Fatal("first probe should be admitted after the cooldown")
-	}
+	now = now.Add(2 * time.Minute) // cooldown elapsed
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return nil, context.Canceled
+	})}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://provider.invalid/", nil)
+	// Admits the half-open probe (cooldown elapsed), then the cancelled outcome
+	// re-opens it via RecordCancellation.
+	_, _ = DoWithRetryBreaker(ctx, client, req, RetryOptions{MaxAttempts: 1, BaseDelay: time.Millisecond, Sleep: noSleep}, b)
+
 	if allowed(b) {
-		t.Fatal("a second probe must be denied while the first is in flight")
+		t.Fatal("a cancelled half-open probe must re-open the breaker, not close or wedge it")
 	}
-	// The probe never records its outcome. After another cooldown the breaker
-	// must re-arm rather than stay wedged half-open forever.
-	now = now.Add(time.Minute)
-	if ok, _ := b.Allow(); !ok {
-		t.Fatal("half-open breaker must re-arm an abandoned probe after the cooldown")
+	if !b.IsOpen() {
+		t.Fatal("breaker must be open after a cancelled probe")
 	}
 }
 

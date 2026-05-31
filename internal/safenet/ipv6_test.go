@@ -57,11 +57,10 @@ func TestValidateURLBlocksEmbeddedV4(t *testing.T) {
 		{"ipv4-compatible private", "http://[::10.0.0.1]/"},
 		{"6to4 metadata", "http://[2002:a9fe:a9fe::]/"},
 		{"6to4 private 10.0.0.1", "http://[2002:0a00:0001::]/"},
-		// NAT64 NSP form (not in the /96 prefix table, so it exercises the
-		// embedded-v4 decode): the embedded metadata v4 is in the low 32 bits —
-		// the only layout we decode, to avoid false positives on public NAT64
-		// translations under unknown network-specific prefixes.
-		{"nat64 nsp metadata (low-32)", "http://[64:ff9b:1::a9fe:a9fe]/"},
+		// NAT64 well-known prefix metadata: blocked wholesale by the
+		// 64:ff9b::/96 prefix table entry (NSP forms are intentionally not
+		// decoded — see TestValidateURLAllowsEmbeddedV4Public).
+		{"nat64 well-known metadata", "http://[64:ff9b::a9fe:a9fe]/"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -86,10 +85,13 @@ func TestValidateURLAllowsEmbeddedV4Public(t *testing.T) {
 		{"6to4 of public 93.184.216.34", "http://[2002:5db8:d822::]/"},
 		{"ipv4-compatible of public 93.184.216.34", "http://[::5db8:d822]/"},
 		{"generic public v6 (no embedded v4)", "http://[2001:4860:4860::8888]/"},
-		// NAT64 NSP translation of a PUBLIC v4 (8.8.8.8 in the low 32 bits) must
-		// NOT be rejected — guards against over-blocking legitimate public NAT64
-		// translations under network-specific prefixes (Codex P2).
-		{"nat64 nsp of public 8.8.8.8", "http://[64:ff9b:1::808:808]/"},
+		// NAT64 network-specific-prefix literals must NOT be rejected — the
+		// embedded-v4 position is unknowable from the literal, so decoding any
+		// fixed layout would over-block legitimate public translations (Codex P2).
+		// These are left to best-effort; both a public-looking and a /48-encoded
+		// form must pass the local guard.
+		{"nat64 nsp form (low-32 public)", "http://[64:ff9b:1::808:808]/"},
+		{"nat64 nsp /48-encoded public 8.8.8.8", "http://[64:ff9b:1:808:8:800::]/"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -107,7 +109,7 @@ func TestEmbeddedV4CandidatesUnit(t *testing.T) {
 	}{
 		{"::169.254.169.254", "169.254.169.254"},
 		{"2002:a9fe:a9fe::", "169.254.169.254"},
-		{"64:ff9b:1::a9fe:a9fe", "169.254.169.254"},
+		{"64:ff9b:1::a9fe:a9fe", ""}, // NAT64 NSP not decoded (WKP handled by the prefix table)
 		{"2001:4860:4860::8888", ""}, // public v6: no candidate, proves no over-block
 	}
 	for _, tc := range cases {
