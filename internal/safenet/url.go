@@ -152,22 +152,18 @@ func embeddedV4Candidates(addr netip.Addr) []net.IP {
 	// 6to4 2002::/16 (RFC 3056): embedded v4 in bytes 2..5.
 	case b[0] == 0x20 && b[1] == 0x02:
 		return add(b[2], b[3], b[4], b[5])
-	// NAT64 64:ff9b::/32 (RFC 6052 well-known + RFC 8215 local-use). The
-	// well-known /96 already sits in extraBlockedPrefixes; this additionally
-	// catches network-specific-prefix forms. Per RFC 6052 §2.2 the embedded v4
-	// position depends on the translation prefix length and always skips byte 8
-	// (the reserved "u" octet), so the v4 is NOT necessarily in the low 32 bits.
-	// Emit every standard layout (/32../96) and let validateIP re-validate each,
-	// so an embedded private/metadata v4 is caught regardless of prefix length.
+	// NAT64 64:ff9b::/96 well-known prefix (RFC 6052): the embedded IPv4 is in
+	// the low 32 bits. The /96 also sits in extraBlockedPrefixes; this
+	// re-validates the embedded v4 for completeness. We decode ONLY the /96
+	// (low-32) layout on purpose: network-specific-prefix forms place the v4 at a
+	// position that depends on the prefix length, which is not knowable from the
+	// literal, and guessing every RFC 6052 layout would reject legitimate PUBLIC
+	// NAT64 translations (e.g. a /48 prefix embedding 8.8.8.8 has prefix bytes
+	// that look like 0.x.x.x). ValidateURL is documented best-effort, so a rare
+	// non-/96 NSP metadata literal is left to the provider's own network policy
+	// rather than risking false positives that break reachable public URLs.
 	case b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xff && b[3] == 0x9b:
-		return []net.IP{
-			net.IPv4(b[4], b[5], b[6], b[7]).To4(),     // /32
-			net.IPv4(b[5], b[6], b[7], b[9]).To4(),     // /40 (skip u-octet b[8])
-			net.IPv4(b[6], b[7], b[9], b[10]).To4(),    // /48
-			net.IPv4(b[7], b[9], b[10], b[11]).To4(),   // /56
-			net.IPv4(b[9], b[10], b[11], b[12]).To4(),  // /64
-			net.IPv4(b[12], b[13], b[14], b[15]).To4(), // /96
-		}
+		return add(b[12], b[13], b[14], b[15])
 	}
 	return nil
 }

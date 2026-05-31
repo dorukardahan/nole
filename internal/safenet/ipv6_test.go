@@ -57,10 +57,11 @@ func TestValidateURLBlocksEmbeddedV4(t *testing.T) {
 		{"ipv4-compatible private", "http://[::10.0.0.1]/"},
 		{"6to4 metadata", "http://[2002:a9fe:a9fe::]/"},
 		{"6to4 private 10.0.0.1", "http://[2002:0a00:0001::]/"},
-		{"nat64 nsp metadata (non /96)", "http://[64:ff9b:1::a9fe:a9fe]/"},
-		// RFC 6052 /48 NSP layout: the embedded v4 (169.254.169.254) straddles
-		// the reserved u-octet at bytes 6,7,9,10 — not the low 32 bits.
-		{"nat64 nsp metadata (/48 u-octet straddle)", "http://[64:ff9b:0:a9fe:a9:fe00:808:808]/"},
+		// NAT64 NSP form (not in the /96 prefix table, so it exercises the
+		// embedded-v4 decode): the embedded metadata v4 is in the low 32 bits —
+		// the only layout we decode, to avoid false positives on public NAT64
+		// translations under unknown network-specific prefixes.
+		{"nat64 nsp metadata (low-32)", "http://[64:ff9b:1::a9fe:a9fe]/"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -85,6 +86,10 @@ func TestValidateURLAllowsEmbeddedV4Public(t *testing.T) {
 		{"6to4 of public 93.184.216.34", "http://[2002:5db8:d822::]/"},
 		{"ipv4-compatible of public 93.184.216.34", "http://[::5db8:d822]/"},
 		{"generic public v6 (no embedded v4)", "http://[2001:4860:4860::8888]/"},
+		// NAT64 NSP translation of a PUBLIC v4 (8.8.8.8 in the low 32 bits) must
+		// NOT be rejected — guards against over-blocking legitimate public NAT64
+		// translations under network-specific prefixes (Codex P2).
+		{"nat64 nsp of public 8.8.8.8", "http://[64:ff9b:1::808:808]/"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
