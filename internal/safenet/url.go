@@ -125,6 +125,9 @@ func validateIP(ip net.IP) error {
 // RFC 3696/952. Real hostnames (3com.com, 123abc.com, a1.b2.c3) contain at
 // least one non-numeric label and are not matched.
 func looksLikeNumericIP(host string) bool {
+	// Strip a single trailing dot (FQDN form) so the numeric-IP forms this guard
+	// blocks are also caught when written as "0177.0.0.1." etc.
+	host = strings.TrimSuffix(host, ".")
 	if host == "" {
 		return false
 	}

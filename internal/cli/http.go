@@ -200,14 +200,18 @@ func (h *httpHandler) start(ctx context.Context, addr string) error {
 		}
 		return err
 	case <-ctx.Done():
-		// SIGINT/SIGTERM: drain in-flight handlers instead of hard-killing them.
-		// 10s sits under WriteTimeout so a handler mid-fallback can finish or be
-		// cancelled cleanly; Shutdown stops accepting new connections first.
+		// SIGINT/SIGTERM: stop accepting new connections and give in-flight
+		// handlers a bounded window to drain instead of hard-killing them. The
+		// drain budget is intentionally shorter than WriteTimeout (300s): if a
+		// slow provider-backed handler outlasts it, Shutdown returns
+		// DeadlineExceeded — we log that and still exit cleanly (the listener is
+		// already closed and the process is going away), rather than reporting a
+		// shutdown failure for what is a normal Ctrl-C during a slow request.
 		fmt.Fprintln(os.Stderr, "nole HTTP server: shutting down, draining in-flight requests...")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := h.server.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("graceful shutdown: %w", err)
+			fmt.Fprintf(os.Stderr, "nole HTTP server: drain did not finish (%v); exiting\n", err)
 		}
 		return nil
 	}
