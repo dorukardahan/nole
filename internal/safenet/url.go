@@ -1,6 +1,7 @@
 package safenet
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
@@ -8,7 +9,12 @@ import (
 	"strings"
 )
 
-var lookupIP = net.LookupIP
+// lookupIP resolves a host using a context-aware resolver so a slow or wedged
+// DNS lookup is interruptible by caller cancellation (Ctrl-C / SIGTERM) instead
+// of blocking the preflight until the resolver returns. Overridable in tests.
+var lookupIP = func(ctx context.Context, host string) ([]net.IP, error) {
+	return net.DefaultResolver.LookupIP(ctx, "ip", host)
+}
 
 // extraBlockedPrefixes covers ranges that Go's net.IP classifiers (IsPrivate,
 // IsLoopback, IsLinkLocal*, IsMulticast, IsUnspecified) do NOT reject but that
@@ -31,13 +37,22 @@ var extraBlockedPrefixes = func() []netip.Prefix {
 	return prefixes
 }()
 
-// ValidateURL performs a local, best-effort URL preflight before Nólë asks a
-// provider to fetch a URL. It blocks non-http(s) schemes, obvious local
-// hostnames, loopback, private IPs, link-local addresses, multicast,
-// unspecified addresses, and cloud metadata IPs. This is not a complete SSRF
-// sandbox: remote providers resolve and fetch URLs from their own networks, so
-// split-horizon DNS or DNS rebinding can still differ from this local check.
+// ValidateURL is ValidateURLContext with a background context. Use it from call
+// sites that have no context to thread; prefer ValidateURLContext where a
+// request/command context is available so the DNS preflight is cancellable.
 func ValidateURL(rawURL string) error {
+	return ValidateURLContext(context.Background(), rawURL)
+}
+
+// ValidateURLContext performs a local, best-effort URL preflight before Nólë
+// asks a provider to fetch a URL. It blocks non-http(s) schemes, obvious local
+// hostnames, loopback, private IPs, link-local addresses, multicast,
+// unspecified addresses, and cloud metadata IPs. The DNS resolution honors ctx,
+// so a caller that cancels (Ctrl-C / SIGTERM) is not left blocked on a slow or
+// wedged resolver. This is not a complete SSRF sandbox: remote providers resolve
+// and fetch URLs from their own networks, so split-horizon DNS or DNS rebinding
+// can still differ from this local check.
+func ValidateURLContext(ctx context.Context, rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("invalid URL: %w", err)
@@ -75,7 +90,7 @@ func ValidateURL(rawURL string) error {
 
 	// Hostnames are resolved and every answer must be public. Blocking on DNS
 	// failures is safer than letting providers fetch ambiguous targets.
-	ips, err := lookupIP(host)
+	ips, err := lookupIP(ctx, host)
 	if err != nil {
 		return fmt.Errorf("cannot resolve host %q: %w", host, err)
 	}
@@ -114,8 +129,65 @@ func validateIP(ip net.IP) error {
 				return fmt.Errorf("reserved address %s (%s) is not allowed", ip, p)
 			}
 		}
+		// A genuine IPv6 literal can smuggle an IPv4 address that the classifiers
+		// and prefix table above do not reject on the v6 form: IPv4-compatible
+		// (::a.b.c.d) and 6to4 (2002::/16). Decode any embedded IPv4 and
+		// re-validate it so a v6 wrapper around 169.254.169.254 / 10.0.0.1 / etc.
+		// is blocked too. v4-mapped (::ffff:a.b.c.d) is already collapsed by
+		// Unmap/net.ParseIP, so Is6() skips it here. (NAT64 is handled by the
+		// 64:ff9b::/96 prefix entry above — see embeddedV4Candidates for why NSP
+		// forms are intentionally left to best-effort.)
+		if addr.Is6() {
+			for _, v4 := range embeddedV4Candidates(addr) {
+				if err := validateIP(v4); err != nil {
+					return fmt.Errorf("IPv6 %s embeds blocked IPv4 %s: %w", ip, v4, err)
+				}
+			}
+		}
 	}
 	return nil
+}
+
+// embeddedV4Candidates extracts candidate IPv4 addresses embedded in an IPv6
+// address via the well-known transitional encodings (IPv4-compatible, 6to4). It
+// returns 4-byte net.IPs (possibly none); a generic public IPv6 matches no
+// pattern and yields an empty slice, so genuine v6 hosts are never affected. The
+// branches are disjoint by leading bytes.
+//
+// NAT64 is deliberately NOT decoded here. The well-known prefix 64:ff9b::/96 is
+// already blocked wholesale by extraBlockedPrefixes. For network-specific-prefix
+// forms the embedded-v4 byte position depends on the prefix length, which is not
+// knowable from the literal: decoding any fixed layout (e.g. the low 32 bits)
+// would reject legitimate PUBLIC NAT64 translations where those bytes belong to
+// the prefix (a /48 translation of 8.8.8.8 leaves the low 32 bits 0.0.0.0).
+// ValidateURL is documented best-effort, so a rare non-/96 NSP metadata literal
+// is left to the provider's own network policy rather than risking false
+// positives that break reachable public URLs.
+func embeddedV4Candidates(addr netip.Addr) []net.IP {
+	b := addr.As16()
+	add := func(p0, p1, p2, p3 byte) []net.IP {
+		return []net.IP{net.IPv4(p0, p1, p2, p3).To4()}
+	}
+	switch {
+	// IPv4-compatible ::a.b.c.d (RFC 4291, top 96 bits zero, NOT ::ffff:); the
+	// embedded v4 is in the low 32 bits. Loopback/unspecified ::/:: forms are
+	// already rejected by the classifiers before this point.
+	case isZeroBytes(b[0:12]):
+		return add(b[12], b[13], b[14], b[15])
+	// 6to4 2002::/16 (RFC 3056): embedded v4 in bytes 2..5.
+	case b[0] == 0x20 && b[1] == 0x02:
+		return add(b[2], b[3], b[4], b[5])
+	}
+	return nil
+}
+
+func isZeroBytes(bs []byte) bool {
+	for _, x := range bs {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // looksLikeNumericIP reports whether host is a dotted string whose every label

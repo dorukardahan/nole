@@ -22,7 +22,7 @@ func newSearchCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := runSearch(args[0], parseTask(taskRaw), limit)
+			resp, err := runSearch(cmd.Context(), args[0], parseTask(taskRaw), limit)
 			resp = applySearchInsightMode(resp, insightMode)
 			if err != nil {
 				if jsonOut {

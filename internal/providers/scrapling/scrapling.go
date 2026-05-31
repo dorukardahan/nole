@@ -153,7 +153,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 		// redirect-based SSRF, and the target must pass the preflight before it
 		// is fetched.
 		if hop > 0 {
-			if err := safenet.ValidateURL(current); err != nil {
+			if err := safenet.ValidateURLContext(ctx, current); err != nil {
 				return core.ExtractResponse{}, fmt.Errorf("scrapling: blocked URL: %w", err)
 			}
 		}
@@ -170,7 +170,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 		// returning any content — otherwise a redirect to a private host would
 		// still leak its body. The same-URL common case is already validated.
 		if out.FinalURL != "" && out.FinalURL != current {
-			if err := safenet.ValidateURL(out.FinalURL); err != nil {
+			if err := safenet.ValidateURLContext(ctx, out.FinalURL); err != nil {
 				return core.ExtractResponse{}, fmt.Errorf("scrapling: blocked redirect target: %w", err)
 			}
 		}

@@ -1,6 +1,7 @@
 package safenet
 
 import (
+	"context"
 	"errors"
 	"net"
 	"testing"
@@ -9,8 +10,30 @@ import (
 func withLookupIP(t *testing.T, fn func(string) ([]net.IP, error)) {
 	t.Helper()
 	old := lookupIP
-	lookupIP = fn
+	lookupIP = func(_ context.Context, host string) ([]net.IP, error) { return fn(host) }
 	t.Cleanup(func() { lookupIP = old })
+}
+
+// The DNS preflight must run on the caller's context so a slow/wedged resolver
+// is interruptible by Ctrl-C / SIGTERM (regression guard: net.LookupIP, the old
+// resolver, ignored context and made `nole extract <hostname>` uninterruptible).
+func TestValidateURLContextThreadsContextToResolver(t *testing.T) {
+	type ctxKey struct{}
+	old := lookupIP
+	var sawValue any
+	lookupIP = func(ctx context.Context, _ string) ([]net.IP, error) {
+		sawValue = ctx.Value(ctxKey{})
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	}
+	t.Cleanup(func() { lookupIP = old })
+
+	ctx := context.WithValue(context.Background(), ctxKey{}, "marker")
+	if err := ValidateURLContext(ctx, "https://example.com/"); err != nil {
+		t.Fatalf("ValidateURLContext: %v", err)
+	}
+	if sawValue != "marker" {
+		t.Fatal("ValidateURLContext must pass the caller context into the resolver (so DNS is cancellable)")
+	}
 }
 
 func TestValidateURLAcceptsPublicHTTPS(t *testing.T) {

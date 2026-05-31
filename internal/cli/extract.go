@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -21,7 +20,7 @@ func newExtractCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := defaultService().Extract(context.Background(), core.ExtractRequest{URL: args[0], Format: format})
+			resp, err := defaultService().Extract(cmd.Context(), core.ExtractRequest{URL: args[0], Format: format})
 			resp = applyExtractInsightMode(resp, insightMode)
 			if err != nil {
 				if jsonOut {

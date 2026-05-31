@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -13,7 +12,7 @@ func newProvidersCommand() *cobra.Command {
 		Use:   "providers",
 		Short: "Show provider status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := defaultService().ProviderStatus(context.Background())
+			resp := defaultService().ProviderStatus(cmd.Context())
 			if jsonOut {
 				return writeJSONTo(cmd.OutOrStdout(), resp)
 			}

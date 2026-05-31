@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 
 	"github.com/spf13/cobra"
 )
@@ -45,16 +43,18 @@ prefer 'nole mcp' (stdio).`,
 				return err
 			}
 
-			// Shut down gracefully on SIGINT/SIGTERM so in-flight provider-backed
-			// requests can drain instead of being hard-killed mid-fallback.
-			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer stop()
-
 			fmt.Fprintf(cmd.OutOrStdout(), "nole serve: listening on %s\n", listen)
 			fmt.Fprintf(cmd.OutOrStdout(), "  MCP endpoint: http://%s/mcp\n", listen)
 			fmt.Fprintf(cmd.OutOrStdout(), "  REST API:     http://%s/api/{search,extract,providers,budget}\n", listen)
 			fmt.Fprintf(cmd.OutOrStdout(), "  Health:       http://%s/health\n", listen)
-			return handler.start(ctx, listen)
+			// cmd.Context() is the root signal-aware context: main installs
+			// signal.NotifyContext (SIGINT/SIGTERM) and restores default signal
+			// handling on the first interrupt, so a second Ctrl-C force-exits a slow
+			// drain. start() shuts down gracefully when this context is cancelled,
+			// letting in-flight provider-backed requests drain instead of being
+			// hard-killed mid-fallback. We intentionally do NOT register a second,
+			// nested signal handler here (it would consume the force-exit signal).
+			return handler.start(cmd.Context(), listen)
 		},
 	}
 	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8765", "bind address (host:port)")

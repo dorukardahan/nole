@@ -206,7 +206,7 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 	if req.Format == "" {
 		req.Format = "markdown"
 	}
-	if err := safenet.ValidateURL(req.URL); err != nil {
+	if err := safenet.ValidateURLContext(ctx, req.URL); err != nil {
 		return ExtractResponse{}, fmt.Errorf("url validation: %w", err)
 	}
 	route := s.routeFor(TaskExtract)

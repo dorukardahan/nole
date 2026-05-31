@@ -17,6 +17,7 @@ type Provider struct {
 	apiKey     string
 	baseURL    string
 	httpClient *http.Client
+	breaker    *providerhttp.Breaker
 }
 
 type Option func(*Provider)
@@ -27,6 +28,13 @@ func WithAPIKey(key string) Option {
 
 func WithBaseURL(url string) Option {
 	return func(p *Provider) { p.baseURL = url }
+}
+
+// WithBreaker attaches a circuit breaker so persistent upstream failures
+// short-circuit fast instead of burning the per-call timeout + retry budget. A
+// nil breaker (the default) leaves behaviour unchanged.
+func WithBreaker(b *providerhttp.Breaker) Option {
+	return func(p *Provider) { p.breaker = b }
 }
 
 func New(opts ...Option) Provider {
@@ -77,9 +85,21 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: FIRECRAWL_API_KEY not set")
 	}
 
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 5
+	}
+	// Defense in depth: clamp the limit to a sane ceiling before sending it
+	// upstream, mirroring brave/tavily. core.Service already clamps to
+	// maxSearchLimit (20), but a caller constructing the provider directly
+	// bypasses that single upstream guard.
+	if limit > 20 {
+		limit = 20
+	}
+
 	body := firecrawlSearchRequest{
 		Query: req.Query,
-		Limit: req.Limit,
+		Limit: limit,
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -93,7 +113,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
+	resp, err := providerhttp.DoWithRetryBreaker(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions(), p.breaker)
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: search request failed: %w", err)
 	}
@@ -168,7 +188,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
+	resp, err := providerhttp.DoWithRetryBreaker(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions(), p.breaker)
 	if err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("firecrawl: extract request failed: %w", err)
 	}
