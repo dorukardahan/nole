@@ -154,10 +154,20 @@ func embeddedV4Candidates(addr netip.Addr) []net.IP {
 		return add(b[2], b[3], b[4], b[5])
 	// NAT64 64:ff9b::/32 (RFC 6052 well-known + RFC 8215 local-use). The
 	// well-known /96 already sits in extraBlockedPrefixes; this additionally
-	// catches network-specific-prefix forms that embed the v4 in the low 32
-	// bits, e.g. 64:ff9b:1::a9fe:a9fe.
+	// catches network-specific-prefix forms. Per RFC 6052 §2.2 the embedded v4
+	// position depends on the translation prefix length and always skips byte 8
+	// (the reserved "u" octet), so the v4 is NOT necessarily in the low 32 bits.
+	// Emit every standard layout (/32../96) and let validateIP re-validate each,
+	// so an embedded private/metadata v4 is caught regardless of prefix length.
 	case b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xff && b[3] == 0x9b:
-		return add(b[12], b[13], b[14], b[15])
+		return []net.IP{
+			net.IPv4(b[4], b[5], b[6], b[7]).To4(),     // /32
+			net.IPv4(b[5], b[6], b[7], b[9]).To4(),     // /40 (skip u-octet b[8])
+			net.IPv4(b[6], b[7], b[9], b[10]).To4(),    // /48
+			net.IPv4(b[7], b[9], b[10], b[11]).To4(),   // /56
+			net.IPv4(b[9], b[10], b[11], b[12]).To4(),  // /64
+			net.IPv4(b[12], b[13], b[14], b[15]).To4(), // /96
+		}
 	}
 	return nil
 }

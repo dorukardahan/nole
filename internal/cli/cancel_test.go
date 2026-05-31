@@ -13,6 +13,10 @@ import (
 // short-circuits inside core.Service before any provider/network call, so these
 // assert the wiring deterministically and without touching the network.
 func TestSearchCommandHonorsContextCancellation(t *testing.T) {
+	// defaultService() eagerly builds the quota ledger before the cancellation
+	// short-circuit; keep it in-memory so the test never touches the operator's
+	// real $HOME ledger.
+	t.Setenv("NOLE_QUOTA_LEDGER_PATH", "memory")
 	cmd := newSearchCommand()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -31,6 +35,7 @@ func TestSearchCommandHonorsContextCancellation(t *testing.T) {
 }
 
 func TestExtractCommandHonorsContextCancellation(t *testing.T) {
+	t.Setenv("NOLE_QUOTA_LEDGER_PATH", "memory")
 	cmd := newExtractCommand()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

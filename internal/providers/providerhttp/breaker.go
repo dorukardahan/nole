@@ -110,35 +110,51 @@ func (b *Breaker) Allow() bool {
 	}
 }
 
-// RecordSuccess closes the breaker and resets the failure counter.
+// RecordSuccess registers a successful call. It is state-aware to be safe
+// against the lock-free I/O window in DoWithRetryBreaker (Allow releases the
+// mutex before the call, Record re-acquires it after): a call admitted while
+// CLOSED can return success LATE, after concurrent failures have already
+// tripped the breaker OPEN. Such a stale success must NOT re-close a breaker
+// that just opened — only a half-open probe (the legitimate recovery path) may
+// close it. From CLOSED a success simply breaks the consecutive-failure streak.
 func (b *Breaker) RecordSuccess() {
 	if b == nil {
 		return
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.state = breakerClosed
-	b.consecFails = 0
+	switch b.state {
+	case breakerHalfOpen:
+		b.state = breakerClosed
+		b.consecFails = 0
+	case breakerClosed:
+		b.consecFails = 0
+	default: // breakerOpen: stale success that raced the trip — ignore.
+	}
 }
 
 // RecordFailure advances the breaker toward open. A half-open probe failure
-// re-opens it and restarts the cooldown; otherwise the consecutive-failure
-// count trips it open at the threshold.
+// re-opens it and restarts the cooldown; from CLOSED the consecutive-failure
+// count trips it open at the threshold. A failure that lands while already OPEN
+// is a stale call that raced the trip — it is ignored so it cannot indefinitely
+// extend the cooldown window (symmetric with the stale-success case above).
 func (b *Breaker) RecordFailure() {
 	if b == nil {
 		return
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.state == breakerHalfOpen {
+	switch b.state {
+	case breakerHalfOpen:
 		b.state = breakerOpen
 		b.openedAt = b.now()
-		return
-	}
-	b.consecFails++
-	if b.consecFails >= b.threshold {
-		b.state = breakerOpen
-		b.openedAt = b.now()
+	case breakerClosed:
+		b.consecFails++
+		if b.consecFails >= b.threshold {
+			b.state = breakerOpen
+			b.openedAt = b.now()
+		}
+	default: // breakerOpen: stale failure that raced the trip — ignore.
 	}
 }
 
@@ -162,20 +178,27 @@ func (b *Breaker) IsOpen() bool {
 }
 
 // ShouldTrip classifies one logical HTTP outcome as a breaker failure. It trips
-// on transport/dial errors (with a live context) and on 5xx / transient
-// statuses (>=500, plus 429/408 via isTransientStatus). It does NOT trip on
-// success/redirect/4xx client errors (a bad key or query is not an upstream
-// outage) or on caller-driven cancellation (context.Canceled /
-// DeadlineExceeded), which is never the provider's fault.
+// on transport/dial errors and on 5xx / transient statuses (>=500, plus 429/408
+// via isTransientStatus). It does NOT trip on success/redirect/4xx client
+// errors (a bad key or query is not an upstream outage) or on caller-driven
+// cancellation, which is never the provider's fault.
+//
+// Crucially, an http.Client.Timeout firing on a slow/hung upstream surfaces as
+// context.DeadlineExceeded WHILE the caller's context is still live — that is a
+// provider failure and MUST trip (catching slow upstreams is the breaker's
+// primary job). So we exclude only genuine caller-driven cancellation: a
+// context we were handed that is already done (ctx.Err() != nil) or an explicit
+// context.Canceled. A bare DeadlineExceeded with a live caller context is NOT
+// excluded — it is the upstream timing out.
 func ShouldTrip(statusCode int, err error, ctx context.Context) bool {
 	if ctx != nil && ctx.Err() != nil {
-		return false
+		return false // caller went away — not the provider's fault
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
+	if errors.Is(err, context.Canceled) {
+		return false // explicit caller cancellation
 	}
 	if err != nil {
-		return true // transport/dial error with a live context
+		return true // transport/dial error or client-side timeout (DeadlineExceeded) on a live caller
 	}
 	if statusCode >= 500 {
 		return true

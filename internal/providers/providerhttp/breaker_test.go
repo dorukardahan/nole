@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -121,6 +122,42 @@ func TestBreakerHalfOpenOutcomeClosesOrReopens(t *testing.T) {
 	}
 }
 
+// A success admitted while the breaker was CLOSED can return LATE, after
+// concurrent failures already tripped it OPEN (the lock-free I/O window). That
+// stale success must NOT re-close the breaker.
+func TestBreakerStaleSuccessDoesNotReopenTrippedBreaker(t *testing.T) {
+	now := time.Unix(0, 0)
+	b := NewBreaker(BreakerOptions{Threshold: 2, Cooldown: time.Minute, now: func() time.Time { return now }})
+	b.RecordFailure()
+	b.RecordFailure() // → open
+	if b.Allow() {
+		t.Fatal("breaker should be open after reaching the threshold")
+	}
+	b.RecordSuccess() // stale success landing after the trip
+	if b.Allow() {
+		t.Fatal("a stale success must not re-close a breaker that just tripped open")
+	}
+	if !b.IsOpen() {
+		t.Fatal("breaker must remain open after a stale success")
+	}
+}
+
+// Symmetric to the stale-success case: a failure that lands while already OPEN
+// (a call admitted before the trip) must not bump openedAt and extend the
+// cooldown beyond the original open time.
+func TestBreakerStaleFailureDoesNotExtendCooldown(t *testing.T) {
+	now := time.Unix(0, 0)
+	clock := func() time.Time { return now }
+	b := NewBreaker(BreakerOptions{Threshold: 1, Cooldown: time.Minute, now: clock})
+	b.RecordFailure() // open at t=0
+	now = now.Add(30 * time.Second)
+	b.RecordFailure()               // stale failure mid-cooldown — must NOT reset openedAt
+	now = now.Add(30 * time.Second) // t=60s: original cooldown has elapsed
+	if !b.Allow() {
+		t.Fatal("a stale failure must not extend the cooldown past the original open time")
+	}
+}
+
 func TestShouldTripClassification(t *testing.T) {
 	live := context.Background()
 	cancelled, cancel := context.WithCancel(context.Background())
@@ -141,6 +178,7 @@ func TestShouldTripClassification(t *testing.T) {
 		{"429 too many requests", 429, nil, live, true},
 		{"408 request timeout", 408, nil, live, true},
 		{"transport error, live ctx", 0, transportErr, live, true},
+		{"client-timeout DeadlineExceeded, live caller ctx", 0, context.DeadlineExceeded, live, true},
 		{"200 ok", 200, nil, live, false},
 		{"301 redirect", 301, nil, live, false},
 		{"400 bad request", 400, nil, live, false},
@@ -148,8 +186,7 @@ func TestShouldTripClassification(t *testing.T) {
 		{"403 forbidden", 403, nil, live, false},
 		{"404 not found", 404, nil, live, false},
 		{"422 unprocessable", 422, nil, live, false},
-		{"context.Canceled error", 0, context.Canceled, live, false},
-		{"context.DeadlineExceeded error", 0, context.DeadlineExceeded, live, false},
+		{"explicit context.Canceled error", 0, context.Canceled, live, false},
 		{"cancelled ctx with 503", 503, nil, cancelled, false},
 		{"cancelled ctx with transport error", 0, transportErr, cancelled, false},
 	}
@@ -198,6 +235,34 @@ func TestDoWithRetryBreakerRecordsOneOutcomePerCall(t *testing.T) {
 	}
 	if b.Allow() {
 		t.Fatal("breaker must be open after two logical failing calls (threshold 2)")
+	}
+}
+
+// The breaker's primary job is catching slow/hung upstreams. Providers rely on
+// http.Client.Timeout (no per-request deadline), which fires as
+// context.DeadlineExceeded while the CALLER context is still live. This must
+// trip — regression guard for the bug where such timeouts were recorded as
+// success and the breaker never tripped on a hung provider.
+func TestDoWithRetryBreakerTripsOnClientTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		time.Sleep(200 * time.Millisecond) // outlast the client timeout
+	}))
+	defer server.Close()
+	client := &http.Client{Timeout: 20 * time.Millisecond}
+
+	b := NewBreaker(BreakerOptions{Threshold: 2, Cooldown: time.Minute})
+	opts := RetryOptions{MaxAttempts: 1, BaseDelay: time.Millisecond, Sleep: noSleep}
+
+	for i := 0; i < 2; i++ {
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+		resp, err := DoWithRetryBreaker(context.Background(), client, req, opts, b)
+		if err == nil {
+			resp.Body.Close()
+			t.Fatalf("attempt %d: expected a client-timeout error", i)
+		}
+	}
+	if b.Allow() {
+		t.Fatal("breaker must trip after consecutive client timeouts — catching hung upstreams is its core purpose")
 	}
 }
 

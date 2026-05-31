@@ -58,6 +58,9 @@ func TestValidateURLBlocksEmbeddedV4(t *testing.T) {
 		{"6to4 metadata", "http://[2002:a9fe:a9fe::]/"},
 		{"6to4 private 10.0.0.1", "http://[2002:0a00:0001::]/"},
 		{"nat64 nsp metadata (non /96)", "http://[64:ff9b:1::a9fe:a9fe]/"},
+		// RFC 6052 /48 NSP layout: the embedded v4 (169.254.169.254) straddles
+		// the reserved u-octet at bytes 6,7,9,10 — not the low 32 bits.
+		{"nat64 nsp metadata (/48 u-octet straddle)", "http://[64:ff9b:0:a9fe:a9:fe00:808:808]/"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -111,8 +114,17 @@ func TestEmbeddedV4CandidatesUnit(t *testing.T) {
 				}
 				return
 			}
-			if len(got) != 1 || !got[0].Equal(net.ParseIP(tc.want)) {
-				t.Fatalf("embeddedV4Candidates(%s) = %v, want [%s]", tc.addr, got, tc.want)
+			// NAT64 emits several candidates (one per RFC 6052 prefix length);
+			// the expected v4 must be among them.
+			found := false
+			for _, ip := range got {
+				if ip.Equal(net.ParseIP(tc.want)) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("embeddedV4Candidates(%s) = %v, want to contain %s", tc.addr, got, tc.want)
 			}
 		})
 	}

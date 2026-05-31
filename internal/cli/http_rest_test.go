@@ -181,9 +181,13 @@ func TestRESTOversizedBodyReturns400(t *testing.T) {
 
 func TestRESTExtractErrorResponseDoesNotLeakSecrets(t *testing.T) {
 	h := newTestHTTPHandler(t)
-	// A loopback URL fails safenet.ValidateURL before any provider call, so the
-	// 500 path runs through buildCLIError + safeerr.Message — proving the REST
-	// error surface is redaction-safe.
+	// A loopback URL fails safenet.ValidateURL before any provider call, so this
+	// exercises the REST 500 path: the error is routed through the real buildMux
+	// handler -> buildCLIError -> safeerr.Message and rendered as a clean JSON
+	// envelope. Note: no secret is in scope on this validation-failure path, so
+	// the token-absence checks below confirm the envelope SHAPE is clean rather
+	// than exercising redaction itself — safeerr.Message's redaction of real
+	// secrets is unit-tested directly in the safeerr package.
 	rec := doREST(t, h, http.MethodPost, "/api/extract", []byte(`{"url":"http://127.0.0.1/","format":"markdown"}`))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("POST /api/extract (loopback) = %d, want 500 (body=%s)", rec.Code, rec.Body.String())
