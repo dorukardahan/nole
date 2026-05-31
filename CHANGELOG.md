@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Local Scrapling extract no longer follows HTTP redirects past the SSRF
+  preflight. The fetcher is invoked with redirect-following disabled; each
+  redirect target is re-validated by `safenet.ValidateURL` (with a final-URL
+  backstop for builds that ignore the no-follow request) before the next hop is
+  fetched, and the walk is bounded to 5 hops. This closes the redirect-based
+  SSRF-to-metadata / internal-host vector on the opt-in local-extract path. The
+  redirect-disabled fetch + `status`/`Location` contract is verified live
+  against Scrapling 0.4.8; the Go redirect-validation loop is unit-tested.
+
 ## [0.3.1] - 2026-05-31
 
 ### Added
