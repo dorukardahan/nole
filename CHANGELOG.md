@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-31
+
+### Added
+
+- Per-provider circuit breaker for the remote API providers (Brave, Tavily,
+  Firecrawl). After a configurable number of consecutive failures a provider's
+  breaker opens and calls short-circuit immediately (no burned timeout, no quota
+  debit), then admit one half-open probe per cooldown to recover. It uses a
+  generation/epoch model so a slow call admitted in a previous regime can never
+  be mis-attributed to the recovery probe; it trips on 5xx/429/408, transport
+  errors, and client timeouts (a hung upstream), and never on 4xx or caller
+  cancellation. In-memory and per-process (benefits the long-lived `nole serve`
+  / MCP server). The keyless DDGS fallback and the local Scrapling extractor are
+  intentionally left unbreakered so the free last-resort path is never
+  short-circuited. Tunable via `NOLE_BREAKER_THRESHOLD` (default 5) and
+  `NOLE_BREAKER_COOLDOWN_MS` (default 30000).
+- Native fuzz targets for the SSRF preflight (`FuzzValidateURL`), the DDGS HTML
+  sanitizer (`FuzzCleanHTML`), and the bounded body readers
+  (`FuzzDecodeJSONLimited`); their seed corpora run as part of the normal test
+  gate. Direct REST-handler tests (`buildMux`) and a quota persist-failure
+  rollback regression test were also added.
+
+### Changed
+
+- Ctrl-C / SIGTERM now cancels in-flight work for `search`, `extract`, and
+  `research` instead of hard-killing mid-request: a signal-aware root context is
+  threaded into the providers, the DNS preflight resolves on that context (so a
+  slow/wedged resolver is interruptible), and a second interrupt force-exits
+  during a slow shutdown. `nole mcp` and `nole serve` use the same root context
+  (no nested signal handlers).
+- Cache eviction is now deterministic when entries share a timestamp: a
+  monotonic insertion sequence breaks ties instead of relying on map iteration
+  order.
+- The Firecrawl search adapter clamps the result limit to [1,20] like Brave and
+  Tavily (defense-in-depth for direct construction).
+- The `research` report's `providers_used` list is sorted for stable output.
+
+### Fixed
+
+- `nole research` now surfaces a cancellation instead of swallowing it into a
+  partial report with a success exit code.
+
+### Security
+
+- The SSRF preflight now decodes IPv4 addresses embedded in IPv6 transitional
+  forms — IPv4-compatible (`::a.b.c.d`) and 6to4 (`2002::/16`) — and re-validates
+  the embedded address, closing bypasses where a private/metadata IPv4 was
+  smuggled in a v6 literal past `net.IP`'s classifiers. NAT64 keeps its wholesale
+  `64:ff9b::/96` block; network-specific-prefix NAT64 is left to best-effort to
+  avoid over-blocking legitimate public translations.
+
 ## [0.3.2] - 2026-05-31
 
 ### Security
@@ -335,7 +386,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/dorukardahan/nole/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/dorukardahan/nole/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/dorukardahan/nole/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/dorukardahan/nole/compare/v0.2.4...v0.3.0
