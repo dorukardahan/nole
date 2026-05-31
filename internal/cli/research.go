@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/safeerr"
@@ -146,10 +147,16 @@ func researchPipeline(ctx context.Context, svc *core.Service, question string, m
 		}
 		providerSet[resp.Provider] = true
 
+		// Truncate on a rune boundary, not a byte boundary: a raw content[:2000]
+		// can split a multibyte UTF-8 sequence and emit U+FFFD mojibake into the
+		// JSON an agent consumes (the same class of bug v0.3.0 fixed for provider
+		// snippets via core.TruncateRunes). The Truncated flag already signals the
+		// cut, so we trim to a rune budget without appending an ellipsis.
+		const researchContentRuneBudget = 2000
 		content := resp.Content
 		truncated := false
-		if len(content) > 2000 {
-			content = content[:2000]
+		if utf8.RuneCountInString(content) > researchContentRuneBudget {
+			content = string([]rune(content)[:researchContentRuneBudget])
 			truncated = true
 		}
 
