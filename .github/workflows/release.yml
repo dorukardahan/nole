@@ -87,6 +87,17 @@ jobs:
       - name: Scan tracked text files
         run: ./scripts/secret-scan.sh
 
+      # govulncheck runs in ci.yml but not on the published tag commit, so the
+      # exact bits being released were never vuln-scanned. Mirror the ci.yml
+      # scan here. Pinned to a tagged govulncheck (ci.yml still uses @latest;
+      # pinning the release path is the safer default — consider pinning ci.yml
+      # to the same tag too).
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+
+      - name: Scan released commit for vulnerabilities
+        run: govulncheck ./...
+
       - name: Build release assets
         env:
           NOLE_BUILD_OUT: dist

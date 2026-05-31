@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Response-body size caps across all providers: `providerhttp.ReadAllLimited`
+  / `DecodeJSONLimited` wrap every HTTP response read (16 MiB search,
+  64 MiB extract), and the Scrapling subprocess stdout/stderr are bounded
+  (64 MiB / 64 KiB), so a hostile or misconfigured endpoint can no longer OOM
+  the process with an unbounded body.
+- CI now runs `go test -race ./...` (separate `race` job) so the
+  concurrency-heavy cache, quota ledger, MCP session tracker and the new
+  request-coalescing path are race-checked on every change.
+- `govulncheck` now runs in the tag-triggered release workflow (not only on
+  PR/push), so the exact published commit is vulnerability-scanned.
+
+### Changed
+
+- Concurrent identical search/extract requests are now coalesced
+  (`golang.org/x/sync/singleflight`, keyed by the cache key): N simultaneous
+  identical queries collapse to one upstream fetch and one quota debit instead
+  of N, so a burst on the `serve` surface can no longer multiply free-tier
+  debits. Distinct queries still run fully in parallel.
+- The provider fallback loop now short-circuits on a cancelled/disconnected
+  request (`ctx.Err()`), surfacing `context.Canceled` immediately instead of
+  probing every remaining provider and returning a misleading provider error.
+- Search `limit` is clamped centrally to `[1,20]` (and Brave/Tavily request
+  counts to their API maximum of 20), so an over-large limit no longer forces
+  a guaranteed provider `422` and a non-positive limit no longer leaks through
+  to a provider as "no limit".
+- Provider retry backoff now adds equal jitter (`math/rand/v2`) to the
+  exponential delay, spreading synchronized retry waves; `Retry-After` handling
+  is unchanged and stays exact.
+- `nole serve` now shuts down gracefully on SIGINT/SIGTERM (drains in-flight
+  requests via `http.Server.Shutdown`) instead of hard-killing them, warns on
+  a non-loopback bind (the endpoints are unauthenticated and expose BYOK keys
+  and quota), and its `--mcp` help/error text now accurately describes the REST
+  API at `/api/*` (which has always started alongside `/mcp`) instead of
+  "coming soon".
+- The read-only HTTP endpoints (`/health`, `/api/providers`, `/api/budget`)
+  are now gated to GET/HEAD and log JSON-encode errors, consistent with the
+  POST handlers.
+
+### Fixed
+
+- `internal/cli/research.go`: extract content is truncated on a rune boundary
+  (`unicode/utf8`) instead of a byte boundary, so a non-ASCII page can no
+  longer be cut mid-UTF-8 into mojibake (the class v0.3.0 fixed for provider
+  snippets).
+- `internal/providers/ddgs`: result `href` values now have `&amp;` decoded
+  (previously only title/snippet were decoded), so result URLs are usable
+  downstream.
+- `internal/safeerr`: `Set-Cookie`/`Cookie` session tokens and userinfo
+  credentials in non-`http(s)` scheme URLs (e.g. `ftp://user:pass@host`) are
+  now redacted.
+- `AGENTS.md` now states the Go 1.25+ toolchain requirement (matching
+  `go.mod`), and `CHANGELOG.md` records the previously-missing `[0.2.3]`
+  release section.
+
+### Security
+
+- SSRF preflight (`internal/safenet`) now blocks reserved ranges that Go's
+  `net.IP.IsPrivate()` misses — CGNAT `100.64.0.0/10`, `0.0.0.0/8`,
+  `192.0.0.0/24`, benchmark `198.18.0.0/15`, and IPv6 `64:ff9b::/96` /
+  `2001:db8::/32` — and rejects ambiguous all-numeric/octal/hex hostnames
+  (e.g. `0177.0.0.1`) that pass Go's resolver but resolve to loopback under a
+  libc/`inet_aton` backend (parser-differential SSRF).
+- Response-body and subprocess-output size caps (see Added) close an
+  unbounded-read OOM/DoS vector across every provider.
+- `github.com/buger/jsonparser` bumped `v1.1.1 -> v1.1.2`, clearing the
+  DoS advisory `GO-2026-4514` it carried as an indirect dependency.
+
 ## [0.3.0] - 2026-05-30
 
 ### Added
@@ -82,6 +151,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenClaw client docs now record the 2026-05-28 compatibility re-check on
   OpenClaw 2026.5.27 with the wrapper-backed MCP registry and local Scrapling
   available through the wrapper.
+
+## [0.2.3] - 2026-05-27
+
+### Changed
+
+- Default route matrix refreshed from a 2026-05-26 local live task-provider
+  benchmark (39 public cases, 150 provider measurements). Search routes are now
+  task-specific rather than one broad ordering: general leads with Brave; docs,
+  news, fact-check, pricing, people, social and research lead with Firecrawl;
+  code, academic and semantic lead with Tavily. A configured local Scrapling now
+  leads the default `extract` route, falling back to Firecrawl then Tavily when
+  the local runtime is unavailable. DDGS stays available as a keyless search
+  fallback but moves to the end of default search routes after the live sample
+  observed repeated rate limits. See `docs/ROUTE-EVIDENCE.md`.
+
+### Fixed
+
+- `nole bench --live --comprehensive` now loads `~/.config/nole/.env` before
+  constructing providers, matching normal CLI/MCP startup, and comprehensive
+  runs now include the configured local Scrapling provider.
+- The doctor free-tier BYOK test now uses an isolated quota ledger so local
+  developer state cannot change expected test output.
+
+### Security
+
+- Route evidence stays summary-only: no raw provider payloads, key values, auth
+  headers, private URLs or private queries. The route matrix is a local
+  evidence-backed default, not a provider SLA or global provider ranking.
 
 ## [0.2.2] - 2026-05-26
 

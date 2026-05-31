@@ -228,8 +228,14 @@ See `docs/BENCHMARKS.md`.
 
 Stable/core:
 
-- CLI: `nole search`, `nole extract`, `nole classify`, `nole route-plan`, `nole providers`, `nole doctor`, `nole bench`.
+- CLI: `nole search`, `nole extract`, `nole classify`, `nole route-plan`, `nole providers`, `nole doctor`, `nole bench`, `nole version`.
 - MCP stdio: `nole mcp` for agent tools `search`, `extract`, `provider_status`, `budget_status`.
+
+Higher-level/aggregate:
+
+- `nole research <question>` runs a multi-step search + extract + synthesis pass with citations on top of the core routing layer.
+
+`nole version` prints the binary's version, commit, and build date (stamped into release builds via `ldflags`; a development build reports `unknown` for the unstamped fields).
 - Routing insight: `routing_insight` is a compact user-facing explanation; `route_trace` remains the structured debugging surface. Agents should cite the compact insight in normal answers and reserve full traces for troubleshooting.
 
 Experimental:
