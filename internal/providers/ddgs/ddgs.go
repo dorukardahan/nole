@@ -98,6 +98,9 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	linkMatches := reResultLink.FindAllStringSubmatchIndex(html, -1)
 	snippetMatches := reResultSnippet.FindAllStringSubmatchIndex(html, -1)
 
+	// The DDG HTML endpoint exposes no per-result relevance score or publication
+	// date, and no time filter is sent (an undocumented df param risks raising the
+	// 202 bot-block on this last-resort fallback), so Score/PublishedAt stay zero.
 	results := make([]core.SearchResult, 0)
 
 	for i, lm := range linkMatches {

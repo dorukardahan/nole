@@ -58,6 +58,10 @@ type tavilySearchRequest struct {
 	MaxResults    int    `json:"max_results"`
 	SearchDepth   string `json:"search_depth"`
 	IncludeAnswer bool   `json:"include_answer"`
+	// Topic/TimeRange are set only for recency tasks (news/factcheck); omitempty
+	// keeps every other task's request byte-identical to before.
+	Topic     string `json:"topic,omitempty"`
+	TimeRange string `json:"time_range,omitempty"`
 }
 
 type tavilySearchResponse struct {
@@ -67,10 +71,15 @@ type tavilySearchResponse struct {
 }
 
 type tavilyResult struct {
-	Title   string  `json:"title"`
-	URL     string  `json:"url"`
-	Content string  `json:"content"`
-	Score   float64 `json:"score"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Content string `json:"content"`
+	// Score is a pointer so an absent score stays nil (never fabricated as 0.0),
+	// preserving the nil-vs-real-0.0 distinction SearchResult.Score relies on.
+	Score *float64 `json:"score,omitempty"`
+	// PublishedDate is present on results under topic=news (RFC1123, e.g.
+	// "Tue, 19 May 2026 18:59:59 GMT"); empty otherwise. Verified live 2026-06-01.
+	PublishedDate string `json:"published_date,omitempty"`
 }
 
 func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.SearchResponse, error) {
@@ -100,6 +109,17 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		MaxResults:    limit,
 		SearchDepth:   depth,
 		IncludeAnswer: false,
+	}
+	// Task-aware freshness (allowlist): only recency tasks get a time window, so
+	// every other task sends a byte-identical request. Conservative month window
+	// avoids emptying sparse-recency queries (the agent judges true recency via
+	// each result's published_date).
+	switch req.Task {
+	case core.TaskNews:
+		body.Topic = "news"
+		body.TimeRange = "month"
+	case core.TaskFactcheck:
+		body.TimeRange = "month"
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -132,11 +152,17 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	results := make([]core.SearchResult, 0, len(tresp.Results))
 	for _, r := range tresp.Results {
 		snippet := core.TruncateRunes(r.Content, 300)
+		// Pass Tavily's relevance score + publication date through verbatim for
+		// the agent to judge. Score is *float64 on the wire, so an absent score
+		// stays nil (never fabricated as 0.0); each decoded result owns its own
+		// pointer, so there is no aliasing across results.
 		results = append(results, core.SearchResult{
-			Title:    r.Title,
-			URL:      r.URL,
-			Snippet:  snippet,
-			Provider: "tavily",
+			Title:       r.Title,
+			URL:         r.URL,
+			Snippet:     snippet,
+			Provider:    "tavily",
+			Score:       r.Score,
+			PublishedAt: r.PublishedDate,
 		})
 	}
 

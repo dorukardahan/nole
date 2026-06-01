@@ -118,7 +118,11 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		}
 		resp, err := h.svc.Search(r.Context(), core.SearchRequest{
 			Query: req.Query,
-			Task:  core.TaskType(req.Task),
+			// NormalizeTaskParam (not a raw cast) so REST matches MCP: aliases like
+			// "community"→social resolve correctly and an unknown/blank task falls
+			// through to classification instead of misrouting + lying about
+			// task_source. Keeps CLI/MCP/REST in lockstep (spec D1).
+			Task:  core.NormalizeTaskParam(req.Task),
 			Limit: req.Limit,
 		})
 		if err != nil {

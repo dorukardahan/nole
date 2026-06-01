@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -38,6 +39,18 @@ const (
 	TaskResearch  TaskType = "research"
 )
 
+// TaskSource records how a search's task was determined: supplied by the caller,
+// detected by the deterministic planner when the caller omitted it, or the
+// general default when the planner found no signal. Observability only — Nólë
+// never "decides" beyond reading a static keyword table.
+type TaskSource string
+
+const (
+	TaskSourceSupplied TaskSource = "supplied"
+	TaskSourceDetected TaskSource = "detected"
+	TaskSourceDefault  TaskSource = "default"
+)
+
 type Capability string
 
 const (
@@ -62,6 +75,14 @@ type SearchResult struct {
 	URL      string `json:"url"`
 	Snippet  string `json:"snippet"`
 	Provider string `json:"provider"`
+	// Score and PublishedAt are provider-native signals passed through verbatim
+	// for the AGENT to judge relevance/recency. Nólë never computes, normalizes,
+	// or judges them; nil/empty when the provider supplies none. Score is a
+	// pointer so a genuine 0.0 is distinguishable from "absent". Treat *Score as
+	// immutable after adapter construction — the cache shares the pointer across
+	// entries (see cloneSearchResponse), so an in-place mutation would race.
+	Score       *float64 `json:"score,omitempty"`
+	PublishedAt string   `json:"published_at,omitempty"`
 }
 
 type SearchResponse struct {
@@ -73,6 +94,9 @@ type SearchResponse struct {
 	RoutingInsight string         `json:"routing_insight,omitempty"`
 	RouteTrace     []RouteAttempt `json:"route_trace,omitempty"`
 	SetupTip       *SetupTip      `json:"setup_tip,omitempty"`
+	// TaskSource reports how Task was chosen (supplied/detected/default), so the
+	// agent can see whether it drove the route or Nólë's planner inferred it.
+	TaskSource TaskSource `json:"task_source,omitempty"`
 }
 
 type ExtractResponse struct {
@@ -207,5 +231,58 @@ func TaskDescription(t TaskType) string {
 		return "deep multi-source research"
 	default:
 		return "unknown task type"
+	}
+}
+
+// IsKnownSearchTask reports whether t is a task the search planner/router can
+// honor as an explicit caller choice. Every TaskType counts EXCEPT TaskExtract,
+// which is an extract-path routing key, never a search intent. The service uses
+// this to decide whether to trust a supplied task or fall back to classifying
+// the query.
+func IsKnownSearchTask(t TaskType) bool {
+	if t == TaskExtract {
+		return false
+	}
+	for _, k := range TaskTypes() {
+		if k == t {
+			return true
+		}
+	}
+	return false
+}
+
+// NormalizeTaskParam maps a free-text task parameter (from the MCP/REST surface,
+// where callers send arbitrary strings) onto a canonical TaskType, accepting the
+// same aliases as the CLI's parseTaskStrict (e.g. community/forum → social).
+// Blank, unknown, or "extract" all return "" so the service classifies the
+// query instead of misrouting — leniency lives here, not in an error. The CLI
+// keeps its own parseTask; this is the shared boundary for MCP/REST.
+func NormalizeTaskParam(raw string) TaskType {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "news":
+		return TaskNews
+	case "docs", "technical-docs":
+		return TaskDocs
+	case "academic":
+		return TaskAcademic
+	case "factcheck":
+		return TaskFactcheck
+	case "semantic":
+		return TaskSemantic
+	case "code":
+		return TaskCode
+	case "social", "community", "forum", "forums":
+		return TaskSocial
+	case "people":
+		return TaskPeople
+	case "pricing":
+		return TaskPricing
+	case "research", "deep-research":
+		return TaskResearch
+	case "general":
+		return TaskGeneral
+	default:
+		// blank, unknown, or "extract" → let the service classify the query.
+		return ""
 	}
 }

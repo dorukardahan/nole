@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-01
+
+### Added
+
+- Task-fit routing now fires on every search. Previously the deterministic
+  multi-intent planner ran only in the `classify` / `route-plan` inspection
+  commands; real searches defaulted to the generic provider route. Now
+  `Service.Search` auto-classifies the query when no task is supplied (an
+  explicit `--task` / `task` argument always wins), so the news/docs/code/
+  academic/pricing routes actually apply. The response reports a `task_source`
+  (`supplied` / `detected` / `default`) so an agent can see whether it drove the
+  route or Nólë inferred it. The planner remains pure deterministic keyword
+  matching — no LLM, no quality judgment.
+- Provider relevance and recency signals are passed through to the agent.
+  `SearchResult` now carries optional `score` (provider-native relevance, e.g.
+  Tavily's) and `published_at` (publication date) where the provider supplies
+  them — verbatim, never computed or fabricated, omitted when absent. For
+  `news` / `factcheck`, results are stably ordered newest-first using those
+  dates: a pass-through of the provider's freshness signal, not a quality
+  judgment (`score` is never sorted or filtered on).
+- Task-aware request shaping: `news` / `factcheck` searches send a conservative
+  last-month freshness window to providers that support it (Brave `freshness`,
+  Tavily `topic`/`time_range`, Firecrawl `tbs`); every other task sends an
+  unchanged request.
+- The MCP `search` tool's `task` parameter is now a documented enum with an
+  "auto-detected if omitted" note; unknown or aliased values (e.g. `community`
+  → social) are normalized server-side (on MCP and REST) rather than erroring.
+
+### Changed
+
+- `nole research` classifies the question to drive its multi-step fan-out
+  instead of a fixed `[general, research, docs]` list (whose routes overlapped
+  and self-deduped).
+
+### Notes
+
+- Freshness-coverage caveat: Firecrawl leads the `news` / `factcheck` routes,
+  but its web-source results carry no per-result date in this release, so the
+  newest-first ordering is a no-op until the chain falls through to Brave
+  (`page_age`) or Tavily (`published_date`). Per-result news dates from Firecrawl
+  are a planned follow-up.
+
 ## [0.4.0] - 2026-05-31
 
 ### Added
@@ -386,7 +428,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/dorukardahan/nole/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dorukardahan/nole/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/dorukardahan/nole/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/dorukardahan/nole/compare/v0.3.0...v0.3.1

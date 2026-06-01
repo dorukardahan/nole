@@ -84,8 +84,10 @@ func researchPipeline(ctx context.Context, svc *core.Service, question string, m
 	}
 	providerSet := make(map[string]bool)
 
-	// Step 1: Broad search across multiple task types for coverage
-	searchTasks := []core.TaskType{core.TaskGeneral, core.TaskResearch, core.TaskDocs}
+	// Step 1: classify the question to drive a task-fit, deterministic fan-out.
+	// The old hardcoded [general,research,docs] all routed to the same providers
+	// reordered, so the fan-out self-deduped and wasted steps.
+	searchTasks := classifiedResearchTasks(question)
 	var allSources []ResearchSource
 	seenURLs := make(map[string]bool)
 
@@ -191,6 +193,32 @@ func researchPipeline(ctx context.Context, svc *core.Service, question string, m
 	report.Summary = synthesizeSummary(question, report.Sources, report.Extracts)
 
 	return report, nil
+}
+
+// classifiedResearchTasks builds a deterministic, task-fit fan-out for research
+// by classifying the question (replacing the old hardcoded [general,research,
+// docs], whose routes overlapped so the fan-out self-deduped). Order follows the
+// planner's score-sorted intents; a membership set de-dups; general+research are
+// appended for breadth on single-intent questions. The caller's maxSteps guard
+// trims the list. Slice-order build (never iterate the map) keeps it stable.
+func classifiedResearchTasks(question string) []core.TaskType {
+	classification := core.ClassifyQuery(question, core.PlanOptions{})
+	seen := make(map[core.TaskType]bool)
+	var tasks []core.TaskType
+	add := func(t core.TaskType) {
+		if t == "" || seen[t] {
+			return
+		}
+		seen[t] = true
+		tasks = append(tasks, t)
+	}
+	add(classification.PrimaryTask)
+	for _, intent := range classification.Intents {
+		add(intent.Task)
+	}
+	add(core.TaskGeneral)
+	add(core.TaskResearch)
+	return tasks
 }
 
 func synthesizeSummary(question string, sources []ResearchSource, extracts []ResearchExtract) string {

@@ -27,7 +27,7 @@ func ParseInsightMode(raw string) (InsightMode, bool) {
 }
 
 func BuildSearchRoutingInsight(resp SearchResponse) string {
-	return buildRuntimeRoutingInsight("search", resp.Task, resp.Provider, resp.Route, resp.RouteTrace, len(resp.Results))
+	return buildRuntimeRoutingInsight("search", resp.Task, resp.Provider, resp.Route, resp.RouteTrace, len(resp.Results), resp.TaskSource)
 }
 
 func BuildExtractRoutingInsight(resp ExtractResponse) string {
@@ -35,7 +35,7 @@ func BuildExtractRoutingInsight(resp ExtractResponse) string {
 	if strings.TrimSpace(resp.Content) != "" {
 		resultCount = 1
 	}
-	return buildRuntimeRoutingInsight("extract", TaskExtract, resp.Provider, resp.Route, resp.RouteTrace, resultCount)
+	return buildRuntimeRoutingInsight("extract", TaskExtract, resp.Provider, resp.Route, resp.RouteTrace, resultCount, "")
 }
 
 func BuildErrorRoutingInsight(operation string, route []string, trace []RouteAttempt) string {
@@ -114,7 +114,7 @@ func FormatRouteTraceLines(trace []RouteAttempt) []string {
 	return lines
 }
 
-func buildRuntimeRoutingInsight(operation string, task TaskType, provider string, route []string, trace []RouteAttempt, resultCount int) string {
+func buildRuntimeRoutingInsight(operation string, task TaskType, provider string, route []string, trace []RouteAttempt, resultCount int, source TaskSource) string {
 	attempts := len(trace)
 	total := routeSlotCount(route, trace)
 	policy := tracePolicy(trace)
@@ -145,13 +145,20 @@ func buildRuntimeRoutingInsight(operation string, task TaskType, provider string
 	if task == "" {
 		task = TaskGeneral
 	}
+	// Surface how the task was chosen, but only when Nólë inferred it (detected)
+	// or fell back (default). An explicitly supplied task adds no qualifier, so a
+	// caller that passes a task sees the same insight string as before.
+	sourceSuffix := ""
+	if source == TaskSourceDetected || source == TaskSourceDefault {
+		sourceSuffix = fmt.Sprintf(" (task %s)", source)
+	}
 	if provider == "" {
-		return fmt.Sprintf("Nólë: search %s failed (%s)", task, attemptSummary(attempts, total))
+		return fmt.Sprintf("Nólë: search %s failed (%s)%s", task, attemptSummary(attempts, total), sourceSuffix)
 	}
 	if cache == CacheStatusHit {
-		return fmt.Sprintf("Nólë: cache hit for search %s via %s (%s, %s)", task, provider, attemptSummary(attempts, total), plural(resultCount, "result", "results"))
+		return fmt.Sprintf("Nólë: cache hit for search %s via %s (%s, %s)%s", task, provider, attemptSummary(attempts, total), plural(resultCount, "result", "results"), sourceSuffix)
 	}
-	return fmt.Sprintf("Nólë: search %s via %s (%s%s, %s)", task, provider, modifierPart, attemptSummary(attempts, total), plural(resultCount, "result", "results"))
+	return fmt.Sprintf("Nólë: search %s via %s (%s%s, %s)%s", task, provider, modifierPart, attemptSummary(attempts, total), plural(resultCount, "result", "results"), sourceSuffix)
 }
 
 func tracePolicy(trace []RouteAttempt) CostPolicy {
