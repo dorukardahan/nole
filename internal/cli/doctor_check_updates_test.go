@@ -84,6 +84,30 @@ func TestDoctorCheckUpdatesJSONCarriesUpdate(t *testing.T) {
 	}
 }
 
+// A dev / non-release build must NOT be reported as "up to date" — it should say
+// it is a development build (Codex review PR #42).
+func TestDoctorCheckUpdatesDevBuildNotReportedUpToDate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v0.9.0"}`))
+	}))
+	defer srv.Close()
+	t.Setenv("NOLE_RELEASES_API", srv.URL)
+	old := version.Version
+	version.Version = "dev"
+	t.Cleanup(func() { version.Version = old })
+
+	out, err := runDoctorWith(t, "--check-updates")
+	if err != nil {
+		t.Fatalf("doctor --check-updates failed on a dev build: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "up to date") {
+		t.Fatalf("a dev build must not be reported up to date:\n%s", out)
+	}
+	if !strings.Contains(out, "development build") {
+		t.Fatalf("expected a development-build update line:\n%s", out)
+	}
+}
+
 // Without --check-updates, doctor must make ZERO requests to the releases API.
 func TestDoctorWithoutFlagDoesNoNetwork(t *testing.T) {
 	var hits int32

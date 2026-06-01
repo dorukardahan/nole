@@ -80,6 +80,18 @@ func TestCheckLatestDevBuildDoesNotWarn(t *testing.T) {
 		if got.Stale {
 			t.Fatalf("non-release current %q must not be flagged stale, got %+v", cur, got)
 		}
+		if got.Comparable {
+			t.Fatalf("non-release current %q must be reported NOT comparable, got %+v", cur, got)
+		}
+	}
+}
+
+func TestCheckLatestReleaseBuildIsComparable(t *testing.T) {
+	srv := tagServer(t, "v0.9.0")
+	defer srv.Close()
+	got := checkLatest(context.Background(), "0.9.0", srv.URL, srv.Client())
+	if !got.Checked || !got.Comparable {
+		t.Fatalf("a release-shaped current must be comparable, got %+v", got)
 	}
 }
 

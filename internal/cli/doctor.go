@@ -28,6 +28,9 @@ type updateReport struct {
 	Current string `json:"current"`
 	Latest  string `json:"latest,omitempty"`
 	Stale   bool   `json:"stale"`
+	// Comparable is false for a non-release current version (e.g. a dev build),
+	// so the human output reports it honestly instead of "up to date".
+	Comparable bool `json:"comparable"`
 }
 
 // checkForUpdate runs the fail-soft staleness check against the latest published
@@ -38,7 +41,7 @@ func checkForUpdate(ctx context.Context) (*updateReport, bool) {
 	if !res.Checked {
 		return nil, false
 	}
-	return &updateReport{Current: res.Current, Latest: res.Latest, Stale: res.Stale}, true
+	return &updateReport{Current: res.Current, Latest: res.Latest, Stale: res.Stale, Comparable: res.Comparable}, true
 }
 
 // mcpReport is the machine-readable form of the --mcp stdio/protocol smoke,
@@ -195,9 +198,13 @@ func newDoctorCommand() *cobra.Command {
 				// Fail-soft: prints nothing when offline or on any error.
 				if rep, ok := checkForUpdate(cmd.Context()); ok {
 					fmt.Fprintln(cmd.OutOrStdout(), "")
-					if rep.Stale {
+					switch {
+					case !rep.Comparable:
+						// dev / non-release build: not behind anything, but not "up to date".
+						fmt.Fprintf(cmd.OutOrStdout(), "- update: development build (%s); latest release is %s — https://github.com/dorukardahan/nole/releases\n", rep.Current, rep.Latest)
+					case rep.Stale:
 						fmt.Fprintf(cmd.OutOrStdout(), "- update: nole %s is behind the latest release %s — https://github.com/dorukardahan/nole/releases\n", rep.Current, rep.Latest)
-					} else {
+					default:
 						fmt.Fprintf(cmd.OutOrStdout(), "- update: up to date (%s)\n", rep.Current)
 					}
 				}

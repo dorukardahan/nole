@@ -33,13 +33,16 @@ const (
 )
 
 // Result is the outcome of a staleness check. Checked is false whenever the
-// check could not complete — callers MUST stay silent in that case. Stale is
-// only meaningful when Checked is true.
+// check could not complete — callers MUST stay silent in that case. Stale and
+// Comparable are only meaningful when Checked is true. Comparable is false when
+// Current is not a release-shaped version (e.g. a "dev" / `go run` build), so
+// callers can avoid falsely reporting such a build as "up to date".
 type Result struct {
-	Current string
-	Latest  string
-	Stale   bool
-	Checked bool
+	Current    string
+	Latest     string
+	Stale      bool
+	Checked    bool
+	Comparable bool
 }
 
 // CheckLatest reports whether `current` is behind the latest published release.
@@ -94,6 +97,11 @@ func checkLatest(ctx context.Context, current, baseURL string, client *http.Clie
 
 	res.Latest = latest
 	res.Checked = true
+	// Comparable iff BOTH versions are release-shaped; a dev/non-release current
+	// is not behind anything (Stale stays false) but is also NOT "up to date".
+	_, okCur := parseRelease(current)
+	_, okLatest := parseRelease(latest)
+	res.Comparable = okCur && okLatest
 	res.Stale = isOlder(current, latest)
 	return res
 }
