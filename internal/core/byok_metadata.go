@@ -69,19 +69,21 @@ var byokProviders = []BYOKProvider{
 		Name:    "firecrawl",
 		EnvVars: []string{"FIRECRAWL_API_KEY"},
 		// FreeQuota is a CALL floor, not the 1000-credit grant: Firecrawl meters in
-		// variable credits (scrape 1/page, search 2/call; Enhanced Mode 5, which
-		// Nólë never issues) while the ledger debits 1 per call, so the floor is
-		// 1000 credits / 2 worst-case-credits-per-call Nólë issues = 500 calls.
-		FreeQuota:       500,
+		// variable credits (scrape 1/page; search 2 credits per 10 results, so a
+		// 20-result search — which Service permits up to maxSearchLimit=20 — costs
+		// 4; Enhanced Mode 5, which Nólë never issues) while the ledger debits 1 per
+		// call. The floor uses the priciest op Nólë can issue: 1000 credits / 4 =
+		// 250 calls.
+		FreeQuota:       250,
 		RefreshWindow:   RefreshMonthly,
 		SupportsSearch:  true,
 		SupportsExtract: true,
 		SignupURL:       "https://firecrawl.dev",
-		FreeTierNote:    "1000 credits/month on Firecrawl's free plan, reset monthly with no rollover, no credit card required. Credits are variable-cost (scrape 1/page, search 2/call; Enhanced Mode 5/request, which Nólë does not use), so Nólë seeds a 500-call fail-safe floor (1000 credits / 2 per search call) and counts its own calls - verify your dashboard.",
+		FreeTierNote:    "1000 credits/month on Firecrawl's free plan, reset monthly with no rollover, no credit card required. Credits are variable-cost (scrape 1/page; search 2 credits per 10 results, so a 20-result search costs 4; Enhanced Mode 5/request, which Nólë does not use), so Nólë seeds a 250-call fail-safe floor (1000 credits / 4 worst-case per call) and counts its own calls - verify your dashboard.",
 		EnvExample:      "export FIRECRAWL_API_KEY=fc-...",
 		Unlocks:         []string{"url_extraction"},
 		MeteringModel:   "credit-based",
-		RateLimitNote:   "credit-based: scrape ~1 credit/page, search ~2/call (Nólë issues only these, not the 5-credit Enhanced Mode); Nólë debits 1 per call against a 500-call floor. Free-tier rate limits /scrape 10 rpm, /search 5 rpm, not tracked.",
+		RateLimitNote:   "credit-based: scrape ~1 credit/page, search ~2 credits per 10 results (up to 4 for a 20-result call; Nólë never issues the 5-credit Enhanced Mode); Nólë debits 1 per call against a 250-call floor. Free-tier rate limits /scrape 10 rpm, /search 5 rpm, not tracked.",
 		EstimateOnly:    true,
 	},
 }

@@ -17,14 +17,16 @@ MCP tools.
 
 ### Changed
 
-- **Tavily and Firecrawl free-tier floors lowered 1000 → 500.** Their free tiers
-  grant 1000 *credits*/month, but the ledger debits 1 per *call* while an advanced
-  Tavily search/extract and a Firecrawl search each cost 2 credits. The old
-  `FreeQuota=1000` therefore over-read remaining headroom up to 2× — the dashboard
-  could hit zero while Nólë still reported room. The floor is now
-  `credits ÷ worst-case-credits-per-call` (1000 ÷ 2 = 500). Undercounting is the
-  safe direction; the drift signal catches the rest. (Brave stays 1000: its $5
-  credit meters a uniform $0.005/query, so 1 call = 1 query = 1000-query floor.)
+- **Tavily floor lowered 1000 → 500, Firecrawl 1000 → 250.** Their free tiers
+  grant 1000 *credits*/month, but the ledger debits 1 per *call* — and a call can
+  cost more than 1 credit. The floor is now `credits ÷ the priciest call Nólë can
+  issue`: Tavily an advanced search/extract is 2 credits → 1000 ÷ 2 = 500;
+  Firecrawl search is 2 credits per 10 results, so a 20-result search (Service
+  permits up to `maxSearchLimit=20`) is 4 credits → 1000 ÷ 4 = 250. The old
+  `FreeQuota=1000` over-read remaining headroom up to 4× — the dashboard could hit
+  zero while Nólë still reported room. Undercounting is the safe direction; the
+  drift signal catches the rest. (Brave stays 1000: its $5 credit meters a uniform
+  $0.005/query, so 1 call = 1 query = 1000-query floor.)
 - **Brave metadata corrected to the Feb-2026 model.** Brave eliminated its flat
   free tier (2000, briefly 5000 queries/month) on 12 Feb 2026; the false "legacy
   accounts keep 2000/month" grandfathering claim is removed. The note now states

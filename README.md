@@ -152,7 +152,7 @@ For unverified or generic clients, use the MCP command template:
 
 ## Provider keys and cost control
 
-Default stance: `free-first`. Nólë treats each supported BYOK provider as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave and 500 for Tavily and Firecrawl, reset at the start of each UTC calendar month — the lower floors reflect those providers' variable per-credit metering, where an advanced call can cost 2 credits while the ledger debits 1 per call). DDGS and a configured local Scrapling runtime are keyless-free. No hidden paid usage is created without an explicit opt-in.
+Default stance: `free-first`. Nólë treats each supported BYOK provider as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, 500 for Tavily, and 250 for Firecrawl, reset at the start of each UTC calendar month — the lower floors reflect those providers' variable per-credit metering, where the ledger debits 1 per call but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4). DDGS and a configured local Scrapling runtime are keyless-free. No hidden paid usage is created without an explicit opt-in.
 
 A key by itself is enough to start using a provider under the default policy; you only have to flip `NOLE_<PROVIDER>_PAID=1` when you want Nólë to treat that provider as premium-capable (e.g. you are on a paid plan and the cost-capped or quality-first policy should apply). See `docs/PROVIDER-KEYS.md` for per-provider free-tier sourcing and the Brave subscription/CC caveat.
 

@@ -9,14 +9,16 @@ no new MCP tools.
 
 ## Changed (read this if you rely on `free_remaining`)
 
-- **Tavily and Firecrawl free floors: 1000 → 500.** Their free tiers grant 1000
-  *credits*/month, but Nólë's ledger debits 1 per *call* — and an advanced Tavily
-  search/extract and a Firecrawl search each cost **2 credits**. So the old
-  `FreeQuota=1000` over-read remaining headroom up to 2×: the provider dashboard
-  could reach zero while Nólë still reported room (the exact *dishonest-quota*
-  failure the trust pillar exists to prevent). The floor is now
-  `credits ÷ worst-case-credits-per-call` = `1000 ÷ 2 = 500`. Undercounting basic
-  usage is the safe direction; the drift signal catches whatever slips past.
+- **Tavily floor: 1000 → 500. Firecrawl floor: 1000 → 250.** Their free tiers
+  grant 1000 *credits*/month, but Nólë's ledger debits 1 per *call* — and a call
+  can cost more than 1 credit. The floor is now `credits ÷ the priciest call Nólë
+  can issue`: for Tavily an advanced search/extract is **2 credits** → `1000 ÷ 2 =
+  500`; for Firecrawl search is **2 credits per 10 results**, so a 20-result search
+  (`Service` permits up to `maxSearchLimit=20`) is **4 credits** → `1000 ÷ 4 =
+  250`. The old `FreeQuota=1000` over-read remaining headroom up to 4×: the
+  provider dashboard could reach zero while Nólë still reported room (the exact
+  *dishonest-quota* failure the trust pillar exists to prevent). Undercounting is
+  the safe direction; the drift signal catches whatever slips past.
 - **Brave: 1000 kept, metadata corrected.** Brave's $5/month credit meters a
   uniform `$0.005/query`, so 1 call = 1 query and 1000 stays the exact fail-safe
   floor. But the *notes* were wrong: the "legacy accounts keep 2000/month"
