@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-02
+
+Theme: **supply-chain provenance** — make release artifacts verifiable beyond a
+bare checksum, WITHOUT compromising the zero-dependency install path. SHA256
+stays the mandatory integrity floor; signature verification is an additive,
+best-effort second gate that never blocks a keyless install.
+
+### Added
+
+- **Build-provenance attestations** — `.github/workflows/release.yml` now signs
+  every release with keyless Sigstore-backed
+  [GitHub artifact attestations](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)
+  (`actions/attest-build-provenance`, pinned by commit SHA). One attest step with
+  a multi-path `subject-path` covers each per-binary artifact (`dist/nole-*`) AND
+  the `SHA256SUMS` file itself as subjects, so both the binaries and the checksum
+  list are provenance-bound. No repo Secret is added — signing uses the workflow's
+  OIDC identity. Attestations live in the GitHub attestation API and are resolved
+  by digest at verify time; they are NOT uploaded as release assets.
+- **`install.sh` additive verification** — after the mandatory SHA256 check,
+  `install.sh` optionally verifies the build-provenance attestation via
+  `gh attestation verify`, hardened to the exact release-workflow signer identity
+  (`--signer-workflow`). Controlled by `NOLE_INSTALL_VERIFY=auto|require|off`
+  (default `auto`).
+
+### Security
+
+- **Three-way fail taxonomy** keeps the zero-dependency floor intact while
+  closing the realistic downgrade path: (a) verifier unusable (no `gh`, `gh`
+  lacking the subcommand, or `gh` older than 2.93.0 — the CVE-2026-48501 fix that
+  stopped `gh attestation` leaking the host token to TUF mirrors) → **soft-skip**;
+  (b) attestation cryptographically invalid, OR provably missing on a
+  KNOWN-signed release while the API is reachable → **fail closed**; (c) API
+  unreachable / anonymous / pre-signing release → **soft-skip**. A `SIGNED_SINCE`
+  version floor (v0.10.0) lets the installer distinguish a genuinely-unsigned old
+  release from a stripped attestation on a signed one.
+- The optional gate runs BEFORE the stage+atomic-rename, so a verification
+  failure never disturbs an existing install. `install.sh` passes no token of its
+  own; an anonymous host simply soft-skips (cli/cli #11803).
+
+### Notes
+
+- SHA256 remains the only check that gates the zero-dependency path: a machine
+  with just `curl`/`wget` + `sha256sum`/`shasum` installs exactly as before. The
+  attestation gate is exercised by nine `go test` cases that inject a fake `gh`
+  (valid, mismatch→fail-closed, no-attestation old vs signed version, API
+  unreachable, CVE-gated old gh, require, off) with no network.
+
 ## [0.9.0] - 2026-06-02
 
 Theme: **onboarding** — make Nólë easy to install and keep current, and make the
