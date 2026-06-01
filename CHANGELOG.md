@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-01
+
+Theme: **honest-quota data correction** — a follow-up to v0.7.0's trust pillar
+that re-verifies every BYOK provider's free tier against current (June 2026)
+published pricing and fixes a credit-vs-call unit mismatch. Data + docs only; no
+schema, signature, or call-path change, and no new MCP tools.
+
+### Changed
+
+- **Tavily and Firecrawl free-tier floors lowered 1000 → 500.** Their free tiers
+  grant 1000 *credits*/month, but the ledger debits 1 per *call* while an advanced
+  Tavily search/extract and a Firecrawl search each cost 2 credits. The old
+  `FreeQuota=1000` therefore over-read remaining headroom up to 2× — the dashboard
+  could hit zero while Nólë still reported room. The floor is now
+  `credits ÷ worst-case-credits-per-call` (1000 ÷ 2 = 500). Undercounting is the
+  safe direction; the drift signal catches the rest. (Brave stays 1000: its $5
+  credit meters a uniform $0.005/query, so 1 call = 1 query = 1000-query floor.)
+- **Brave metadata corrected to the Feb-2026 model.** Brave eliminated its flat
+  free tier (2000, briefly 5000 queries/month) on 12 Feb 2026; the false "legacy
+  accounts keep 2000/month" grandfathering claim is removed. The note now states
+  the $5/month auto-renewing credit (~1000 queries at $0.005/query), the **50
+  req/sec** Search-plan rate cap (was wrongly 1 req/sec — that was the eliminated
+  legacy tier), the required public attribution, and the **no spending cap** on
+  overages (the single biggest surprise-bill vector).
+- **Firecrawl "monthly vs one-time" hedge resolved.** Verified as 1000
+  credits/month, reset monthly with no rollover — the prior "in flux" wording is
+  gone.
+
+### Notes
+
+- Verified against official sources (brave.com/search/api, api-dashboard pricing,
+  docs.tavily.com, firecrawl.dev/pricing) via a grounding workflow with adversarial
+  cross-check. DDGS and Scrapling were re-verified too: Nólë's DDGS provider is
+  pure-Go (POSTs `html.duckduckgo.com` directly, already handles HTTP 202), so the
+  upstream `duckduckgo_search`→`ddgs` PyPI rename does not affect it; Nólë's
+  Scrapling subprocess script is written defensively (no removed `css_first`/
+  `xpath_first`, `getattr` fallbacks, fails closed on `follow_redirects`) and is
+  compatible with Scrapling v0.4.x. No code change needed for either.
+
 ## [0.7.0] - 2026-06-01
 
 Theme: **make the center trustworthy** — every number Nólë reports about money

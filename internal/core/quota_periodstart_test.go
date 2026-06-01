@@ -13,7 +13,7 @@ func TestDecideHealsFutureDatedPeriodStart(t *testing.T) {
 		Provider:      "tavily",
 		CostClass:     CostClassFreeTierBYOK,
 		FreeRemaining: 0,
-		FreeQuota:     1000,
+		FreeQuota:     500, // matches the live tavily floor in byok_metadata.go
 		RefreshWindow: RefreshMonthly,
 		PeriodStart:   "2999-12", // far future relative to the real clock
 	})
@@ -23,8 +23,8 @@ func TestDecideHealsFutureDatedPeriodStart(t *testing.T) {
 		t.Fatalf("provider should be allowed after self-healing a future-dated PeriodStart, got %+v", decision)
 	}
 	got, _ := ledger.Get("tavily")
-	if got.FreeRemaining != 1000 {
-		t.Fatalf("future-dated PeriodStart should refresh to full quota, FreeRemaining = %d, want 1000", got.FreeRemaining)
+	if got.FreeRemaining != 500 {
+		t.Fatalf("future-dated PeriodStart should refresh to full quota, FreeRemaining = %d, want 500", got.FreeRemaining)
 	}
 }
 
@@ -35,7 +35,7 @@ func TestDecideDoesNotResetCurrentPeriod(t *testing.T) {
 		Provider:      "tavily",
 		CostClass:     CostClassFreeTierBYOK,
 		FreeRemaining: 3,
-		FreeQuota:     1000,
+		FreeQuota:     500, // matches the live tavily floor in byok_metadata.go
 		RefreshWindow: RefreshMonthly,
 		PeriodStart:   CurrentMonthISO(),
 	})

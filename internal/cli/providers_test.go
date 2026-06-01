@@ -58,8 +58,8 @@ func TestProvidersCommandFreeFirstAllowsBYOKFreeTierByDefault(t *testing.T) {
 	if got.CostPolicy != core.CostPolicyFreeFirst || got.CostClass != core.CostClassFreeTierBYOK || !got.AllowedByPolicy || got.PolicyReason != "free_tier_available" {
 		t.Fatalf("free-first should allow BYOK key as free-tier by default, got %#v", got)
 	}
-	if got.FreeRemaining != 1000 {
-		t.Fatalf("free-tier-BYOK should seed FreeRemaining=1000 from hardcoded defaults, got %d", got.FreeRemaining)
+	if got.FreeRemaining != 500 {
+		t.Fatalf("free-tier-BYOK should seed FreeRemaining=500 (tavily 1000-credit grant / 2-credit worst-case call = 500-call floor), got %d", got.FreeRemaining)
 	}
 }
 
