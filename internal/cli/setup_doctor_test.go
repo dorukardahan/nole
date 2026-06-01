@@ -269,7 +269,7 @@ func TestDoctorCommandFreeTierBYOKByDefault(t *testing.T) {
 		t.Fatalf("doctor failed: %v", err)
 	}
 	text := out.String()
-	for _, want := range []string{"cost=free-tier-BYOK", "reason=free_tier_available", "free_remaining=1000"} {
+	for _, want := range []string{"cost=free-tier-BYOK", "reason=free_tier_available", "free_remaining=500"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("doctor output missing %q (BYOK default behavior):\n%s", want, text)
 		}

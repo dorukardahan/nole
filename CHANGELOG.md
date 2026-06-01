@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-01
+
+Theme: **honest-quota data correction** — a follow-up to v0.7.0's trust pillar
+that re-verifies every BYOK provider's free tier against current (June 2026)
+published pricing and fixes a credit-vs-call unit mismatch. Data, a one-line
+upgrade-path ledger clamp, and docs; no schema or signature change, and no new
+MCP tools.
+
+### Changed
+
+- **Tavily floor lowered 1000 → 500, Firecrawl 1000 → 250.** Their free tiers
+  grant 1000 *credits*/month, but the ledger debits 1 per *call* — and a call can
+  cost more than 1 credit. The floor is now `credits ÷ the priciest call Nólë can
+  issue`: Tavily an advanced search/extract is 2 credits → 1000 ÷ 2 = 500;
+  Firecrawl search is 2 credits per 10 results, so a 20-result search (Service
+  permits up to `maxSearchLimit=20`) is 4 credits → 1000 ÷ 4 = 250. The old
+  `FreeQuota=1000` over-read remaining headroom up to 4× — the dashboard could hit
+  zero while Nólë still reported room. Undercounting is the safe direction; the
+  drift signal catches the rest. (Brave stays 1000: its $5 credit meters a uniform
+  $0.005/query, so 1 call = 1 query = 1000-query floor.)
+- **Brave metadata corrected to the Feb-2026 model.** Brave eliminated its flat
+  free tier (2000, briefly 5000 queries/month) on 12 Feb 2026; the false "legacy
+  accounts keep 2000/month" grandfathering claim is removed. The note now states
+  the $5/month auto-renewing credit (~1000 queries at $0.005/query), the **50
+  req/sec** Search-plan rate cap (was wrongly 1 req/sec — that was the eliminated
+  legacy tier), the required public attribution, and the overage behaviour (past
+  the $5 credit the card is billed unless you set a usage limit in the Brave
+  dashboard — the biggest surprise-bill vector, and how you cap it).
+- **Firecrawl "monthly vs one-time" hedge resolved.** Verified as 1000
+  credits/month, reset monthly with no rollover — the prior "in flux" wording is
+  gone.
+
+### Fixed
+
+- **Existing ledgers are corrected on first load, not next month.** When a
+  persisted current-month entry was sized for the old 1000 floor,
+  `mergeLedgerEntries` now re-bases its `free_remaining` on calls already consumed
+  against the new (lower) floor, instead of inheriting the stale counter until the
+  next monthly rollover. Without it, an upgrading user would keep over-reading
+  their Tavily/Firecrawl headroom for the rest of the month — the exact over-read
+  this release exists to eliminate. The re-base fires on same-cost-class loads
+  AND across a `NOLE_<PROVIDER>_PAID` toggle (so disabling paid mode after upgrade
+  cannot inherit the stale counter), is persisted on first load so the on-disk
+  ledger self-heals, is idempotent, and only ever lowers the counter. Caught by
+  Codex review.
+
+### Notes
+
+- Verified against official sources (brave.com/search/api, api-dashboard pricing,
+  docs.tavily.com, firecrawl.dev/pricing) via a grounding workflow with adversarial
+  cross-check. DDGS and Scrapling were re-verified too: Nólë's DDGS provider is
+  pure-Go (POSTs `html.duckduckgo.com` directly, already handles HTTP 202), so the
+  upstream `duckduckgo_search`→`ddgs` PyPI rename does not affect it; Nólë's
+  Scrapling subprocess script is written defensively (no removed `css_first`/
+  `xpath_first`, `getattr` fallbacks, fails closed on `follow_redirects`) and is
+  compatible with Scrapling v0.4.x. No code change needed for either.
+
 ## [0.7.0] - 2026-06-01
 
 Theme: **make the center trustworthy** — every number Nólë reports about money

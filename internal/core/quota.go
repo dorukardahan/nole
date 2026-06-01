@@ -618,6 +618,26 @@ func (l *MemoryQuotaLedger) reloadFromDiskLocked() error {
 
 	l.entries = mergeLedgerEntries(l.entries, disk.Entries)
 	l.driftSignals = mergeDriftSignals(l.driftSignals, disk.DriftSignals)
+	// If the seeded floor dropped below what disk was sized for (the v0.7.1
+	// 1000->500 credit-vs-call correction), mergeLedgerEntries re-based the
+	// counter in memory. Persist that correction now so the disk self-heals on
+	// the first load instead of waiting for the next Record/rollover — otherwise
+	// the on-disk free_remaining stays stale (correct in memory, but a reader of
+	// the file would still see the old, higher number). Idempotent: once disk
+	// carries the new floor, FreeQuota matches and this no longer fires.
+	floorLowered := false
+	for _, d := range disk.Entries {
+		// Only a GENUINE free-tier floor drop counts: merged must still carry a
+		// free-tier floor (FreeQuota > 0). When merged.FreeQuota == 0 the entry
+		// merged to a premium seed (NOLE_<PROVIDER>_PAID=1, which seeds
+		// FreeQuota=0) — persisting that would destroy the carried free-tier
+		// accounting on disk and let a later paid-off toggle reset to a fresh
+		// floor, defeating the anti-oscillation guard. Leave disk untouched there.
+		if merged, ok := l.entries[d.Provider]; ok && merged.FreeQuota > 0 && d.FreeQuota > merged.FreeQuota {
+			floorLowered = true
+			break
+		}
+	}
 	refreshed := l.refreshExpiredEntriesLocked(CurrentMonthISO())
 	migrated := disk.SchemaVersion < quotaLedgerSchemaVersion
 	if disk.FailClosed {
@@ -631,7 +651,7 @@ func (l *MemoryQuotaLedger) reloadFromDiskLocked() error {
 		l.ledgerState = LedgerStateFileOK
 	}
 	l.ledgerWarning = disk.Warning
-	if refreshed || migrated {
+	if refreshed || migrated || floorLowered {
 		return l.persistLocked()
 	}
 	return nil
@@ -684,6 +704,38 @@ func seedEntryMap(seeds []QuotaEntry) map[string]QuotaEntry {
 	return entries
 }
 
+// rebasedRemainingForFloor returns the FreeRemaining a carried free-tier counter
+// should have under newFloor. When the prior floor (loadedQuota) is known and
+// dropped, it preserves the calls already consumed this period
+// (loadedQuota - loadedRemaining) against the new floor. The result is always
+// clamped to [0, newFloor], so it can never over-read the lowered floor even when
+// the prior floor is UNKNOWN — e.g. a schema-v1 ledger entry has no recorded
+// FreeQuota (loadedQuota == 0) but may carry a stale 1000-call remainder; that
+// remainder is clamped down to newFloor instead of passing through. A non-positive
+// newFloor (premium seed, FreeQuota=0) means "no free floor here" and passes the
+// loaded counter through untouched. Used by both the same-cost-class and
+// cross-cost-class merge paths so the v0.7.1 1000->500 correction lands everywhere.
+func rebasedRemainingForFloor(loadedQuota, loadedRemaining, newFloor int) int {
+	if newFloor <= 0 {
+		return loadedRemaining
+	}
+	rem := loadedRemaining
+	if loadedQuota > newFloor {
+		consumed := loadedQuota - loadedRemaining
+		if consumed < 0 {
+			consumed = 0
+		}
+		rem = newFloor - consumed
+	}
+	if rem > newFloor {
+		rem = newFloor
+	}
+	if rem < 0 {
+		rem = 0
+	}
+	return rem
+}
+
 func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[string]QuotaEntry {
 	entries := map[string]QuotaEntry{}
 	for provider, seed := range seeds {
@@ -728,6 +780,26 @@ func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[st
 			if strings.TrimSpace(loadedEntry.PeriodStart) != "" {
 				merged.PeriodStart = loadedEntry.PeriodStart
 			}
+			if seed.FreeQuota > 0 {
+				// Seed defines the current free-tier floor (incl. the v0.7.1
+				// 1000->500/250 credit-vs-call correction). Re-base the inherited
+				// counter onto it, preserving calls already consumed so the
+				// correction lands on the first load. merged.FreeQuota is already the
+				// seed's. Idempotent once disk carries the new floor.
+				merged.FreeRemaining = rebasedRemainingForFloor(loadedEntry.FreeQuota, loadedEntry.FreeRemaining, seed.FreeQuota)
+			} else if loadedEntry.FreeQuota > 0 {
+				// Seed has no free floor (premium-capable seeds FreeQuota=0) but the
+				// loaded entry CARRIES free-tier accounting from an earlier
+				// free->premium transition. Preserve FreeQuota/RefreshWindow in
+				// memory so a paid-mode Record (recordLocked persists the in-memory
+				// entry) does not write FreeQuota=0 and wipe the anti-oscillation
+				// state. The floor is re-applied and re-based when paid mode is later
+				// disabled and the free-tier seed returns.
+				merged.FreeQuota = loadedEntry.FreeQuota
+				if loadedEntry.RefreshWindow != "" {
+					merged.RefreshWindow = loadedEntry.RefreshWindow
+				}
+			}
 		} else if loadedEntry.FreeQuota > 0 {
 			merged.FreeRemaining = loadedEntry.FreeRemaining
 			merged.FreeQuota = loadedEntry.FreeQuota
@@ -736,6 +808,17 @@ func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[st
 			}
 			if strings.TrimSpace(loadedEntry.PeriodStart) != "" {
 				merged.PeriodStart = loadedEntry.PeriodStart
+			}
+			// Carrying free-tier accounting across a cost-class transition must
+			// also respect a lowered seed floor — otherwise toggling
+			// NOLE_<PROVIDER>_PAID off after the v0.7.1 upgrade would inherit the
+			// stale 1000-call counter and over-read the new 500 floor again. When
+			// the (free-tier) seed floor is lower than the carried quota, enforce
+			// it and preserve consumed; a premium seed has FreeQuota=0, so this
+			// skips the ->paid direction (anti-oscillation state is preserved).
+			if seed.FreeQuota > 0 && loadedEntry.FreeQuota > seed.FreeQuota {
+				merged.FreeRemaining = rebasedRemainingForFloor(loadedEntry.FreeQuota, loadedEntry.FreeRemaining, seed.FreeQuota)
+				merged.FreeQuota = seed.FreeQuota
 			}
 		}
 		if loadedEntry.SpentCents > merged.SpentCents {

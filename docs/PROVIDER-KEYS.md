@@ -2,19 +2,19 @@
 
 Nólë is BYOK-first: you use your own provider accounts and keys. It should never print key values, auth headers or raw provider payloads. It should only report whether a key is present.
 
-Default policy is `free-first` and each supported BYOK provider is classified as `free-tier-BYOK` when its key is set. Nólë seeds a hardcoded monthly free quota per provider (currently 1000 calls/month each), tracks it in the local ledger and refills it at the start of each UTC calendar month. Premium-capable behavior is opt-in via `NOLE_<PROVIDER>_PAID=1`; in that mode the cost-capped or quality-first policies decide eligibility for paid calls.
+Default policy is `free-first` and each supported BYOK provider is classified as `free-tier-BYOK` when its key is set. Nólë seeds a hardcoded monthly free quota per provider (currently 1000 calls/month for Brave, 500 for Tavily, 250 for Firecrawl — the lower floors reflect those two providers' variable per-credit metering: the ledger debits 1 per call, but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4), tracks it in the local ledger and refills it at the start of each UTC calendar month. Premium-capable behavior is opt-in via `NOLE_<PROVIDER>_PAID=1`; in that mode the cost-capped or quality-first policies decide eligibility for paid calls.
 
 ## Provider cost/overage checklist
 
 | Provider | Key variable(s) | Free-tier default | Paid opt-in | Cost/overage note |
 | --- | --- | --- | --- | --- |
-| Brave Search API | `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` | 1000 calls/month, monthly reset | `NOLE_BRAVE_PAID=1` | Brave's free tier runs on a subscription with credit card on file. Nólë caps usage at the local monthly quota, but any overage outside Nólë (concurrent process, ledger desync) will bill the CC. `nole doctor` surfaces this when the key is set. |
-| Tavily | `TAVILY_API_KEY` | 1000 calls/month, monthly reset | `NOLE_TAVILY_PAID=1` | Free Researcher tier; no card required. Paid plans charge per credit; review the dashboard before flipping the opt-in. |
-| Firecrawl | `FIRECRAWL_API_KEY` | 1000 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Free quota refill semantics shifted in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume use. |
+| Brave Search API | `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` | 1000 calls/month, monthly reset | `NOLE_BRAVE_PAID=1` | Free tier is now a $5/month auto-renewing credit (~1000 Web Search queries at $0.005/query, 50 req/sec) with a credit card on file (overages billed unless you set a usage limit in the Brave dashboard, which Brave recommends); the old flat 2000+/month tier ended Feb 2026. Nólë caps usage at the local monthly quota, but any overage outside Nólë (concurrent process, ledger desync) bills the CC unless you set that dashboard limit. `nole doctor` surfaces this when the key is set. |
+| Tavily | `TAVILY_API_KEY` | 500 calls/month, monthly reset | `NOLE_TAVILY_PAID=1` | Free Researcher tier = 1000 credits/month, no card required; Nólë seeds a 500-call floor because advanced search/extract cost 2 credits while the ledger debits 1 per call. Paid plans charge per credit; review the dashboard before flipping the opt-in. |
+| Firecrawl | `FIRECRAWL_API_KEY` | 250 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Free plan = 1000 credits/month, reset monthly with no rollover, no card; Nólë seeds a 250-call floor because search is 2 credits per 10 results, so a 20-result search (Nólë permits up to 20) costs 4 credits while the ledger debits 1. Verify the dashboard balance matches Nólë's local counter before high-volume use. |
 | DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
 | Scrapling | `NOLE_SCRAPLING_PYTHON` | Local keyless extraction fallback, no counter | n/a | Prefer `nole setup --local-extract`, which creates an isolated venv and writes this variable locally. Nólë validates public URLs before calling it, but website terms and robots.txt remain the user's responsibility. |
 
-The free-tier numbers above are conservative anchors verified 2026-05. They are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
+The free-tier numbers above are conservative anchors verified 2026-06 against each provider's published pricing. Tavily and Firecrawl meter in variable credits while the ledger debits 1 per call, so each floor is credits ÷ the priciest call Nólë can issue: Tavily 1000 ÷ 2 (advanced search/extract) = 500; Firecrawl 1000 ÷ 4 (a 20-result search at 2 credits per 10 results) = 250. This avoids over-reading remaining headroom; undercounting is the safe direction and the drift signal catches the rest. They are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
 
 Use `nole doctor`, `nole providers --json` and MCP `provider_status`/`budget_status` to inspect status safely. These surfaces should report presence/status and local policy decisions, never key values.
 
@@ -161,7 +161,7 @@ Use for: broad search and search fallback routes; current route evidence keeps i
 
 Default classification: `free-tier-BYOK`, 1000 calls/month, refilled at the start of each UTC month.
 
-> Note on the 1000 vs 2000 discrepancy: Brave's official Free Data plan advertises a 2,000 calls/month allowance with a 1 request/second rate cap. Nólë's local anchor is intentionally set at 1,000 to add a safety margin (overage on Brave is billed to the credit card on file). Bump `byokProviders.FreeQuota` in `internal/core/byok_metadata.go` only with sanitized evidence (provider dashboard screenshot or doc URL).
+> Note on the $5 credit model (verified 2026-06): Brave eliminated its flat free tier (formerly 2,000, briefly 5,000 queries/month) on 12 Feb 2026. New accounts get a $5/month auto-renewing credit covering ~1,000 Web Search queries at $5 per 1,000 requests ($0.005/query), with a 50 req/sec rate cap on the Search plan. A credit card is required; by default overages bill the CC, but Brave lets you set a monthly usage limit in the dashboard ("My subscriptions" tab) to cap spend and recommends doing so. Legacy-account grandfathering is unconfirmed (Brave published no migration policy). Brave also requires public attribution of the Brave Search API on your site to grant the credit. Nólë's local anchor of 1,000 maps 1:1 to the $5 credit (1 call = 1 query = $0.005), so it stays the right fail-safe floor. Bump `byokProviders.FreeQuota` in `internal/core/byok_metadata.go` only with sanitized evidence (provider dashboard screenshot or doc URL).
 
 Setup:
 
@@ -180,7 +180,7 @@ Notes:
 
 Use for: search, extract, academic/code/semantic tasks and fallback routes depending on evidence and policy.
 
-Default classification: `free-tier-BYOK`, 1000 calls/month (Researcher free tier), refilled at the start of each UTC month. No credit card on file.
+Default classification: `free-tier-BYOK`, 500 calls/month, refilled at the start of each UTC month. No credit card on file. The free Researcher tier grants 1000 credits/month; Nólë seeds a 500-call floor because an advanced search or extract costs 2 credits while the ledger debits 1 per call.
 
 Setup:
 
@@ -191,13 +191,13 @@ Setup:
 Notes:
 
 - Set `NOLE_TAVILY_PAID=1` only when on a paid Tavily plan and you want Nólë to treat the provider as premium-capable.
-- Tavily's "advanced" search and extract endpoints consume more credits per call than basic search; the local counter treats every call as one unit.
+- Tavily's "advanced" search and extract endpoints consume 2 credits per call vs 1 for basic search; the local counter debits 1 per call, so Nólë's 500-call floor (1000 credits ÷ 2 worst-case) keeps the local count from over-reading the dashboard. Heavy advanced use can still hit the dashboard limit before the local counter — verify your dashboard.
 
 ## Firecrawl
 
 Use for: search and extraction, especially docs/news/fact-check/people/pricing/research/social scenarios when evidence supports it.
 
-Default classification: `free-tier-BYOK`, 1000 calls/month, refilled at the start of each UTC month. No credit card on file.
+Default classification: `free-tier-BYOK`, 250 calls/month, refilled at the start of each UTC month. No credit card on file. The free plan grants 1000 credits/month (reset monthly, no rollover); Nólë seeds a 250-call floor because search is 2 credits per 10 results, so a 20-result search (Service permits up to maxSearchLimit=20) costs 4 credits while the ledger debits 1 per call (scrape is 1 credit; the 5-credit Enhanced Mode is never used by Nólë).
 
 Setup:
 
@@ -311,7 +311,7 @@ Policy modes:
 
 Quota refresh:
 
-- Free-tier-BYOK entries carry a `refresh_window` and `period_start` in the ledger. With `refresh_window=monthly`, `FreeRemaining` is automatically refilled to the hardcoded `FreeQuota` (1000) at the start of each UTC calendar month, both on ledger reload and on the next `Record` call.
+- Free-tier-BYOK entries carry a `refresh_window` and `period_start` in the ledger. With `refresh_window=monthly`, `FreeRemaining` is automatically refilled to the hardcoded per-provider `FreeQuota` (1000 for Brave, 500 for Tavily/Firecrawl) at the start of each UTC calendar month, both on ledger reload and on the next `Record` call.
 - The ledger uses schema version 2. v1 ledgers from prior nole versions are migrated forward on first load. Cost-class transitions (e.g. v1 BYOK keys that were premium-capable becoming free-tier-BYOK) use the seed's fresh `FreeRemaining` instead of the stale on-disk counter.
 
 Important: this is a conservative local policy model, not a live provider billing oracle. Check provider dashboards for real balances, plan limits and overage settings before live use.
