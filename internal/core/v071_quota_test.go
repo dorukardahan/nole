@@ -237,6 +237,69 @@ func TestPremiumReloadPreservesCarriedQuotaForAntiOscillation(t *testing.T) {
 	}
 }
 
+// Codex P2 (round 4): a direct upgrade from a schema-v1 ledger has no recorded
+// free_quota (loadedQuota == 0). A stale 1000-call remainder must still be clamped
+// down to the new 500 floor on migration, not passed through (which would persist
+// FreeRemaining > FreeQuota and keep over-reading). A v1 remainder already below
+// the floor is preserved.
+func TestSchemaV1DirectUpgradeClampsToLoweredFloor(t *testing.T) {
+	prevNow := nowUTC
+	defer func() { nowUTC = prevNow }()
+	nowUTC = func() time.Time {
+		ts, _ := time.Parse("2006-01", "2026-06")
+		return ts
+	}
+
+	cases := []struct {
+		name        string
+		v1Remaining int
+		want        int
+	}{
+		{"stale_high_remainder_clamped", 1000, 500},
+		{"remainder_at_floor", 500, 500},
+		{"low_remainder_preserved", 100, 100},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "quota-ledger.json")
+			// schema v1: no free_quota / refresh_window / period_start fields.
+			payload := `{
+  "schema_version": 1,
+  "policy": {"policy": "free-first", "hard_cap_cents": 0},
+  "entries": [
+    {"provider": "tavily", "cost_class": "free-tier-BYOK", "free_remaining": ` + itoa(tc.v1Remaining) + `, "keyless_free": false, "unknown": false}
+  ],
+  "updated_at": "2026-04-01T00:00:00Z"
+}`
+			if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+				t.Fatalf("write v1 ledger: %v", err)
+			}
+			seed := []QuotaEntry{{
+				Provider:      "tavily",
+				CostClass:     CostClassFreeTierBYOK,
+				FreeRemaining: 500,
+				FreeQuota:     500,
+				RefreshWindow: RefreshMonthly,
+				PeriodStart:   "2026-06",
+			}}
+			ledger, err := NewFileQuotaLedgerWithPolicy(path, QuotaPolicy{Policy: CostPolicyFreeFirst}, seed)
+			if err != nil {
+				t.Fatalf("construct ledger: %v", err)
+			}
+			got, _ := ledger.Get("tavily")
+			if got.FreeQuota != 500 {
+				t.Errorf("FreeQuota = %d, want 500", got.FreeQuota)
+			}
+			if got.FreeRemaining != tc.want {
+				t.Errorf("FreeRemaining = %d, want %d", got.FreeRemaining, tc.want)
+			}
+			if got.FreeRemaining > got.FreeQuota {
+				t.Errorf("invariant violated: FreeRemaining %d > FreeQuota %d", got.FreeRemaining, got.FreeQuota)
+			}
+		})
+	}
+}
+
 // itoa avoids importing strconv into the test for a single helper.
 func itoa(n int) string {
 	if n == 0 {

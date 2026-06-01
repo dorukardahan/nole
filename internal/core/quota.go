@@ -705,21 +705,31 @@ func seedEntryMap(seeds []QuotaEntry) map[string]QuotaEntry {
 }
 
 // rebasedRemainingForFloor returns the FreeRemaining a carried free-tier counter
-// should have under newFloor, preserving the calls already consumed this period
-// (loadedQuota - loadedRemaining). When newFloor did not drop below loadedQuota
-// (same floor, a raise, or no real prior counter), loadedRemaining passes through
-// unchanged. The result is clamped to [0, newFloor] so it can never over-read the
-// lowered floor. Used by both the same-cost-class and cross-cost-class merge paths
-// so the v0.7.1 1000->500 correction lands consistently.
+// should have under newFloor. When the prior floor (loadedQuota) is known and
+// dropped, it preserves the calls already consumed this period
+// (loadedQuota - loadedRemaining) against the new floor. The result is always
+// clamped to [0, newFloor], so it can never over-read the lowered floor even when
+// the prior floor is UNKNOWN — e.g. a schema-v1 ledger entry has no recorded
+// FreeQuota (loadedQuota == 0) but may carry a stale 1000-call remainder; that
+// remainder is clamped down to newFloor instead of passing through. A non-positive
+// newFloor (premium seed, FreeQuota=0) means "no free floor here" and passes the
+// loaded counter through untouched. Used by both the same-cost-class and
+// cross-cost-class merge paths so the v0.7.1 1000->500 correction lands everywhere.
 func rebasedRemainingForFloor(loadedQuota, loadedRemaining, newFloor int) int {
-	if newFloor <= 0 || loadedQuota <= newFloor {
+	if newFloor <= 0 {
 		return loadedRemaining
 	}
-	consumed := loadedQuota - loadedRemaining
-	if consumed < 0 {
-		consumed = 0
+	rem := loadedRemaining
+	if loadedQuota > newFloor {
+		consumed := loadedQuota - loadedRemaining
+		if consumed < 0 {
+			consumed = 0
+		}
+		rem = newFloor - consumed
 	}
-	rem := newFloor - consumed
+	if rem > newFloor {
+		rem = newFloor
+	}
 	if rem < 0 {
 		rem = 0
 	}
