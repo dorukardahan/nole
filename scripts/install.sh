@@ -34,7 +34,13 @@ INSTALL_DIR="${NOLE_INSTALL_DIR:-$HOME/.local/bin}"
 # after main() returns — a function-local would be unbound under `set -u` and the
 # trap would fail spuriously even on a successful install.
 TMP_DIR=""
-cleanup() { if [ -n "${TMP_DIR:-}" ]; then rm -rf "$TMP_DIR"; fi; }
+STAGED=""
+cleanup() {
+  if [ -n "${TMP_DIR:-}" ]; then rm -rf "$TMP_DIR"; fi
+  # STAGED is removed here only if the atomic rename never consumed it (i.e. an
+  # install failure); on success it has already been renamed to its final name.
+  if [ -n "${STAGED:-}" ]; then rm -f "$STAGED"; fi
+}
 trap cleanup EXIT
 
 log()  { printf 'nole-install: %s\n' "$*"; }
@@ -146,12 +152,19 @@ main() {
   log "checksum verified"
 
   mkdir -p "$INSTALL_DIR"
-  chmod +x "${TMP_DIR}/${asset}"
-  # rm-first install: on macOS (Apple Silicon) overwriting a signed Mach-O in
-  # place can SIGKILL a running copy; removing then moving is the safe order and
-  # is harmless on Linux.
-  rm -f "${INSTALL_DIR}/nole"
-  mv "${TMP_DIR}/${asset}" "${INSTALL_DIR}/nole"
+  # Install via stage-in-place + atomic rename, NOT rm-first. rename(2) replaces
+  # the directory entry without writing into the existing binary's inode, so it is
+  # Apple-Silicon-safe (the SIGKILL gotcha is about `cp` writing over a mapped,
+  # signed Mach-O — which never happens here) AND never leaves the user with no
+  # binary: the old one stays until the rename succeeds, and any failure (ENOSPC,
+  # unwritable dir) leaves it untouched. Staging inside INSTALL_DIR keeps the
+  # final step a same-filesystem (atomic) rename.
+  STAGED="${INSTALL_DIR}/.nole.install.$$"
+  cp "${TMP_DIR}/${asset}" "$STAGED" \
+    || die "could not stage the new binary in ${INSTALL_DIR} (existing install left untouched)"
+  chmod +x "$STAGED"
+  mv -f "$STAGED" "${INSTALL_DIR}/nole" \
+    || die "could not move the new binary into place (existing install left untouched)"
   log "installed to ${INSTALL_DIR}/nole"
 
   case ":${PATH}:" in

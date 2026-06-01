@@ -98,6 +98,10 @@ func TestInstallScriptVerifiesAndInstalls(t *testing.T) {
 	defer srv.Close()
 
 	installDir := t.TempDir()
+	// Pre-existing binary: the install must atomically replace it (not error).
+	if err := os.WriteFile(filepath.Join(installDir, "nole"), []byte("OLD-binary\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	out, err := runInstaller(t, srv.URL, repo, installDir)
 	if err != nil {
 		t.Fatalf("installer failed: %v\n%s", err, out)
@@ -143,5 +147,54 @@ func TestInstallScriptFailsClosedOnChecksumMismatch(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(installDir, "nole")); !os.IsNotExist(statErr) {
 		t.Fatalf("a binary was installed despite a checksum mismatch (statErr=%v)", statErr)
+	}
+}
+
+// An install failure AFTER the checksum passes (here: an unwritable install dir)
+// must NOT destroy an existing binary — the stage+atomic-rename design replaces
+// the old binary only when the new one is fully in place. (Codex review PR #42.)
+func TestInstallScriptPreservesExistingBinaryOnPostChecksumFailure(t *testing.T) {
+	if !haveAny("bash") {
+		t.Skip("bash not available")
+	}
+	if !haveAny("curl", "wget") || !haveAny("sha256sum", "shasum") {
+		t.Skip("installer needs curl/wget and sha256sum/shasum")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses directory write permissions")
+	}
+	asset, ok := assetName(t)
+	if !ok {
+		t.Skipf("installer does not target %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+
+	repo, tag := "testowner/testrepo", "v0.9.0"
+	body := []byte("NEW-payload\n")
+	sum := sha256.Sum256(body)
+	srv := fakeReleaseServer(repo, tag, asset, body, hex.EncodeToString(sum[:])) // VALID checksum
+	defer srv.Close()
+
+	installDir := t.TempDir()
+	nolefile := filepath.Join(installDir, "nole")
+	if err := os.WriteFile(nolefile, []byte("EXISTING-good-binary\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Make the install dir unwritable so staging the new binary fails AFTER the
+	// checksum verifies. Restore perms so t.TempDir cleanup can remove it.
+	if err := os.Chmod(installDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(installDir, 0o755) })
+
+	out, err := runInstaller(t, srv.URL, repo, installDir)
+	if err == nil {
+		t.Fatalf("installer should fail when the install dir is unwritable; output:\n%s", out)
+	}
+	got, readErr := os.ReadFile(nolefile)
+	if readErr != nil {
+		t.Fatalf("existing binary was destroyed by a failed install: %v", readErr)
+	}
+	if string(got) != "EXISTING-good-binary\n" {
+		t.Fatalf("existing binary was modified by a failed install: %q", string(got))
 	}
 }
