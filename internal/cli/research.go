@@ -43,7 +43,7 @@ Defaults to free-first/no-hidden-paid-spend routing. Explicit cost policy settin
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output as JSON")
-	cmd.Flags().IntVar(&maxSteps, "max-steps", 3, "maximum search+extract iterations")
+	cmd.Flags().IntVar(&maxSteps, "max-steps", 3, "maximum search passes; also caps how many sources are extracted")
 	return cmd
 }
 

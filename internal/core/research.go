@@ -78,10 +78,12 @@ func (s *Service) Research(ctx context.Context, question string, maxSteps int) (
 
 	report.Sources = allSources
 
-	// Step 2: extract top N unique sources. The .pdf/reddit skip is a pre-existing
-	// research-pipeline heuristic, intentionally NOT shared with SearchAndExtract
-	// (the dumb primitive that extracts the top results as-is).
-	extractLimit := min(len(allSources), 5)
+	// Step 2: extract top sources, bounded by maxSteps so a small budget (e.g.
+	// max_steps=1 from the agent-facing research surface) does not still fan out
+	// to a fixed five extracts and burn extra quota. The .pdf/reddit skip is a
+	// pre-existing research-pipeline heuristic, intentionally NOT shared with
+	// SearchAndExtract (the dumb primitive that extracts the top results as-is).
+	extractLimit := min(len(allSources), maxSteps)
 	var toExtract []ResearchSource
 	for _, src := range allSources {
 		if len(toExtract) >= extractLimit {

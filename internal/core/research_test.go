@@ -51,6 +51,38 @@ func TestClassifiedResearchTasksDrivesFanOut(t *testing.T) {
 	}
 }
 
+// max_steps caps the number of sources extracted, not just the search fan-out,
+// so a small budget on the agent-facing research surface does not burn extra
+// extract quota.
+func TestResearchMaxStepsBoundsExtracts(t *testing.T) {
+	newSvc := func() *Service {
+		p := &saeFake{fakeProvider: fakeProvider{name: "p"}, urls: []string{goodIP1, goodIP2, goodIP3}}
+		registry := NewRegistry()
+		_ = registry.Register(p)
+		ledger := NewMemoryQuotaLedger()
+		ledger.Set(QuotaEntry{Provider: "p", FreeRemaining: 100})
+		return NewService(registry, ledger, RouteMatrix{
+			TaskGeneral: {"p"}, TaskResearch: {"p"}, TaskDocs: {"p"}, TaskExtract: {"p"},
+		})
+	}
+
+	r1, err := newSvc().Research(context.Background(), "jaguar facts", 1)
+	if err != nil {
+		t.Fatalf("research maxSteps=1: %v", err)
+	}
+	if len(r1.Extracts) != 1 {
+		t.Fatalf("max_steps=1 must cap extracts at 1, got %d", len(r1.Extracts))
+	}
+
+	r3, err := newSvc().Research(context.Background(), "jaguar facts", 3)
+	if err != nil {
+		t.Fatalf("research maxSteps=3: %v", err)
+	}
+	if len(r3.Extracts) != 3 {
+		t.Fatalf("max_steps=3 should allow up to 3 extracts (3 unique sources), got %d", len(r3.Extracts))
+	}
+}
+
 // The research report returns evidence only — never a composed summary/answer.
 func TestResearchReportHasNoSummaryKey(t *testing.T) {
 	report := &ResearchReport{

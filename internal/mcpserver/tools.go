@@ -287,7 +287,7 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		"research",
 		mcp.WithDescription(researchToolDescription),
 		mcp.WithString("question", mcp.Required(), mcp.Description("The research question to investigate across multiple sources")),
-		mcp.WithNumber("max_steps", mcp.Description("Maximum search+extract iterations (default 3)")),
+		mcp.WithNumber("max_steps", mcp.Description("Maximum search passes; also caps how many sources are extracted (default 3)")),
 	)
 	s.AddTool(researchTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		question, err := req.RequireString("question")
