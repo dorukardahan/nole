@@ -11,6 +11,12 @@ import (
 	"github.com/dorukardahan/nole/internal/safeerr"
 )
 
+// maxResearchExtracts is the absolute ceiling on how many sources a single
+// research run will extract, regardless of how large a caller's max_steps is.
+// It bounds extract-quota burn and response size for depth-seeking callers; the
+// per-call extract count is min(unique sources, max_steps, this).
+const maxResearchExtracts = 5
+
 // ResearchReport is the full output of a research run: multi-source evidence for
 // the calling agent to synthesize. Nólë deliberately returns NO composed summary
 // or answer — the gateway hands over clean sources + extracts; the agent thinks.
@@ -78,12 +84,13 @@ func (s *Service) Research(ctx context.Context, question string, maxSteps int) (
 
 	report.Sources = allSources
 
-	// Step 2: extract top sources, bounded by maxSteps so a small budget (e.g.
-	// max_steps=1 from the agent-facing research surface) does not still fan out
-	// to a fixed five extracts and burn extra quota. The .pdf/reddit skip is a
+	// Step 2: extract top sources, bounded by BOTH maxSteps (so a small budget
+	// like max_steps=1 doesn't fan out to many extracts) AND an absolute ceiling
+	// maxResearchExtracts (so a large max_steps raised for search depth doesn't
+	// explode the extract quota or response size). The .pdf/reddit skip is a
 	// pre-existing research-pipeline heuristic, intentionally NOT shared with
 	// SearchAndExtract (the dumb primitive that extracts the top results as-is).
-	extractLimit := min(len(allSources), maxSteps)
+	extractLimit := min(len(allSources), maxSteps, maxResearchExtracts)
 	var toExtract []ResearchSource
 	for _, src := range allSources {
 		if len(toExtract) >= extractLimit {

@@ -55,31 +55,36 @@ func TestClassifiedResearchTasksDrivesFanOut(t *testing.T) {
 // so a small budget on the agent-facing research surface does not burn extra
 // extract quota.
 func TestResearchMaxStepsBoundsExtracts(t *testing.T) {
+	// Seven distinct public literal-IP sources (net-free), so the absolute cap is
+	// observable separately from the source count.
+	urls := []string{goodIP1, goodIP2, goodIP3, "http://9.9.9.9/", "http://8.8.4.4/", "http://1.0.0.1/", "http://208.67.222.222/"}
 	newSvc := func() *Service {
-		p := &saeFake{fakeProvider: fakeProvider{name: "p"}, urls: []string{goodIP1, goodIP2, goodIP3}}
+		p := &saeFake{fakeProvider: fakeProvider{name: "p"}, urls: urls}
 		registry := NewRegistry()
 		_ = registry.Register(p)
 		ledger := NewMemoryQuotaLedger()
-		ledger.Set(QuotaEntry{Provider: "p", FreeRemaining: 100})
+		ledger.Set(QuotaEntry{Provider: "p", FreeRemaining: 1000})
 		return NewService(registry, ledger, RouteMatrix{
 			TaskGeneral: {"p"}, TaskResearch: {"p"}, TaskDocs: {"p"}, TaskExtract: {"p"},
 		})
 	}
 
-	r1, err := newSvc().Research(context.Background(), "jaguar facts", 1)
-	if err != nil {
-		t.Fatalf("research maxSteps=1: %v", err)
+	cases := []struct {
+		maxSteps   int
+		wantExtras int
+	}{
+		{1, 1},                    // small budget → few extracts
+		{3, 3},                    // default
+		{99, maxResearchExtracts}, // large budget → clamped at the absolute ceiling (5)
 	}
-	if len(r1.Extracts) != 1 {
-		t.Fatalf("max_steps=1 must cap extracts at 1, got %d", len(r1.Extracts))
-	}
-
-	r3, err := newSvc().Research(context.Background(), "jaguar facts", 3)
-	if err != nil {
-		t.Fatalf("research maxSteps=3: %v", err)
-	}
-	if len(r3.Extracts) != 3 {
-		t.Fatalf("max_steps=3 should allow up to 3 extracts (3 unique sources), got %d", len(r3.Extracts))
+	for _, tc := range cases {
+		r, err := newSvc().Research(context.Background(), "jaguar facts", tc.maxSteps)
+		if err != nil {
+			t.Fatalf("research maxSteps=%d: %v", tc.maxSteps, err)
+		}
+		if len(r.Extracts) != tc.wantExtras {
+			t.Fatalf("max_steps=%d: extracts = %d, want %d", tc.maxSteps, len(r.Extracts), tc.wantExtras)
+		}
 	}
 }
 
