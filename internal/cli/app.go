@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/nolelog"
 	"github.com/dorukardahan/nole/internal/providers/brave"
 	"github.com/dorukardahan/nole/internal/providers/ddgs"
 	"github.com/dorukardahan/nole/internal/providers/firecrawl"
@@ -73,7 +74,12 @@ func defaultService() *core.Service {
 	entries := defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey)
 	ledger := defaultQuotaLedger(defaultQuotaPolicyFromEnv(), entries)
 
-	opts := []core.ServiceOption{}
+	opts := []core.ServiceOption{
+		// Diagnostic events (e.g. a non-fatal research step failure) go to stderr
+		// only, formatted per NOLE_LOG (text|json|off). stdout stays reserved for
+		// MCP JSON-RPC, REST bodies, and --json command output.
+		core.WithLogger(nolelog.FromEnv(os.Stderr)),
+	}
 	if cache := defaultResponseCacheFromEnv(); cache != nil {
 		opts = append(opts, core.WithResponseCache(cache))
 	}

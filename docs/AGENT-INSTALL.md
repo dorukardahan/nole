@@ -96,9 +96,14 @@ export NOLE_COST_POLICY="free-first"
 # Optional persistent local accounting and in-process cache for long-running MCP sessions.
 export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"
 export NOLE_CACHE_TTL="5m"
+
+# Optional diagnostic logging to stderr (never stdout). text (default) | json | off.
+export NOLE_LOG="text"
 ```
 
 The quota ledger is file-backed by default at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json`). Set `NOLE_QUOTA_LEDGER_PATH` to override the path, or to `memory`/`off`/`none` to opt into per-restart reset. `NOLE_CACHE_TTL_SECONDS=300` is also accepted. Explicit `cost-capped` or `quality-first` settings can allow premium-capable providers, so do not promise absolute no-paid behavior when those policies are selected.
+
+`NOLE_LOG` controls Nólë's structured diagnostic logging. It always writes to **stderr only**, so it never pollutes the MCP JSON-RPC stream on stdout; values and errors are redacted, so logs never carry a provider key. For machine inspection without spending quota, `nole config dump --json` and `nole doctor --json` print the effective config and health as JSON (secrets shown as set/unset only).
 
 For keyless local URL extraction, do not ask the user to hand-create `NOLE_SCRAPLING_PYTHON`. Run:
 

@@ -40,6 +40,9 @@ run go run . doctor --mcp
 run go run . bench --json
 run go run . bench --evidence-md
 run go run . providers --json
+run go run . config dump
+run go run . config dump --json
+run go run . doctor --json
 
 tmp_evidence="$(mktemp)"
 trap 'rm -f "$tmp_evidence"' EXIT

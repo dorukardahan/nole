@@ -19,6 +19,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newBenchCommand())
 	cmd.AddCommand(newProvidersCommand())
 	cmd.AddCommand(newDoctorCommand())
+	cmd.AddCommand(newConfigCommand())
 	cmd.AddCommand(newMCPCommand())
 	cmd.AddCommand(newServeCommand())
 	cmd.AddCommand(newSetupCommand())

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dorukardahan/nole/internal/nolelog"
 	"github.com/spf13/cobra"
 )
 
@@ -33,12 +34,19 @@ prefer 'nole mcp' (stdio).`,
 				return fmt.Errorf("specify --mcp to start the HTTP server (serves the MCP endpoint at /mcp and the REST API at /api/*; see docs/CLIENTS/README.md)")
 			}
 
+			// One logger for the whole serve lifecycle (binding warning + the
+			// handler's encode/lifecycle diagnostics), so NOLE_LOG governs all of
+			// it consistently. Always os.Stderr — stdout stays MCP/REST only.
+			logger := nolelog.FromEnv(os.Stderr)
+
 			if !bindIsLoopback(listen) {
-				fmt.Fprintf(os.Stderr, "warning: binding %s is not loopback; these endpoints are UNAUTHENTICATED and expose your provider keys and quota. Front it with a reverse proxy / network ACL.\n", listen)
+				logger.Warn("serve.non_loopback_bind",
+					nolelog.F("addr", listen),
+					nolelog.F("warning", "endpoints are UNAUTHENTICATED and expose provider keys and quota; front with a reverse proxy / network ACL"))
 			}
 
 			svc := defaultService()
-			handler, err := newHTTPHandler(svc)
+			handler, err := newHTTPHandler(svc, logger)
 			if err != nil {
 				return err
 			}
