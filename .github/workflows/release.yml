@@ -112,25 +112,25 @@ jobs:
       # assets; `gh attestation verify` resolves them by artifact digest at verify
       # time, so the `gh release create` arg array below is unchanged.
       #
-      # scripts/install.sh treats verification as OPTIONAL: it runs only when a
-      # usable `gh` is present, fails closed on a real mismatch, and soft-skips
-      # otherwise so the zero-dependency curl|bash path still installs on SHA256
-      # alone. We attest in TWO steps because `subject-path` and
-      # `subject-checksums` are MUTUALLY EXCLUSIVE inputs (the action requires
-      # exactly one per invocation): step 1 produces a per-binary attestation that
-      # install.sh verifies against the single binary it downloaded; step 2 makes
-      # SHA256SUMS itself provenance-bound (a verify-the-list-then-trust-hashes
-      # path for a future `nole self-update`). Pinned to the v4.1.0 commit SHA per
-      # GitHub hardening guidance; github-token defaults to github.token.
-      - name: Attest release binaries
+      # `subject-path` accepts multiple newline-separated paths/globs, so a single
+      # step attests EACH of the 6 binaries (the per-binary attestation
+      # install.sh verifies against the one binary it downloaded) AND the
+      # SHA256SUMS FILE itself (so the checksum list is provenance-bound — a
+      # verify-the-list-then-trust-hashes path for a future `nole self-update`).
+      # NOTE: do NOT use `subject-checksums: dist/SHA256SUMS` here — that input
+      # attests the files LISTED IN the sums file (i.e. the binaries again), NOT
+      # the SHA256SUMS file as a subject, and it is mutually exclusive with
+      # `subject-path`. scripts/install.sh treats verification as OPTIONAL: it
+      # runs only when a usable `gh` is present, fails closed on a real mismatch,
+      # and soft-skips otherwise so the zero-dependency curl|bash path still
+      # installs on SHA256 alone. Pinned to the v4.1.0 commit SHA per GitHub
+      # hardening guidance; github-token defaults to github.token.
+      - name: Attest release binaries and checksums
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-path: 'dist/nole-*'
-
-      - name: Attest SHA256SUMS
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-checksums: dist/SHA256SUMS
+          subject-path: |
+            dist/nole-*
+            dist/SHA256SUMS
 
       - name: Publish GitHub Release
         env:

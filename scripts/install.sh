@@ -210,10 +210,15 @@ version_is_signed() { ver_ge "$1" "$SIGNED_SINCE"; }
 
 # gh_version_ok -> 0 if the installed gh is >= GH_MIN_VERSION (CVE-2026-48501 fix).
 gh_version_ok() {
-  local line ver
-  line="$(gh --version 2>/dev/null | head -n1)" || return 1
+  local out ver
+  # Capture ALL of `gh --version` (it prints 2+ lines), then take the first line
+  # via sed's `1s`. Do NOT pipe gh into `head -n1`: head closes the pipe after
+  # line 1, gh's 2nd write then takes SIGPIPE, and under `set -o pipefail` that
+  # would make this function flakily report "gh too old" (a real, timing-
+  # dependent bug, not just a test artifact).
+  out="$(gh --version 2>/dev/null)" || return 1
   # "gh version 2.93.0 (2026-04-01)" -> 2.93.0
-  ver="$(printf '%s\n' "$line" | sed -n 's/^gh version \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  ver="$(printf '%s\n' "$out" | sed -n '1s/^gh version \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
   [ -n "$ver" ] || return 1
   ver_ge "$ver" "$GH_MIN_VERSION"
 }
@@ -338,7 +343,9 @@ resolve_version() {
   local json tag
   json="$(fetch_stdout "${API_URL%/}/repos/${REPO}/releases/latest")" \
     || die "could not query the latest release (are you online?)"
-  tag="$(printf '%s' "$json" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')"
+  # grep -m1 stops after the first match itself (no `| head -n1` that would SIGPIPE
+  # grep under `set -o pipefail`); sed's `1s` then keeps only the first line.
+  tag="$(printf '%s' "$json" | grep -o -m1 '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E '1s/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')"
   [ -n "$tag" ] || die "could not parse a release tag from the API response"
   printf '%s' "$tag"
 }

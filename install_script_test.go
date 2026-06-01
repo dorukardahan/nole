@@ -108,8 +108,13 @@ func runInstaller(t *testing.T, srvURL, repo, installDir string) (string, error)
 //	                            assert the verify was/ was not actually called.
 const fakeGhScript = `#!/usr/bin/env bash
 if [ "${1:-}" = "--version" ]; then
+  # Real gh --version prints several lines. Emit MANY so that if install.sh ever
+  # reintroduces a "gh --version | head -n1" pipe under set -o pipefail, gh takes
+  # SIGPIPE on the later writes and gh_version_ok flakes - the regression this
+  # extra output is here to catch deterministically.
   echo "gh version ${NOLE_FAKE_GH_VERSION:-2.93.0} (2026-04-01)"
   echo "https://github.com/cli/cli/releases/latest"
+  for i in $(seq 1 200); do echo "filler line $i to widen the SIGPIPE window"; done
   exit 0
 fi
 if [ "${1:-}" = "attestation" ] && [ "${2:-}" = "verify" ]; then

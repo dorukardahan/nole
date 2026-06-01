@@ -19,12 +19,12 @@ best-effort second gate that never blocks a keyless install.
 - **Build-provenance attestations** — `.github/workflows/release.yml` now signs
   every release with keyless Sigstore-backed
   [GitHub artifact attestations](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)
-  (`actions/attest-build-provenance`, pinned by commit SHA). Two attestations per
-  release: one over the per-binary artifacts (`dist/nole-*`) and one over
-  `SHA256SUMS` (so the checksum list itself is provenance-bound). No repo Secret
-  is added — signing uses the workflow's OIDC identity. Attestations live in the
-  GitHub attestation API and are resolved by digest at verify time; they are NOT
-  uploaded as release assets.
+  (`actions/attest-build-provenance`, pinned by commit SHA). One attest step with
+  a multi-path `subject-path` covers each per-binary artifact (`dist/nole-*`) AND
+  the `SHA256SUMS` file itself as subjects, so both the binaries and the checksum
+  list are provenance-bound. No repo Secret is added — signing uses the workflow's
+  OIDC identity. Attestations live in the GitHub attestation API and are resolved
+  by digest at verify time; they are NOT uploaded as release assets.
 - **`install.sh` additive verification** — after the mandatory SHA256 check,
   `install.sh` optionally verifies the build-provenance attestation via
   `gh attestation verify`, hardened to the exact release-workflow signer identity
