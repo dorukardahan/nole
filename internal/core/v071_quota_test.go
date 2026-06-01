@@ -172,6 +172,71 @@ func TestFileQuotaLedgerClampsLoweredFloorAcrossPaidToggle(t *testing.T) {
 	}
 }
 
+// Codex P2 (round 3): a premium-mode RELOAD must not let the floorLowered
+// persist destroy the carried free-tier accounting. If a premium-capable entry
+// with carried FreeQuota=1000 is reloaded under NOLE_PAID=1 (premium seed,
+// FreeQuota=0), persisting merged.FreeQuota=0 would wipe the carried counter and
+// a later paid-off toggle would grant a fresh floor — defeating anti-oscillation.
+// The disk must retain the carried accounting, and a subsequent free reload must
+// still rebase to the lowered floor (consumed preserved).
+func TestPremiumReloadPreservesCarriedQuotaForAntiOscillation(t *testing.T) {
+	prevNow := nowUTC
+	defer func() { nowUTC = prevNow }()
+	nowUTC = func() time.Time {
+		ts, _ := time.Parse("2006-01", "2026-06")
+		return ts
+	}
+
+	path := filepath.Join(t.TempDir(), "quota-ledger.json")
+	// Disk: premium-capable but carrying old free-tier accounting (1000/850).
+	payload := `{
+  "schema_version": 2,
+  "policy": {"policy": "free-first", "hard_cap_cents": 0},
+  "entries": [
+    {"provider": "tavily", "cost_class": "premium-capable", "free_remaining": 850, "free_quota": 1000, "refresh_window": "monthly", "period_start": "2026-06", "keyless_free": false, "unknown": false}
+  ],
+  "updated_at": "2026-06-01T00:00:00Z"
+}`
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatalf("write ledger: %v", err)
+	}
+
+	// Reload #1: still in paid mode -> premium seed (FreeQuota=0).
+	premiumSeed := []QuotaEntry{{Provider: "tavily", CostClass: CostClassPremiumCapable}}
+	if _, err := NewFileQuotaLedgerWithPolicy(path, QuotaPolicy{Policy: CostPolicyFreeFirst}, premiumSeed); err != nil {
+		t.Fatalf("construct premium ledger: %v", err)
+	}
+	// The carried free_quota must survive on disk (NOT persisted to 0).
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read ledger: %v", err)
+	}
+	if strings.Contains(string(raw), `"free_quota": 0`) {
+		t.Fatalf("premium reload destroyed carried free_quota (persisted 0):\n%s", raw)
+	}
+	if !strings.Contains(string(raw), `"free_quota": 1000`) {
+		t.Fatalf("premium reload should leave carried free_quota=1000 on disk:\n%s", raw)
+	}
+
+	// Reload #2: paid mode OFF -> free-tier seed at the v0.7.1 floor (500).
+	freeSeed := []QuotaEntry{{
+		Provider:      "tavily",
+		CostClass:     CostClassFreeTierBYOK,
+		FreeRemaining: 500,
+		FreeQuota:     500,
+		RefreshWindow: RefreshMonthly,
+		PeriodStart:   "2026-06",
+	}}
+	ledger, err := NewFileQuotaLedgerWithPolicy(path, QuotaPolicy{Policy: CostPolicyFreeFirst}, freeSeed)
+	if err != nil {
+		t.Fatalf("construct free ledger: %v", err)
+	}
+	got, _ := ledger.Get("tavily")
+	if got.CostClass != CostClassFreeTierBYOK || got.FreeQuota != 500 || got.FreeRemaining != 350 {
+		t.Fatalf("anti-oscillation: paid-off toggle should rebase to 500/350 (consumed 150 preserved), got class=%s quota=%d remaining=%d", got.CostClass, got.FreeQuota, got.FreeRemaining)
+	}
+}
+
 // itoa avoids importing strconv into the test for a single helper.
 func itoa(n int) string {
 	if n == 0 {

@@ -627,7 +627,13 @@ func (l *MemoryQuotaLedger) reloadFromDiskLocked() error {
 	// carries the new floor, FreeQuota matches and this no longer fires.
 	floorLowered := false
 	for _, d := range disk.Entries {
-		if merged, ok := l.entries[d.Provider]; ok && d.FreeQuota > merged.FreeQuota {
+		// Only a GENUINE free-tier floor drop counts: merged must still carry a
+		// free-tier floor (FreeQuota > 0). When merged.FreeQuota == 0 the entry
+		// merged to a premium seed (NOLE_<PROVIDER>_PAID=1, which seeds
+		// FreeQuota=0) — persisting that would destroy the carried free-tier
+		// accounting on disk and let a later paid-off toggle reset to a fresh
+		// floor, defeating the anti-oscillation guard. Leave disk untouched there.
+		if merged, ok := l.entries[d.Provider]; ok && merged.FreeQuota > 0 && d.FreeQuota > merged.FreeQuota {
 			floorLowered = true
 			break
 		}
