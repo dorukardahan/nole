@@ -100,6 +100,8 @@ Try the CLI:
 ./nole route-plan "OpenAI API docs pricing and latest changelog" --json
 ./nole search "Go net/http Client Timeout documentation" --task docs --json
 ./nole extract "https://go.dev/doc/" --json
+./nole config dump --json
+./nole doctor --json
 ```
 
 Search, extract, classify and route-plan JSON responses include a short `routing_insight` by default; search, extract and route-plan keep detailed `route_trace` for debugging where available. Human search/extract output prints the same one-line insight before results. Use `--insight off` to omit the user-facing insight, or `--insight verbose` to print the compact line plus route trace lines in human output. The insight is deterministic and sanitized; it should not contain API keys, auth headers, raw provider payloads or private URLs.
@@ -195,7 +197,33 @@ export NOLE_TAVILY_ESTIMATED_COST_CENTS=""  # set explicitly before cost-capped 
 # different location, or "memory"/"off"/"none" to disable file persistence.
 export NOLE_QUOTA_LEDGER_PATH="$HOME/.local/state/nole/quota-ledger.json"
 export NOLE_CACHE_TTL="5m"                  # or NOLE_CACHE_TTL_SECONDS="300"
+
+# Optional diagnostic logging. Default (unset) is human-readable text on stderr.
+export NOLE_LOG="json"                       # text (default) | json | off
 ```
+
+## Observability
+
+Nólë's diagnostics go to **stderr only** — `stdout` stays reserved for the MCP
+JSON-RPC stream, REST response bodies, and `--json` command output, so logging
+can never corrupt a protocol surface. `NOLE_LOG` selects the format: `text`
+(default, human-readable), `json` (one compact object per line, for log
+pipelines), or `off` (silent). Diagnostic field values and errors are redacted
+before emission, so logs never carry a provider key, token, cookie, or
+credential-bearing URL.
+
+Two read-only inspection surfaces help operators and agents see what Nólë is
+configured to do without spending any quota:
+
+```bash
+nole config dump          # cost policy, env, provider cost classes, quota floors
+nole config dump --json   # same, machine-readable
+nole doctor --json        # the full doctor report as JSON
+```
+
+`config dump` reports configured secrets as **set/unset only** — never their
+value — and reads only the local ledger state, so it never issues a provider
+call or debits the free-tier counter.
 
 Nólë's quota ledger is **file-backed by default** at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json` when `XDG_STATE_HOME` is unset). Durability is required for the monthly free-tier cap to be meaningful: an in-memory ledger resets to the full free quota on every process restart, which defeats the cap when nole is spawned per session (the typical MCP client pattern). Set `NOLE_QUOTA_LEDGER_PATH` to override the default location, or to `memory`/`off`/`none` to explicitly disable file persistence — only do that if you understand the per-restart reset implication. The ledger stores provider names, cost classes, local free-quota counters and local estimated spend; it does not store provider keys or raw provider payloads. If a configured ledger is corrupt, Nólë backs it up and fails closed for paid/quota-tracked providers while still allowing keyless-free providers. `NOLE_CACHE_TTL` enables an in-memory TTL cache for normalized search/extract responses inside a running process, such as `nole mcp`; cache hit/miss status appears in `route_trace` and compact `routing_insight`.
 

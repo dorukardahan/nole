@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/dorukardahan/nole/internal/nolelog"
 	"github.com/dorukardahan/nole/internal/safeerr"
 	"github.com/dorukardahan/nole/internal/safenet"
 )
@@ -34,6 +35,11 @@ type Service struct {
 	// caching agree on request identity.
 	sfSearch  singleflight.Group
 	sfExtract singleflight.Group
+	// log receives the gateway's diagnostic events (e.g. a non-fatal research
+	// step failure). It is always written to stderr at the call site (never
+	// stdout) and is secret-safe by construction. A nil log is a safe no-op, so
+	// a Service built without WithLogger simply stays silent.
+	log *nolelog.Logger
 }
 
 type ServiceOption func(*Service)
@@ -41,6 +47,16 @@ type ServiceOption func(*Service)
 func WithResponseCache(cache ResponseCache) ServiceOption {
 	return func(s *Service) {
 		s.cache = cache
+	}
+}
+
+// WithLogger injects the structured diagnostic logger. Mirrors
+// WithResponseCache: an optional dependency the CLI wires from
+// nolelog.FromEnv(os.Stderr). core depends on nolelog one-directionally
+// (nolelog imports neither core nor cli), so there is no import cycle.
+func WithLogger(log *nolelog.Logger) ServiceOption {
+	return func(s *Service) {
+		s.log = log
 	}
 }
 

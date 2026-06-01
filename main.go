@@ -31,6 +31,10 @@ func main() {
 	}()
 
 	if err := cli.NewRootCommand().ExecuteContext(ctx); err != nil {
+		// The top-level command failure reason is NOT a diagnostic log — it is the
+		// command's result. It is deliberately printed raw to stderr (already
+		// secret-safe via safeerr.Message) and is NOT routed through nolelog, so
+		// NOLE_LOG=off can never swallow the explanation for a non-zero exit.
 		fmt.Fprintln(os.Stderr, safeerr.Message(err))
 		os.Exit(1)
 	}

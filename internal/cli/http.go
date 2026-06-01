@@ -8,11 +8,11 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/mcpserver"
+	"github.com/dorukardahan/nole/internal/nolelog"
 	"github.com/dorukardahan/nole/internal/safeerr"
 	mcpgo "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -22,6 +22,11 @@ type httpHandler struct {
 	svc    *core.Service
 	mcp    *server.MCPServer
 	server *http.Server
+	// log carries the server's diagnostic events (encode failures, lifecycle,
+	// the non-loopback warning) to stderr in the NOLE_LOG format. A nil log is a
+	// safe no-op, so the http_test.go / v070_test.go struct-literal handlers stay
+	// silent without wiring one.
+	log *nolelog.Logger
 }
 
 // healthResponse is the body of GET/HEAD /health. Status is "ready" (HTTP 200)
@@ -34,13 +39,14 @@ type healthResponse struct {
 	AvailableProviders []string `json:"available_providers"`
 }
 
-func newHTTPHandler(svc *core.Service) (*httpHandler, error) {
+func newHTTPHandler(svc *core.Service, log *nolelog.Logger) (*httpHandler, error) {
 	// Use the existing MCP server builder from mcpserver package
 	// We import it indirectly via a constructor
 	mcpSrv := buildMCPServer(svc)
 	return &httpHandler{
 		svc: svc,
 		mcp: mcpSrv,
+		log: log,
 	}, nil
 }
 
@@ -56,9 +62,9 @@ func allowReadMethods(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func logEncodeErr(endpoint string, err error) {
+func (h *httpHandler) logEncodeErr(endpoint string, err error) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "nole serve: encode %s response: %v\n", endpoint, err)
+		h.log.Error("serve.encode_failed", err, nolelog.F("endpoint", endpoint))
 	}
 }
 
@@ -100,7 +106,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(code)
-		logEncodeErr("/health", json.NewEncoder(w).Encode(body))
+		h.logEncodeErr("/health", json.NewEncoder(w).Encode(body))
 	})
 
 	// MCP Streamable HTTP endpoint
@@ -115,7 +121,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		resp := h.svc.ProviderStatus(r.Context())
-		logEncodeErr("/api/providers", json.NewEncoder(w).Encode(resp))
+		h.logEncodeErr("/api/providers", json.NewEncoder(w).Encode(resp))
 	})
 
 	// Budget status endpoint
@@ -124,7 +130,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		logEncodeErr("/api/budget", json.NewEncoder(w).Encode(h.svc.BudgetStatus()))
+		h.logEncodeErr("/api/budget", json.NewEncoder(w).Encode(h.svc.BudgetStatus()))
 	})
 
 	// Search API endpoint
@@ -169,7 +175,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			resp.RouteTrace = nil
 		}
 		w.Header().Set("Content-Type", "application/json")
-		logEncodeErr("/api/search", json.NewEncoder(w).Encode(resp))
+		h.logEncodeErr("/api/search", json.NewEncoder(w).Encode(resp))
 	})
 
 	// Extract API endpoint
@@ -200,7 +206,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			resp.RouteTrace = nil
 		}
 		w.Header().Set("Content-Type", "application/json")
-		logEncodeErr("/api/extract", json.NewEncoder(w).Encode(resp))
+		h.logEncodeErr("/api/extract", json.NewEncoder(w).Encode(resp))
 	})
 
 	// Combined search→read primitive: search, then extract the top result(s).
@@ -238,7 +244,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		logEncodeErr("/api/search_and_extract", json.NewEncoder(w).Encode(resp))
+		h.logEncodeErr("/api/search_and_extract", json.NewEncoder(w).Encode(resp))
 	})
 
 	// Multi-step research → structured evidence (sources + extracts), no answer.
@@ -267,7 +273,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		logEncodeErr("/api/research", json.NewEncoder(w).Encode(report))
+		h.logEncodeErr("/api/research", json.NewEncoder(w).Encode(report))
 	})
 
 	return mux
@@ -298,7 +304,7 @@ func (h *httpHandler) start(ctx context.Context, addr string) error {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 
-	fmt.Fprintf(os.Stderr, "nole HTTP server ready on %s\n", addr)
+	h.log.Info("serve.ready", nolelog.F("addr", addr))
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -321,11 +327,11 @@ func (h *httpHandler) start(ctx context.Context, addr string) error {
 		// DeadlineExceeded — we log that and still exit cleanly (the listener is
 		// already closed and the process is going away), rather than reporting a
 		// shutdown failure for what is a normal Ctrl-C during a slow request.
-		fmt.Fprintln(os.Stderr, "nole HTTP server: shutting down, draining in-flight requests...")
+		h.log.Info("serve.draining")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := h.server.Shutdown(shutdownCtx); err != nil {
-			fmt.Fprintf(os.Stderr, "nole HTTP server: drain did not finish (%v); exiting\n", err)
+			h.log.Warn("serve.drain_incomplete", nolelog.Err(err))
 		}
 		return nil
 	}

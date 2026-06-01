@@ -2,13 +2,12 @@ package core
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/dorukardahan/nole/internal/safeerr"
+	"github.com/dorukardahan/nole/internal/nolelog"
 )
 
 // maxResearchExtracts is the absolute ceiling on how many sources a single
@@ -68,7 +67,10 @@ func (s *Service) Research(ctx context.Context, question string, maxSteps int) (
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			fmt.Fprintf(os.Stderr, "research: search step %d (%s) failed: %s\n", i+1, task, safeerr.Message(err))
+			s.log.Warn("research.search_step_failed",
+				nolelog.F("step", strconv.Itoa(i+1)),
+				nolelog.F("task", string(task)),
+				nolelog.Err(err))
 			continue
 		}
 		providerSet[resp.Provider] = true
@@ -108,7 +110,7 @@ func (s *Service) Research(ctx context.Context, question string, maxSteps int) (
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			fmt.Fprintf(os.Stderr, "research: extract step failed: %s\n", safeerr.Message(err))
+			s.log.Warn("research.extract_step_failed", nolelog.Err(err))
 			continue
 		}
 		providerSet[resp.Provider] = true

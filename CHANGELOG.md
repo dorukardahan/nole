@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-01
+
+Theme: **observability** — make the gateway's behaviour and configuration
+visible to operators and agents, WITHOUT changing routing, judging quality, or
+weakening the two invariants the rest of Nólë depends on (stdout stays
+protocol-only; secrets are never printed or logged). Pure visibility: a
+structured logger, a config dump, and a machine-readable doctor.
+
+### Added
+
+- **`NOLE_LOG` structured diagnostic logging** (new `internal/nolelog` package).
+  `NOLE_LOG=text` (default) keeps human-readable diagnostics on stderr,
+  `NOLE_LOG=json` emits one compact JSON object per line, and `NOLE_LOG=off`
+  silences them. The logger writes ONLY to the writer it is constructed with
+  (always `os.Stderr` in production) and NEVER references `os.Stdout`, so it can
+  never corrupt the MCP JSON-RPC stream, a REST body, or a `--json` command's
+  output. Plain field values flow through `safeerr.Redact` and are fully redacted
+  when the field key names a credential (`api_key`/`token`/`secret`/…); error
+  fields flow through `safeerr.Message`. Wired into the service (research step
+  failures) and the `serve` HTTP path (encode failures, server lifecycle) via a
+  new `core.WithLogger` option, replacing the ad-hoc `fmt.Fprintf(os.Stderr, …)`
+  diagnostic sites. Two stderr messages stay RAW and unconditional — never routed
+  through the logger, so `NOLE_LOG=off` can never silence them: the top-level
+  fatal error in `main.go` (the command's result) and `serve`'s non-loopback bind
+  warning (the only runtime notice that unauthenticated endpoints expose keys).
+- **`nole config dump [--json]`** — prints the effective configuration: cost
+  policy, hard-cap source, log mode, ledger path/state, recognized non-secret
+  `NOLE_*` env vars, provider cost classes, and quota floors. Secrets appear as
+  set/unset ONLY, never a value; even the non-secret env values are passed
+  through a closed allowlist plus `$HOME`-collapse and redaction. Read-only: it
+  sources `BudgetStatus()`/`ProviderStatus()`, which never debit or refresh the
+  ledger, so inspecting config never spends quota.
+- **`nole doctor --json`** — the doctor report as one machine-readable JSON
+  document (providers, secret presence, paid-mode, budget, and the optional
+  `--mcp` smoke block). On `--json --mcp` smoke failure it still emits the report
+  and returns the same non-zero exit as the human path. The human `doctor`
+  output is unchanged.
+
+### Notes
+
+- No new MCP tools, no routing change, no schema change to existing surfaces.
+  `nolelog` and the new commands are gated in `audit.sh` (`config dump`,
+  `config dump --json`, `doctor --json`) alongside the existing
+  `doctor --mcp`/`providers --json` smokes, and the `doctor --mcp` stdout-purity
+  smoke is re-confirmed green under `NOLE_LOG=json`.
+
 ## [0.7.1] - 2026-06-01
 
 Theme: **honest-quota data correction** — a follow-up to v0.7.0's trust pillar
