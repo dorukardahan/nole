@@ -3,8 +3,9 @@
 A focused **honest-quota data correction** on top of v0.7.0's trust pillar. v0.7.0
 shipped the *mechanism* for honesty (drift signal, breaker state, estimate
 labelling); v0.7.1 re-verifies the *numbers* against current (June 2026) provider
-pricing and fixes a credit-vs-call unit mismatch that v0.7.0 missed. Data and docs
-only — no schema, signature, or call-path change, and no new MCP tools.
+pricing and fixes a credit-vs-call unit mismatch that v0.7.0 missed. Data, a
+one-line upgrade-path ledger clamp, and docs — no schema or signature change, and
+no new MCP tools.
 
 ## Changed (read this if you rely on `free_remaining`)
 
@@ -27,6 +28,18 @@ only — no schema, signature, or call-path change, and no new MCP tools.
 - **Firecrawl "monthly vs one-time" hedge resolved.** Verified as 1000
   credits/month, reset monthly with no rollover. The prior "in flux" wording is
   gone.
+
+## Fixed — existing ledgers correct themselves on first load
+
+Lowering the seed alone would not have fixed an **existing** user: a persisted
+current-month ledger entry sized for the old 1000 floor inherits its
+`free_remaining` across the merge, so it would keep reporting up to ~1000
+remaining until the next monthly rollover — the exact over-read this release
+targets. `mergeLedgerEntries` now re-bases the loaded counter on calls already
+consumed against the new floor (`new_floor − (old_quota − old_remaining)`,
+clamped to ≥ 0) whenever the seeded floor dropped. The clamp only ever *lowers*
+the counter, is idempotent once disk carries the new floor, and leaves v1
+migrations and same-floor entries untouched. (Caught by Codex review on PR #40.)
 
 ## What this does NOT change
 
@@ -72,7 +85,9 @@ right for Brave but missed the credit-vs-call gap for Tavily and Firecrawl, whos
 
 - `gofmt`, `go vet ./...`
 - `go test -race ./...` (floor change propagates to the live-slice CLI tests;
-  ledger-mechanics tests using inline seeds are correctly insulated)
+  ledger-mechanics tests using inline seeds are correctly insulated; new
+  `v071_quota_test.go` covers the upgrade clamp: partial-use re-base, heavy-use
+  clamp-to-zero, no-use drop-to-floor, and idempotency)
 - `./scripts/secret-scan.sh`
 - `./scripts/audit.sh --ci`
 - Grounding + adversarial-verification workflow (web-verified provider docs, 7

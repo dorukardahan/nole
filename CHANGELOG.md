@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Theme: **honest-quota data correction** — a follow-up to v0.7.0's trust pillar
 that re-verifies every BYOK provider's free tier against current (June 2026)
-published pricing and fixes a credit-vs-call unit mismatch. Data + docs only; no
-schema, signature, or call-path change, and no new MCP tools.
+published pricing and fixes a credit-vs-call unit mismatch. Data, a one-line
+upgrade-path ledger clamp, and docs; no schema or signature change, and no new
+MCP tools.
 
 ### Changed
 
@@ -34,6 +35,17 @@ schema, signature, or call-path change, and no new MCP tools.
 - **Firecrawl "monthly vs one-time" hedge resolved.** Verified as 1000
   credits/month, reset monthly with no rollover — the prior "in flux" wording is
   gone.
+
+### Fixed
+
+- **Existing ledgers are corrected on first load, not next month.** When a
+  persisted current-month entry was sized for the old 1000 floor,
+  `mergeLedgerEntries` now re-bases its `free_remaining` on calls already consumed
+  against the new (lower) floor, instead of inheriting the stale counter until the
+  next monthly rollover. Without it, an upgrading user would keep over-reading
+  their Tavily/Firecrawl headroom for the rest of the month — the exact over-read
+  this release exists to eliminate. The clamp is idempotent and only ever lowers
+  the counter (never raises it). Caught by Codex review.
 
 ### Notes
 

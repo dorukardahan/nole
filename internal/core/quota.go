@@ -728,6 +728,25 @@ func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[st
 			if strings.TrimSpace(loadedEntry.PeriodStart) != "" {
 				merged.PeriodStart = loadedEntry.PeriodStart
 			}
+			// If the seeded floor dropped below what the on-disk entry was sized
+			// for (e.g. the v0.7.1 tavily/firecrawl 1000->500 credit-vs-call
+			// correction), the inherited FreeRemaining can exceed the new ceiling
+			// and keep over-reading until the next monthly rollover. Re-base it on
+			// calls already consumed this period (loaded.FreeQuota - loaded
+			// .FreeRemaining) against the NEW floor so the correction lands on the
+			// first load instead of next month. Undercounting is the safe
+			// direction; the guard is idempotent once disk carries the new floor.
+			if seed.FreeQuota > 0 && loadedEntry.FreeQuota > seed.FreeQuota {
+				consumed := loadedEntry.FreeQuota - loadedEntry.FreeRemaining
+				if consumed < 0 {
+					consumed = 0
+				}
+				rebased := seed.FreeQuota - consumed
+				if rebased < 0 {
+					rebased = 0
+				}
+				merged.FreeRemaining = rebased
+			}
 		} else if loadedEntry.FreeQuota > 0 {
 			merged.FreeRemaining = loadedEntry.FreeRemaining
 			merged.FreeQuota = loadedEntry.FreeQuota
