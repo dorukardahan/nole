@@ -32,6 +32,13 @@ const (
 type QuotaPolicy struct {
 	Policy       CostPolicy `json:"policy"`
 	HardCapCents int        `json:"hard_cap_cents"`
+	// HardCapSource records how HardCapCents was determined: "explicit" (the
+	// user set NOLE_HARD_CAP_CENTS) or "unset" (cost-capped policy with no cap
+	// configured, so premium stays blocked). Empty for policies that need no
+	// cap (free-first, quality-first). Observability only — it keeps an
+	// explicit "$5 cap" distinguishable from a defaulted one and lets doctor
+	// explain a silently-blocked cost-capped setup. Set by the CLI resolver.
+	HardCapSource string `json:"hard_cap_source,omitempty"`
 }
 
 type RefreshWindow string
@@ -57,6 +64,12 @@ type QuotaEntry struct {
 	Unknown            bool              `json:"unknown"`
 	EstimatedCostCents int               `json:"estimated_cost_cents,omitempty"`
 	SpentCents         int               `json:"spent_cents,omitempty"`
+	// MeteringModel and EstimateOnly are build-time provider metadata (sourced
+	// from byokProviders each startup, never persisted runtime state). They let
+	// budget_status be honest about HOW a provider meters and that FreeRemaining
+	// is Nólë's own issued-request estimate, not a live dashboard balance.
+	MeteringModel string `json:"metering_model,omitempty"`
+	EstimateOnly  bool   `json:"estimate_only,omitempty"`
 }
 
 type QuotaDecision struct {
@@ -75,6 +88,12 @@ type QuotaLedger interface {
 	Allow(provider string) bool
 	Decide(provider string) QuotaDecision
 	Record(provider string) error
+	// RecordDrift notes that a provider rejected a call as over-quota (HTTP 429)
+	// while the local counter still showed room. It NEVER debits and NEVER
+	// changes routing — it only records an observability signal surfaced in
+	// BudgetStatus. Best-effort: failures to persist are swallowed (the signal
+	// is advisory). Implementers key by provider so it is bounded.
+	RecordDrift(provider, reason string)
 	Get(provider string) (QuotaEntry, bool)
 	Entries() []QuotaEntry
 	BudgetStatus() BudgetStatus
@@ -100,24 +119,33 @@ func CurrentMonthISO() string {
 }
 
 type quotaLedgerFile struct {
-	SchemaVersion int          `json:"schema_version"`
-	Policy        QuotaPolicy  `json:"policy"`
-	Entries       []QuotaEntry `json:"entries"`
-	FailClosed    bool         `json:"fail_closed,omitempty"`
-	State         LedgerState  `json:"state,omitempty"`
-	Warning       string       `json:"warning,omitempty"`
-	UpdatedAt     string       `json:"updated_at"`
+	SchemaVersion int           `json:"schema_version"`
+	Policy        QuotaPolicy   `json:"policy"`
+	Entries       []QuotaEntry  `json:"entries"`
+	DriftSignals  []DriftSignal `json:"drift_signals,omitempty"`
+	FailClosed    bool          `json:"fail_closed,omitempty"`
+	State         LedgerState   `json:"state,omitempty"`
+	Warning       string        `json:"warning,omitempty"`
+	UpdatedAt     string        `json:"updated_at"`
 }
 
 type MemoryQuotaLedger struct {
 	mu               sync.Mutex
 	policy           QuotaPolicy
 	entries          map[string]QuotaEntry
+	driftSignals     map[string]DriftSignal
 	path             string
 	ledgerState      LedgerState
 	ledgerWarning    string
 	failClosedReason string
 }
+
+// driftSignalTTL bounds how long a drift signal is surfaced in BudgetStatus
+// output. A provider that recovered should not keep showing a stale "returned
+// 429" warning forever (R7). Signals are aged out of OUTPUT only — never
+// deleted on a read path (BudgetStatus stays a pure read). The map is keyed by
+// provider so on-disk growth is bounded regardless of TTL.
+const driftSignalTTL = 24 * time.Hour
 
 func DefaultQuotaPolicy() QuotaPolicy {
 	return QuotaPolicy{Policy: CostPolicyFreeFirst}
@@ -141,7 +169,7 @@ func NewMemoryQuotaLedger() *MemoryQuotaLedger {
 }
 
 func NewMemoryQuotaLedgerWithPolicy(policy QuotaPolicy) *MemoryQuotaLedger {
-	return &MemoryQuotaLedger{policy: normalizeQuotaPolicy(policy), entries: map[string]QuotaEntry{}, ledgerState: LedgerStateMemory}
+	return &MemoryQuotaLedger{policy: normalizeQuotaPolicy(policy), entries: map[string]QuotaEntry{}, driftSignals: map[string]DriftSignal{}, ledgerState: LedgerStateMemory}
 }
 
 func (l *MemoryQuotaLedger) Set(entry QuotaEntry) {
@@ -353,6 +381,126 @@ func (l *MemoryQuotaLedger) recordLocked(provider string) error {
 	return nil
 }
 
+// RecordDrift notes that `provider` returned an over-quota/rate-limit rejection
+// while the local counter still showed room. It does NOT debit and does NOT
+// touch FreeRemaining — it only upserts a per-provider observability signal.
+// When the ledger is file-backed it reload-merges first so a peer process's
+// signal for another provider is not clobbered, then persists. Persistence is
+// best-effort: on failure the in-memory signal is still kept (the signal is
+// advisory, and a search must never fail because a drift note could not be
+// written).
+func (l *MemoryQuotaLedger) RecordDrift(provider, reason string) {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	sig := DriftSignal{Provider: provider, Reason: reason, ObservedAt: nowUTC().Format(time.RFC3339)}
+	apply := func() error {
+		if strings.TrimSpace(l.path) != "" {
+			if err := l.reloadFromDiskLocked(); err != nil {
+				return err
+			}
+		}
+		l.setDriftSignalLocked(sig)
+		return l.persistLocked()
+	}
+	var err error
+	if strings.TrimSpace(l.path) != "" {
+		err = l.withFileLockLocked(apply)
+	} else {
+		err = apply()
+	}
+	if err != nil {
+		// Persistence failed; keep the signal in memory so this process still
+		// surfaces it. Do not mark the ledger unavailable — drift is advisory.
+		l.setDriftSignalLocked(sig)
+	}
+}
+
+func (l *MemoryQuotaLedger) setDriftSignalLocked(sig DriftSignal) {
+	if l.driftSignals == nil {
+		l.driftSignals = map[string]DriftSignal{}
+	}
+	l.driftSignals[sig.Provider] = sig
+}
+
+// driftSignalsLocked returns every stored signal sorted by provider, for
+// persistence. The map is keyed by provider so this is bounded by provider
+// count regardless of how often drift fires.
+func (l *MemoryQuotaLedger) driftSignalsLocked() []DriftSignal {
+	if len(l.driftSignals) == 0 {
+		return nil
+	}
+	out := make([]DriftSignal, 0, len(l.driftSignals))
+	for _, sig := range l.driftSignals {
+		out = append(out, sig)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Provider < out[j].Provider })
+	return out
+}
+
+// recentDriftSignalsLocked returns signals younger than driftSignalTTL, sorted
+// by provider. Aging is applied to OUTPUT only — stale signals are not deleted
+// here (BudgetStatus must stay a pure read). A signal with an unparseable
+// ObservedAt is dropped defensively.
+func (l *MemoryQuotaLedger) recentDriftSignalsLocked() []DriftSignal {
+	all := l.driftSignalsLocked()
+	if len(all) == 0 {
+		return nil
+	}
+	now := nowUTC()
+	out := make([]DriftSignal, 0, len(all))
+	for _, sig := range all {
+		ts, err := time.Parse(time.RFC3339, sig.ObservedAt)
+		if err != nil {
+			continue
+		}
+		if now.Sub(ts.UTC()) <= driftSignalTTL {
+			out = append(out, sig)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// mergeDriftSignals unions on-disk and in-memory signals, keeping the most
+// recent ObservedAt per provider so two processes recording drift for
+// different providers never clobber each other (R6). Unparseable timestamps
+// lose to parseable ones; if both are unparseable the loaded one wins (it is
+// at least as fresh as what we are about to write back).
+func mergeDriftSignals(current map[string]DriftSignal, loaded []DriftSignal) map[string]DriftSignal {
+	merged := map[string]DriftSignal{}
+	for provider, sig := range current {
+		merged[provider] = sig
+	}
+	for _, sig := range loaded {
+		if strings.TrimSpace(sig.Provider) == "" {
+			continue
+		}
+		existing, ok := merged[sig.Provider]
+		if !ok || driftMoreRecent(sig, existing) {
+			merged[sig.Provider] = sig
+		}
+	}
+	return merged
+}
+
+func driftMoreRecent(candidate, existing DriftSignal) bool {
+	ct, cerr := time.Parse(time.RFC3339, candidate.ObservedAt)
+	et, eerr := time.Parse(time.RFC3339, existing.ObservedAt)
+	if cerr != nil {
+		return false
+	}
+	if eerr != nil {
+		return true
+	}
+	return ct.After(et)
+}
+
 func (l *MemoryQuotaLedger) Get(provider string) (QuotaEntry, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -378,21 +526,39 @@ func (l *MemoryQuotaLedger) entriesLocked() []QuotaEntry {
 	return out
 }
 
+// budgetEstimateNote is the universal honesty line surfaced in budget_status
+// whenever at least one BYOK provider is estimate-only. It makes explicit that
+// FreeRemaining is Nólë's own issued-request count, not a live dashboard read.
+const budgetEstimateNote = "FreeRemaining is Nólë's own count of issued requests this period, not a live provider-dashboard balance; providers meter differently (see metering_model and any drift_signals) — verify your dashboard for exact figures."
+
 func (l *MemoryQuotaLedger) BudgetStatus() BudgetStatus {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	entries := l.entriesLocked()
 	spent := 0
+	estimateOnly := false
 	for _, entry := range entries {
 		spent += entry.SpentCents
+		if entry.EstimateOnly {
+			estimateOnly = true
+		}
 	}
+	estimateNote := ""
+	if estimateOnly {
+		estimateNote = budgetEstimateNote
+	}
+	signals := l.recentDriftSignalsLocked()
 	return BudgetStatus{
 		Policy:            l.policy.Policy,
 		HardCapCents:      l.policy.HardCapCents,
+		HardCapSource:     l.policy.HardCapSource,
 		SpentCents:        spent,
 		NoHiddenPaidSpend: l.policy.Policy != CostPolicyQualityFirst,
 		LedgerState:       l.ledgerState,
 		LedgerWarning:     l.ledgerWarning,
+		EstimateNote:      estimateNote,
+		HasDrift:          len(signals) > 0,
+		DriftSignals:      signals,
 		Entries:           entries,
 	}
 }
@@ -416,10 +582,11 @@ func NewFileQuotaLedgerWithPolicy(path string, policy QuotaPolicy, seeds []Quota
 	}
 
 	ledger := &MemoryQuotaLedger{
-		policy:      normalizeQuotaPolicy(policy),
-		entries:     seedEntryMap(seeds),
-		path:        path,
-		ledgerState: LedgerStateFileOK,
+		policy:       normalizeQuotaPolicy(policy),
+		entries:      seedEntryMap(seeds),
+		driftSignals: map[string]DriftSignal{},
+		path:         path,
+		ledgerState:  LedgerStateFileOK,
 	}
 
 	if err := ledger.withFileLockLocked(func() error { return ledger.reloadFromDiskLocked() }); err != nil {
@@ -450,6 +617,7 @@ func (l *MemoryQuotaLedger) reloadFromDiskLocked() error {
 	}
 
 	l.entries = mergeLedgerEntries(l.entries, disk.Entries)
+	l.driftSignals = mergeDriftSignals(l.driftSignals, disk.DriftSignals)
 	refreshed := l.refreshExpiredEntriesLocked(CurrentMonthISO())
 	migrated := disk.SchemaVersion < quotaLedgerSchemaVersion
 	if disk.FailClosed {
@@ -627,6 +795,7 @@ func (l *MemoryQuotaLedger) persistLocked() error {
 		SchemaVersion: quotaLedgerSchemaVersion,
 		Policy:        l.policy,
 		Entries:       l.entriesLocked(),
+		DriftSignals:  l.driftSignalsLocked(),
 		FailClosed:    l.failClosedReason != "",
 		State:         state,
 		Warning:       l.ledgerWarning,

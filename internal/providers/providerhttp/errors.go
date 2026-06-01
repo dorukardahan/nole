@@ -35,6 +35,18 @@ func (e *HTTPStatusError) Error() string {
 	return fmt.Sprintf("%s: %s returned HTTP %d (%s; response body redacted, %d bytes)", e.Provider, e.Operation, e.StatusCode, category, e.BodyBytes)
 }
 
+// HTTPStatus exposes the structured status code so callers in other packages
+// (e.g. the core drift detector) can classify an error by code via a small
+// duck-typed interface, WITHOUT importing this provider-infrastructure package
+// into the domain core. It is a deterministic, mechanical signal — never a
+// string match on the message — and is robust to %w wrapping by the adapters.
+func (e *HTTPStatusError) HTTPStatus() int {
+	if e == nil {
+		return 0
+	}
+	return e.StatusCode
+}
+
 func statusCategory(statusCode int) string {
 	switch {
 	case statusCode == 401 || statusCode == 403:

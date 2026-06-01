@@ -190,6 +190,14 @@ func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route [
 		latency := time.Since(start).Milliseconds()
 		if err != nil {
 			lastErr = err
+			// Drift: the provider rejected this as over-quota (429) while our
+			// local counter still showed room. Record an advisory signal (no
+			// debit, no route change). This is a best-effort EARLY signal —
+			// once repeated 429s trip the breaker, calls short-circuit with
+			// ErrCircuitOpen (not a 429) and drift stops firing by design.
+			if isQuotaExhausted(err) && decision.FreeRemaining > 0 {
+				s.ledger.RecordDrift(name, "provider returned 429 while local free_remaining > 0")
+			}
 			trace = append(trace, attemptWithDecision(name, "failed", "provider_error", decision, latency, 0))
 			continue
 		}
@@ -381,6 +389,9 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 		latency := time.Since(start).Milliseconds()
 		if err != nil {
 			lastErr = err
+			if isQuotaExhausted(err) && decision.FreeRemaining > 0 {
+				s.ledger.RecordDrift(name, "provider returned 429 while local free_remaining > 0")
+			}
 			trace = append(trace, attemptWithDecision(name, "failed", "provider_error", decision, latency, 0))
 			continue
 		}
@@ -433,12 +444,24 @@ func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 		byokNames[b.Name] = true
 	}
 
+	// Recent drift signals, keyed by provider, so each status can carry a
+	// DriftWarning. Read once (a single ledger lock) before the per-provider
+	// loop; aging is already applied by BudgetStatus.
+	driftByProvider := map[string]DriftSignal{}
+	for _, sig := range s.ledger.BudgetStatus().DriftSignals {
+		driftByProvider[sig.Provider] = sig
+	}
+
 	for _, provider := range providers {
 		status := provider.Status(ctx) // called once per provider
 		if byokNames[provider.Name()] {
 			configured[provider.Name()] = status.Available
 		}
-		statuses = append(statuses, mergeProviderCostStatus(status, s.ledger.Decide(provider.Name())))
+		merged := mergeProviderCostStatus(status, s.ledger.Decide(provider.Name()))
+		if sig, ok := driftByProvider[provider.Name()]; ok {
+			merged.DriftWarning = sig.Reason
+		}
+		statuses = append(statuses, merged)
 	}
 	suggestions := BuildSetupSuggestions(configured)
 	return ProviderStatusResponse{

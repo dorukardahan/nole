@@ -157,11 +157,25 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 			Reason:       "BRAVE_API_KEY not set",
 		}
 	}
-	return core.ProviderStatus{
-		Name:         p.Name(),
-		Available:    true,
-		Capabilities: p.Capabilities(),
+	state, consecFails, openedAt := providerhttp.BreakerStatusFields(p.breaker)
+	status := core.ProviderStatus{
+		Name:               p.Name(),
+		Available:          true,
+		Capabilities:       p.Capabilities(),
+		BreakerState:       state,
+		BreakerConsecFails: consecFails,
+		BreakerOpenedAt:    openedAt,
 	}
+	// Fold the breaker's "currently short-circuiting" truth into Available so
+	// the route walk and /health treat a tripped provider as not-ready without
+	// needing a handle on the breaker. A breaker past its cooldown reports
+	// IsOpen()==false (probe-eligible) and stays Available; BreakerState above
+	// still shows the raw "open" lifecycle for observability.
+	if p.breaker.IsOpen() {
+		status.Available = false
+		status.Reason = "circuit_open"
+	}
+	return status
 }
 
 // braveFreshness maps recency-oriented tasks to Brave's `freshness` window.

@@ -208,9 +208,23 @@ func defaultQuotaPolicyFromEnv() core.QuotaPolicy {
 	if parsed, ok := core.ParseCostPolicy(os.Getenv("NOLE_COST_POLICY")); ok {
 		policy.Policy = parsed
 	}
+	capSet := false
 	if raw := strings.TrimSpace(os.Getenv("NOLE_HARD_CAP_CENTS")); raw != "" {
 		if cents, err := strconv.Atoi(raw); err == nil && cents > 0 {
 			policy.HardCapCents = cents
+			capSet = true
+		}
+	}
+	// Resolve the cap source alongside the value so an explicit $5 cap stays
+	// distinguishable from no cap. We deliberately do NOT default a cost-capped
+	// policy to some spend amount: with no cap set we stay fail-closed (premium
+	// blocked) and let doctor/budget_status explain it, rather than authorize a
+	// bill the user never asked for.
+	if policy.Policy == core.CostPolicyCostCapped {
+		if capSet {
+			policy.HardCapSource = "explicit"
+		} else {
+			policy.HardCapSource = "unset"
 		}
 	}
 	return policy
@@ -248,6 +262,8 @@ func providerQuotaEntry(provider string, keyPresent bool) core.QuotaEntry {
 			FreeQuota:     def.FreeQuota,
 			RefreshWindow: def.RefreshWindow,
 			PeriodStart:   core.CurrentMonthISO(),
+			MeteringModel: def.MeteringModel,
+			EstimateOnly:  def.EstimateOnly,
 		}
 	}
 	// Unknown provider with a key — fall back to premium-capable (legacy

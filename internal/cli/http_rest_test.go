@@ -59,7 +59,9 @@ func TestRESTReadEndpointsServeGET(t *testing.T) {
 		}
 	}
 
-	// /health carries a status field.
+	// /health carries a readiness status field. The test handler registers a
+	// search-capable, available, keyless (policy-allowed) mock provider, so the
+	// gateway is ready.
 	rec := doREST(t, h, http.MethodGet, "/health", nil)
 	var health struct {
 		Status string `json:"status"`
@@ -67,8 +69,8 @@ func TestRESTReadEndpointsServeGET(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &health); err != nil {
 		t.Fatalf("decode /health: %v", err)
 	}
-	if health.Status != "ok" {
-		t.Fatalf("/health status = %q, want ok", health.Status)
+	if health.Status != "ready" {
+		t.Fatalf("/health status = %q, want ready", health.Status)
 	}
 }
 

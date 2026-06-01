@@ -189,16 +189,51 @@ type ProviderStatus struct {
 	FreeRemaining      int               `json:"free_remaining,omitempty"`
 	EstimatedCostCents int               `json:"estimated_cost_cents,omitempty"`
 	SpentCents         int               `json:"spent_cents,omitempty"`
+	// Circuit-breaker observability (set by breakered providers' own Status()).
+	// BreakerState is the raw lifecycle state ("closed"/"open"/"half-open") and
+	// is passed through verbatim for the agent to reason about — Nólë never
+	// computes a healing ETA or a recommended fallback. Omitted for unbreakered
+	// providers (DDGS, Scrapling). Note: a breaker whose cooldown has elapsed
+	// reports BreakerState=="open" yet is probe-eligible; the binary
+	// "currently short-circuiting" truth is folded into Available instead.
+	BreakerState       string `json:"breaker_state,omitempty"`
+	BreakerConsecFails int    `json:"breaker_consec_fails,omitempty"`
+	BreakerOpenedAt    string `json:"breaker_opened_at,omitempty"` // RFC3339 UTC
+	// DriftWarning is present when a recent (<24h) drift signal exists for this
+	// provider — i.e. it returned 429 while the local counter showed room.
+	DriftWarning string `json:"drift_warning,omitempty"`
 }
 
 type BudgetStatus struct {
-	Policy            CostPolicy   `json:"policy"`
-	HardCapCents      int          `json:"hard_cap_cents"`
-	SpentCents        int          `json:"spent_cents"`
-	NoHiddenPaidSpend bool         `json:"no_hidden_paid_spend"`
-	LedgerState       LedgerState  `json:"ledger_state,omitempty"`
-	LedgerWarning     string       `json:"ledger_warning,omitempty"`
-	Entries           []QuotaEntry `json:"entries"`
+	Policy            CostPolicy  `json:"policy"`
+	HardCapCents      int         `json:"hard_cap_cents"`
+	HardCapSource     string      `json:"hard_cap_source,omitempty"`
+	SpentCents        int         `json:"spent_cents"`
+	NoHiddenPaidSpend bool        `json:"no_hidden_paid_spend"`
+	LedgerState       LedgerState `json:"ledger_state,omitempty"`
+	LedgerWarning     string      `json:"ledger_warning,omitempty"`
+	// EstimateNote states that per-provider FreeRemaining counts are Nólë's own
+	// issued-request estimate, not a live provider-dashboard balance. Present
+	// when at least one entry is EstimateOnly.
+	EstimateNote string `json:"estimate_note,omitempty"`
+	// HasDrift / DriftSignals surface providers that rejected a call as
+	// over-quota (HTTP 429) while Nólë's local counter still showed room — a
+	// mechanical "my estimate disagreed with the provider" flag, never a
+	// learned judgement. Signals age out of this output after 24h.
+	HasDrift     bool          `json:"has_drift"`
+	DriftSignals []DriftSignal `json:"drift_signals,omitempty"`
+	Entries      []QuotaEntry  `json:"entries"`
+}
+
+// DriftSignal records that a provider returned HTTP 429 (over-quota/rate-limit)
+// while Nólë's local free-tier counter still showed room. It is observability
+// only: Nólë never debits on it, never reorders routes from it, and never
+// judges whether the provider is "healthy" — it simply reports that its own
+// issued-request estimate disagreed with the provider's answer.
+type DriftSignal struct {
+	Provider   string `json:"provider"`
+	Reason     string `json:"reason"`
+	ObservedAt string `json:"observed_at"` // RFC3339 UTC
 }
 
 type Provider interface {

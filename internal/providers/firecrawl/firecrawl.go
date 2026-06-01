@@ -241,9 +241,18 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 			Reason:       "FIRECRAWL_API_KEY not set",
 		}
 	}
-	return core.ProviderStatus{
-		Name:         p.Name(),
-		Available:    true,
-		Capabilities: p.Capabilities(),
+	state, consecFails, openedAt := providerhttp.BreakerStatusFields(p.breaker)
+	status := core.ProviderStatus{
+		Name:               p.Name(),
+		Available:          true,
+		Capabilities:       p.Capabilities(),
+		BreakerState:       state,
+		BreakerConsecFails: consecFails,
+		BreakerOpenedAt:    openedAt,
 	}
+	if p.breaker.IsOpen() {
+		status.Available = false
+		status.Reason = "circuit_open"
+	}
+	return status
 }
