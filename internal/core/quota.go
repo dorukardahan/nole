@@ -618,6 +618,20 @@ func (l *MemoryQuotaLedger) reloadFromDiskLocked() error {
 
 	l.entries = mergeLedgerEntries(l.entries, disk.Entries)
 	l.driftSignals = mergeDriftSignals(l.driftSignals, disk.DriftSignals)
+	// If the seeded floor dropped below what disk was sized for (the v0.7.1
+	// 1000->500 credit-vs-call correction), mergeLedgerEntries re-based the
+	// counter in memory. Persist that correction now so the disk self-heals on
+	// the first load instead of waiting for the next Record/rollover — otherwise
+	// the on-disk free_remaining stays stale (correct in memory, but a reader of
+	// the file would still see the old, higher number). Idempotent: once disk
+	// carries the new floor, FreeQuota matches and this no longer fires.
+	floorLowered := false
+	for _, d := range disk.Entries {
+		if merged, ok := l.entries[d.Provider]; ok && d.FreeQuota > merged.FreeQuota {
+			floorLowered = true
+			break
+		}
+	}
 	refreshed := l.refreshExpiredEntriesLocked(CurrentMonthISO())
 	migrated := disk.SchemaVersion < quotaLedgerSchemaVersion
 	if disk.FailClosed {
@@ -631,7 +645,7 @@ func (l *MemoryQuotaLedger) reloadFromDiskLocked() error {
 		l.ledgerState = LedgerStateFileOK
 	}
 	l.ledgerWarning = disk.Warning
-	if refreshed || migrated {
+	if refreshed || migrated || floorLowered {
 		return l.persistLocked()
 	}
 	return nil

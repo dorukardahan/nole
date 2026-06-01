@@ -38,11 +38,11 @@ var byokProviders = []BYOKProvider{
 		SupportsSearch:  true,
 		SupportsExtract: false,
 		SignupURL:       "https://api.search.brave.com",
-		FreeTierNote:    "Free tier changed Feb 2026: new accounts get ~1000 queries/month from a $5 auto-renewing monthly credit ($0.005/query on the Search plan), then metered billing on the card on file with no spending cap. The old flat free tier (2000+/month) was eliminated 12 Feb 2026; legacy-account grandfathering is unconfirmed. Brave requires attribution on your site to grant the credit. Nólë caps at 1000/month as a fail-safe floor and counts its own calls.",
+		FreeTierNote:    "Free tier changed Feb 2026: new accounts get ~1000 queries/month from a $5 auto-renewing monthly credit ($0.005/query on the Search plan), then metered billing on the card on file (no cap by default, but you can set a usage limit in the Brave dashboard to bound overages). The old flat free tier (2000+/month) was eliminated 12 Feb 2026; legacy-account grandfathering is unconfirmed. Brave requires attribution on your site to grant the credit. Nólë caps at 1000/month as a fail-safe floor and counts its own calls.",
 		EnvExample:      "export BRAVE_API_KEY=BSA...",
 		Unlocks:         []string{"fast_general_search", "news_search_quality"},
 		MeteringModel:   "credit-based",
-		RateLimitNote:   "~1000 queries/month from the $5 monthly credit ($0.005/query, 1 call = 1 query) + a 50 req/sec Search-plan rate cap Nólë does not track; beyond the free credit Brave bills the card on file with no spending cap.",
+		RateLimitNote:   "~1000 queries/month from the $5 monthly credit ($0.005/query, 1 call = 1 query) + a 50 req/sec Search-plan rate cap Nólë does not track; beyond the free credit Brave bills the card on file unless you set a usage limit in the Brave dashboard.",
 		EstimateOnly:    true,
 	},
 	{

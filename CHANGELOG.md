@@ -30,8 +30,9 @@ MCP tools.
   accounts keep 2000/month" grandfathering claim is removed. The note now states
   the $5/month auto-renewing credit (~1000 queries at $0.005/query), the **50
   req/sec** Search-plan rate cap (was wrongly 1 req/sec — that was the eliminated
-  legacy tier), the required public attribution, and the **no spending cap** on
-  overages (the single biggest surprise-bill vector).
+  legacy tier), the required public attribution, and the overage behaviour (past
+  the $5 credit the card is billed unless you set a usage limit in the Brave
+  dashboard — the biggest surprise-bill vector, and how you cap it).
 - **Firecrawl "monthly vs one-time" hedge resolved.** Verified as 1000
   credits/month, reset monthly with no rollover — the prior "in flux" wording is
   gone.

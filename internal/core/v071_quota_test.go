@@ -3,6 +3,7 @@ package core
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -89,6 +90,23 @@ func TestFileQuotaLedgerClampsLoadedRemainingToLoweredFloor(t *testing.T) {
 			}
 			if got.FreeRemaining > got.FreeQuota {
 				t.Errorf("invariant violated: FreeRemaining %d > FreeQuota %d", got.FreeRemaining, got.FreeQuota)
+			}
+			// When the floor was lowered, the correction must be PERSISTED to disk
+			// on load (self-heal), not just held in memory — otherwise a reader of
+			// the ledger file (or a tool that inspects it) would still see the old
+			// over-stated counter.
+			if tc.loadedQuota > tc.wantFreeQuota {
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatalf("read ledger back: %v", err)
+				}
+				s := string(raw)
+				if !strings.Contains(s, `"free_quota": `+itoa(tc.wantFreeQuota)) {
+					t.Errorf("disk not self-healed: want free_quota %d persisted\n%s", tc.wantFreeQuota, s)
+				}
+				if !strings.Contains(s, `"free_remaining": `+itoa(tc.wantFreeRemaining)) {
+					t.Errorf("disk not self-healed: want free_remaining %d persisted\n%s", tc.wantFreeRemaining, s)
+				}
 			}
 		})
 	}

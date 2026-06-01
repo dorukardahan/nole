@@ -23,8 +23,10 @@ no new MCP tools.
   grandfathering claim is removed (Brave eliminated the flat tier on 12 Feb 2026
   and published no migration policy), the rate cap is corrected from **1 req/sec
   to 50 req/sec** (1 req/sec was the eliminated legacy tier), and the notes now
-  state the required public attribution and the **no spending cap** on overages —
-  the single biggest surprise-bill vector across all three providers.
+  state the required public attribution and the overage behaviour — past the $5
+  credit the card is billed unless you set a usage limit in the Brave dashboard
+  (which Brave recommends). That overage path is the biggest surprise-bill vector
+  across the three providers, and the dashboard limit is how you cap it.
 - **Firecrawl "monthly vs one-time" hedge resolved.** Verified as 1000
   credits/month, reset monthly with no rollover. The prior "in flux" wording is
   gone.
