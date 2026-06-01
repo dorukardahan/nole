@@ -45,8 +45,11 @@ MCP tools.
   against the new (lower) floor, instead of inheriting the stale counter until the
   next monthly rollover. Without it, an upgrading user would keep over-reading
   their Tavily/Firecrawl headroom for the rest of the month — the exact over-read
-  this release exists to eliminate. The clamp is idempotent and only ever lowers
-  the counter (never raises it). Caught by Codex review.
+  this release exists to eliminate. The re-base fires on same-cost-class loads
+  AND across a `NOLE_<PROVIDER>_PAID` toggle (so disabling paid mode after upgrade
+  cannot inherit the stale counter), is persisted on first load so the on-disk
+  ledger self-heals, is idempotent, and only ever lowers the counter. Caught by
+  Codex review.
 
 ### Notes
 

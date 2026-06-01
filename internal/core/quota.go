@@ -698,6 +698,28 @@ func seedEntryMap(seeds []QuotaEntry) map[string]QuotaEntry {
 	return entries
 }
 
+// rebasedRemainingForFloor returns the FreeRemaining a carried free-tier counter
+// should have under newFloor, preserving the calls already consumed this period
+// (loadedQuota - loadedRemaining). When newFloor did not drop below loadedQuota
+// (same floor, a raise, or no real prior counter), loadedRemaining passes through
+// unchanged. The result is clamped to [0, newFloor] so it can never over-read the
+// lowered floor. Used by both the same-cost-class and cross-cost-class merge paths
+// so the v0.7.1 1000->500 correction lands consistently.
+func rebasedRemainingForFloor(loadedQuota, loadedRemaining, newFloor int) int {
+	if newFloor <= 0 || loadedQuota <= newFloor {
+		return loadedRemaining
+	}
+	consumed := loadedQuota - loadedRemaining
+	if consumed < 0 {
+		consumed = 0
+	}
+	rem := newFloor - consumed
+	if rem < 0 {
+		rem = 0
+	}
+	return rem
+}
+
 func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[string]QuotaEntry {
 	entries := map[string]QuotaEntry{}
 	for provider, seed := range seeds {
@@ -746,21 +768,10 @@ func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[st
 			// for (e.g. the v0.7.1 tavily/firecrawl 1000->500 credit-vs-call
 			// correction), the inherited FreeRemaining can exceed the new ceiling
 			// and keep over-reading until the next monthly rollover. Re-base it on
-			// calls already consumed this period (loaded.FreeQuota - loaded
-			// .FreeRemaining) against the NEW floor so the correction lands on the
-			// first load instead of next month. Undercounting is the safe
-			// direction; the guard is idempotent once disk carries the new floor.
-			if seed.FreeQuota > 0 && loadedEntry.FreeQuota > seed.FreeQuota {
-				consumed := loadedEntry.FreeQuota - loadedEntry.FreeRemaining
-				if consumed < 0 {
-					consumed = 0
-				}
-				rebased := seed.FreeQuota - consumed
-				if rebased < 0 {
-					rebased = 0
-				}
-				merged.FreeRemaining = rebased
-			}
+			// calls already consumed this period against the NEW floor so the
+			// correction lands on the first load. merged.FreeQuota is already the
+			// seed's. Idempotent once disk carries the new floor.
+			merged.FreeRemaining = rebasedRemainingForFloor(loadedEntry.FreeQuota, loadedEntry.FreeRemaining, seed.FreeQuota)
 		} else if loadedEntry.FreeQuota > 0 {
 			merged.FreeRemaining = loadedEntry.FreeRemaining
 			merged.FreeQuota = loadedEntry.FreeQuota
@@ -769,6 +780,17 @@ func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[st
 			}
 			if strings.TrimSpace(loadedEntry.PeriodStart) != "" {
 				merged.PeriodStart = loadedEntry.PeriodStart
+			}
+			// Carrying free-tier accounting across a cost-class transition must
+			// also respect a lowered seed floor — otherwise toggling
+			// NOLE_<PROVIDER>_PAID off after the v0.7.1 upgrade would inherit the
+			// stale 1000-call counter and over-read the new 500 floor again. When
+			// the (free-tier) seed floor is lower than the carried quota, enforce
+			// it and preserve consumed; a premium seed has FreeQuota=0, so this
+			// skips the ->paid direction (anti-oscillation state is preserved).
+			if seed.FreeQuota > 0 && loadedEntry.FreeQuota > seed.FreeQuota {
+				merged.FreeRemaining = rebasedRemainingForFloor(loadedEntry.FreeQuota, loadedEntry.FreeRemaining, seed.FreeQuota)
+				merged.FreeQuota = seed.FreeQuota
 			}
 		}
 		if loadedEntry.SpentCents > merged.SpentCents {

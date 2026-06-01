@@ -39,9 +39,12 @@ current-month ledger entry sized for the old 1000 floor inherits its
 remaining until the next monthly rollover — the exact over-read this release
 targets. `mergeLedgerEntries` now re-bases the loaded counter on calls already
 consumed against the new floor (`new_floor − (old_quota − old_remaining)`,
-clamped to ≥ 0) whenever the seeded floor dropped. The clamp only ever *lowers*
-the counter, is idempotent once disk carries the new floor, and leaves v1
-migrations and same-floor entries untouched. (Caught by Codex review on PR #40.)
+clamped to ≥ 0) whenever the seeded floor dropped, and persists the result so the
+on-disk ledger self-heals on first load. The same re-base fires across a
+`NOLE_<PROVIDER>_PAID` toggle (disabling paid mode after the upgrade can't inherit
+the stale counter). It only ever *lowers* the counter, is idempotent once disk
+carries the new floor, and leaves v1 migrations and same-floor entries untouched.
+(Caught by Codex review on PR #40 — two rounds.)
 
 ## What this does NOT change
 
