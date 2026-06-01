@@ -228,6 +228,75 @@ func (b *Breaker) IsOpen() bool {
 	}
 }
 
+// State returns the raw stored lifecycle state ("closed" | "open" |
+// "half-open") WITHOUT applying the cooldown check — a side-effect-free peek
+// for observability that never consumes the half-open probe token. This can
+// legitimately differ from IsOpen(): a breaker whose cooldown has elapsed still
+// reports State()=="open" (it has not yet been probed) even though IsOpen()
+// returns false because the next call is probe-eligible. Callers needing the
+// binary "currently short-circuiting" truth use IsOpen(); State() is the honest
+// raw lifecycle surfaced in provider_status. A nil breaker reports "closed".
+func (b *Breaker) State() string {
+	if b == nil {
+		return "closed"
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	switch b.state {
+	case breakerOpen:
+		return "open"
+	case breakerHalfOpen:
+		return "half-open"
+	default:
+		return "closed"
+	}
+}
+
+// ConsecFails returns the current consecutive-failure count (read under lock).
+// A nil breaker reports 0. Observability only.
+func (b *Breaker) ConsecFails() int {
+	if b == nil {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.consecFails
+}
+
+// OpenedAt returns the wall-clock time the breaker last transitioned to open,
+// or the zero time if it has never opened. Read under lock; nil → zero time.
+// Surfaced (as an RFC3339 timestamp) only while the breaker is open/half-open so
+// the agent can compute its own recovery window — Nólë never pre-computes one.
+func (b *Breaker) OpenedAt() time.Time {
+	if b == nil {
+		return time.Time{}
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.openedAt
+}
+
+// BreakerStatusFields builds the observability triple a provider's Status()
+// reports: the raw lifecycle state, the consecutive-failure count, and (only
+// while open/half-open) the open-since timestamp in RFC3339 UTC. A nil breaker
+// (unbreakered providers like DDGS/Scrapling) yields all-empty so the
+// ProviderStatus fields stay omitted. It deliberately exposes neither the
+// breaker's generation nor its threshold — those are internal mechanics with no
+// agent use.
+func BreakerStatusFields(b *Breaker) (state string, consecFails int, openedAt string) {
+	if b == nil {
+		return "", 0, ""
+	}
+	state = b.State()
+	consecFails = b.ConsecFails()
+	if state == "open" || state == "half-open" {
+		if t := b.OpenedAt(); !t.IsZero() {
+			openedAt = t.UTC().Format(time.RFC3339)
+		}
+	}
+	return state, consecFails, openedAt
+}
+
 // ShouldTrip classifies one logical HTTP outcome as a breaker failure. It trips
 // on transport/dial errors and on 5xx / transient statuses (>=500, plus 429/408
 // via isTransientStatus). It does NOT trip on success/redirect/4xx client

@@ -96,19 +96,20 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|
-| `MemoryQuotaLedger` | type | `internal/core/quota.go:112` | Core ledger struct (also backs file ledger). Mutex-guarded; `*Locked` methods assume the lock held. |
-| `QuotaLedger` | interface | `internal/core/quota.go:74` | Public contract: Allow, Decide, Record, Get, Entries, BudgetStatus. |
-| `decideLocked` | method | `internal/core/quota.go:193` | Policy engine; maps (CostClass × CostPolicy) → Allowed + Reason; honors `failClosedReason`. Default branch (285) coerces unknown classes. |
-| `Record` | method | `internal/core/quota.go:297` | Atomic charge: file lock, re-read disk (defeats stale instances), decrement FreeRemaining / add SpentCents, persist. On reload failure marks unavailable + fails closed. |
-| `recordLocked` | method | `internal/core/quota.go:312` | Refreshes expired monthly quotas, re-decides, mutates per cost class, persists with rollback (348). |
-| `reloadFromDiskLocked` | method | `internal/core/quota.go:432` | Reads + validates JSON ledger (schema 1..2), merges, refreshes, migrates v1→v2, persists when changed. Missing file = fresh OK ledger. |
-| `mergeLedgerEntries` | func | `internal/core/quota.go:519` | Merges disk onto seeds; drops orphans; carries counters across cost-class transitions; takes `max(SpentCents)`. |
-| `refreshExpiredEntriesLocked` | method | `internal/core/quota.go:589` | Refills FreeRemaining for monthly entries whose PeriodStart < current YYYY-MM. |
-| `persistLocked` | method | `internal/core/quota.go:609` | Crash-safe write: mkdir 0700, write .tmp 0600, rename, chmod 0600. Schema v2. |
-| `withFileLockLocked` | method | `internal/core/quota.go:489` | Wraps fn in exclusive advisory lock on `<path>.lock`; no-op for in-memory. |
-| `recoverCorruptLedgerLocked` | method | `internal/core/quota.go:472` | On parse error / bad schema: backup, RecoveredCorrupt state + `ledger_corrupt_fail_closed`, pathless warning, persist. |
-| `normalizeQuotaEntry` | func | `internal/core/quota.go:673` | Infers CostClass, syncs flags, clamps negatives to 0. |
-| `premiumWithinCap` | func | `internal/core/quota.go:702` | Cost-capped gate: blocks if no cap / unknown cost / total+estimated > HardCapCents. |
+| `MemoryQuotaLedger` | type | `internal/core/quota.go:132` | Core ledger struct (also backs file ledger). Mutex-guarded; `*Locked` methods assume the lock held. |
+| `QuotaLedger` | interface | `internal/core/quota.go:87` | Public contract: Allow, Decide, Record, RecordDrift, Get, Entries, BudgetStatus. |
+| `RecordDrift` | method | `internal/core/quota.go:392` | Observability-only (v0.7.0): upserts a per-provider drift signal (provider returned 429 while local FreeRemaining>0). Never debits, never changes routing; reload-merges + persists under the file lock; best-effort. Surfaced in BudgetStatus, aged out of output after 24h. |
+| `decideLocked` | method | `internal/core/quota.go:221` | Policy engine; maps (CostClass × CostPolicy) → Allowed + Reason; honors `failClosedReason`. Default branch (285) coerces unknown classes. |
+| `Record` | method | `internal/core/quota.go:325` | Atomic charge: file lock, re-read disk (defeats stale instances), decrement FreeRemaining / add SpentCents, persist. On reload failure marks unavailable + fails closed. |
+| `recordLocked` | method | `internal/core/quota.go:340` | Refreshes expired monthly quotas, re-decides, mutates per cost class, persists with rollback (348). |
+| `reloadFromDiskLocked` | method | `internal/core/quota.go:599` | Reads + validates JSON ledger (schema 1..2), merges, refreshes, migrates v1→v2, persists when changed. Missing file = fresh OK ledger. |
+| `mergeLedgerEntries` | func | `internal/core/quota.go:687` | Merges disk onto seeds; drops orphans; carries counters across cost-class transitions; takes `max(SpentCents)`. |
+| `refreshExpiredEntriesLocked` | method | `internal/core/quota.go:757` | Refills FreeRemaining for monthly entries whose PeriodStart < current YYYY-MM. |
+| `persistLocked` | method | `internal/core/quota.go:783` | Crash-safe write: mkdir 0700, write .tmp 0600, rename, chmod 0600. Schema v2. |
+| `withFileLockLocked` | method | `internal/core/quota.go:657` | Wraps fn in exclusive advisory lock on `<path>.lock`; no-op for in-memory. |
+| `recoverCorruptLedgerLocked` | method | `internal/core/quota.go:640` | On parse error / bad schema: backup, RecoveredCorrupt state + `ledger_corrupt_fail_closed`, pathless warning, persist. |
+| `normalizeQuotaEntry` | func | `internal/core/quota.go:858` | Infers CostClass, syncs flags, clamps negatives to 0. |
+| `premiumWithinCap` | func | `internal/core/quota.go:887` | Cost-capped gate: blocks if no cap / unknown cost / total+estimated > HardCapCents. |
 | `MemoryResponseCache` | type | `internal/core/cache.go:22` | Mutex-guarded TTL cache w/ injectable clock; lazy eviction on read; nil/ttl<=0 safe. |
 | `searchCacheKey` | func | `internal/core/cache.go:112` | NUL-joined key from task + normalized query + limit; empty task → TaskGeneral. |
 | `cloneSearchResponse` | func | `internal/core/cache.go:145` | Defensive deep-ish copy (Results/Route/RouteTrace) so callers can't mutate stored entries. |
@@ -119,7 +120,7 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 | `BuildSetupTip` | func | `internal/core/setup_hints.go:103` | Once-per-session upgrade nag from high/medium suggestions; nil when nothing missing or only low-impact. |
 | `NoFreeQuotaError` | type | `internal/core/errors.go:5` | Typed no-free-provider error; `IsNoFreeQuota` handles value + pointer. |
 
-**Data flow.** Wiring: `app.go:119` → `NewFileQuotaLedgerWithPolicy(path, policy, seeds)`; seeds built from `LookupBYOK` (`app.go:216`). Construction (`quota.go:408`) seeds map, runs `reloadFromDiskLocked` under lock. Hot path: `Decide(provider)` → mutex → `refreshExpiredEntriesLocked` → `decideLocked` (CostClass × policy) → QuotaDecision. On committed call: `Record(provider)` → file lock → `reloadFromDiskLocked` (re-read disk) → `recordLocked` decrements/adds → `persistLocked` (tmp+rename+chmod). Corruption → `recoverCorruptLedgerLocked` → backup + fail-closed (only keyless-free passes). Response cache sits in front in `service.go`: `GetSearch`/`GetExtract` short-circuit; `SetSearch`/`SetExtract` store clones after success; errors never cached. Setup hints read `BYOKProviders()` vs configured map → suggestions/tips surfaced via `ProviderStatusResponse` and first `SearchResponse`.
+**Data flow.** Wiring: `app.go:129` → `NewFileQuotaLedgerWithPolicy(path, policy, seeds)`; seeds built from `LookupBYOK` (`app.go:257`), carrying `MeteringModel`/`EstimateOnly` onto each BYOK entry. `defaultQuotaPolicyFromEnv` resolves `HardCapSource` (explicit|unset) alongside the cap value. Construction (`quota.go:574`) seeds map, runs `reloadFromDiskLocked` under lock. Hot path: `Decide(provider)` → mutex → `refreshExpiredEntriesLocked` → `decideLocked` (CostClass × policy) → QuotaDecision. On committed call: `Record(provider)` → file lock → `reloadFromDiskLocked` (re-read disk) → `recordLocked` decrements/adds → `persistLocked` (tmp+rename+chmod). Corruption → `recoverCorruptLedgerLocked` → backup + fail-closed (only keyless-free passes). Response cache sits in front in `service.go`: `GetSearch`/`GetExtract` short-circuit; `SetSearch`/`SetExtract` store clones after success; errors never cached. Setup hints read `BYOKProviders()` vs configured map → suggestions/tips surfaced via `ProviderStatusResponse` and first `SearchResponse`.
 
 ### Area: core-service — `internal/core` Service orchestration (Search/Extract/ProviderStatus/BudgetStatus)
 
@@ -127,18 +128,18 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|
-| `Service` | type | `internal/core/service.go:12` | Orchestrator: registry, ledger, router, optional cache. |
-| `NewService` | func | `internal/core/service.go:27` | Builds Service + internal Router; applies variadic nil-guarded `ServiceOption`. |
-| `WithResponseCache` | func | `internal/core/service.go:21` | Option injecting a ResponseCache (otherwise nil/skipped). |
-| `Service.Search` | method | `internal/core/service.go:37` | Defaults Task→TaskGeneral, checks cache, iterates route w/ registration/capability/quota/availability gates, calls `provider.Search`, falls back on error/empty, records quota only on success, returns response+trace or `NoFreeQuotaError`. |
-| `Service.Extract` | method | `internal/core/service.go:138` | Mirrors Search: trims URL, defaults Format→markdown, runs `safenet.ValidateURL` (SSRF guard) before routing, same pipeline on TaskExtract route. |
-| `Service.ProviderStatus` | method | `internal/core/service.go:231` | Lists providers, calls Status each, merges quota decision, computes BYOK suggestions. |
-| `Service.BudgetStatus` | method | `internal/core/service.go:255` | Thin delegate to `ledger.BudgetStatus()`. |
-| `Service.routeFor` | method | `internal/core/service.go:259` | Resolves route by reaching into `s.router.matrix` directly, TaskGeneral fallback. |
-| `attemptWithDecision` | func | `internal/core/service.go:291` | Core RouteAttempt builder folding QuotaDecision + latency + count. |
-| `cacheHitAttempt` | func | `internal/core/service.go:275` | Builds cache_hit attempt; provider name defaults to 'cache'. |
-| `mergeProviderCostStatus` | func | `internal/core/service.go:304` | Copies QuotaDecision cost/policy fields onto a ProviderStatus. |
-| `contentResultCount` | func | `internal/core/service.go:315` | 1 for non-blank extract content, else 0. |
+| `Service` | type | `internal/core/service.go:26` | Orchestrator: registry, ledger, router, optional cache. |
+| `NewService` | func | `internal/core/service.go:47` | Builds Service + internal Router; applies variadic nil-guarded `ServiceOption`. |
+| `WithResponseCache` | func | `internal/core/service.go:41` | Option injecting a ResponseCache (otherwise nil/skipped). |
+| `Service.Search` | method | `internal/core/service.go:57` | Defaults Task→TaskGeneral, checks cache, iterates route w/ registration/capability/quota/availability gates, calls `provider.Search`, falls back on error/empty, records quota only on success, returns response+trace or `NoFreeQuotaError`. |
+| `Service.Extract` | method | `internal/core/service.go:260` | Mirrors Search: trims URL, defaults Format→markdown, runs `safenet.ValidateURL` (SSRF guard) before routing, same pipeline on TaskExtract route. |
+| `Service.ProviderStatus` | method | `internal/core/service.go:437` | Lists providers, calls Status each, merges quota decision, annotates DriftWarning from recent drift signals, computes BYOK suggestions. Provider Status() also folds breaker `IsOpen()` into Available (Reason `circuit_open`) + reports raw `breaker_state`. |
+| `Service.BudgetStatus` | method | `internal/core/service.go:473` | Thin delegate to `ledger.BudgetStatus()`. |
+| `Service.routeFor` | method | `internal/core/service.go:477` | Resolves route by reaching into `s.router.matrix` directly, TaskGeneral fallback. |
+| `attemptWithDecision` | func | `internal/core/service.go:509` | Core RouteAttempt builder folding QuotaDecision + latency + count. |
+| `cacheHitAttempt` | func | `internal/core/service.go:493` | Builds cache_hit attempt; provider name defaults to 'cache'. |
+| `mergeProviderCostStatus` | func | `internal/core/service.go:522` | Copies QuotaDecision cost/policy fields onto a ProviderStatus. |
+| `contentResultCount` | func | `internal/core/service.go:533` | 1 for non-blank extract content, else 0. |
 
 **Data flow.** Caller (CLI/MCP) → `Service.Search`/`Extract`. Both: (1) normalize request (Task default / URL trim + Format default + `safenet.ValidateURL` for Extract), (2) `routeFor` → `s.router.matrix[task]` w/ TaskGeneral fallback, (3) if cache present consult `cache.GetSearch`/`GetExtract`; hit → rebuild Route/RouteTrace via `cacheHitAttempt` + insight and return; miss → append cacheMiss. (4) Per provider: `registry.Get` → `skippedAttempt(not_registered)`; `HasCapability` → `missing_*_capability`; `ledger.Decide` → skipped w/ `premium_blocked_free_first`/`free_quota_exhausted`; `provider.Status(ctx)` → skipped if unavailable. (5) Call provider, measure latency; err → `provider_error`, continue; empty → `empty_results`/`empty_content`, continue. (6) On success ONLY: `ledger.Record(name)`; if Record errors, re-Decide and set `success_<reason>` but still return response. (7) Build trace + insight, optionally cache.Set, return. (8) Exhausted: `NoFreeQuotaError` or `lastErr`, both with `BuildErrorRoutingInsight`.
 
@@ -165,10 +166,10 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 | `printResearchReport` | func | `internal/cli/research.go:54` | Human view: header + sources + short extract previews (full content in `--json`). |
 | `Service.Research` | method | `internal/core/research.go` | Classifies the question, fans `Service.Search` across task-fit routes, extracts `min(sources, max_steps, 5)` non-pdf/non-reddit URLs (truncate 2000); returns evidence (sources + extracts) — NO composed summary (the agent synthesizes). |
 | `Service.SearchAndExtract` | method | `internal/core/service.go` | One search + extract of the top `min(extract_top, 3)` result URLs; per-URL failure is non-fatal (`extract_errors`), URLs de-duplicated. |
-| `newHTTPHandler` | func | `internal/cli/http.go:26` | Wraps `core.Service` + `mcpserver.New` via `buildMCPServer`. |
-| `httpHandler.start` | method | `internal/cli/http.go:36` | Registers `/health`, `/mcp`, `/api/providers`, `/api/budget`, `/api/search`, `/api/extract`, `/api/search_and_extract`, `/api/research` w/ 1MiB caps + slowloris timeouts. |
-| `httpHandler.handleMCP` | method | `internal/cli/http.go:158` | POST-only JSON-RPC bridge → `mcp.HandleMessage`; `-32700`/`-32603` envelopes on failure. |
-| `httpBuildContext` | func | `internal/cli/http.go:229` | Injects `InProcessSession` if `Mcp-Session-Id` present, else sets `mcpserver.EphemeralCtxKey`. |
+| `newHTTPHandler` | func | `internal/cli/http.go:37` | Wraps `core.Service` + `mcpserver.New` via `buildMCPServer`. |
+| `httpHandler.buildMux`/`start` | method | `internal/cli/http.go:57`/`276` | `buildMux` registers `/health`, `/mcp`, `/api/{providers,budget,search,extract,search_and_extract,research}` w/ 1MiB caps + slowloris timeouts; `start` runs it with graceful drain. `/health` is a REAL readiness check (v0.7.0): 200 iff ≥1 search-capable provider is Available && AllowedByPolicy (Available already folds breaker IsOpen), else 503; keyless DDGS keeps a zero-key deploy ready. |
+| `httpHandler.handleMCP` | method | `internal/cli/http.go:334` | POST-only JSON-RPC bridge → `mcp.HandleMessage`; `-32700`/`-32603` envelopes on failure. |
+| `httpBuildContext` | func | `internal/cli/http.go:405` | Injects `InProcessSession` if `Mcp-Session-Id` present, else sets `mcpserver.EphemeralCtxKey`. |
 | `httpSessionForRequest` | func | `internal/cli/http.go:247` | Legacy helper retained only for tests (deprecated path). |
 | `loadDefaultNoleEnvFile` | func | `internal/cli/env_file.go:8` | Loads default `.env` (unless `NOLE_DISABLE_ENV_FILE`); called from `app.go:25` and `bench.go:118`. |
 | `parseShellEnvAssignment` | func | `internal/cli/env_file.go:45` | Parses `KEY=VALUE` (supports `export `, comments, quotes); existing env wins. |
@@ -464,7 +465,7 @@ This feeds Phase 2 research. Only seeds present in the area maps are listed.
 | Corrupt-recovery/reload errors surfaced only via in-memory state | stability | `internal/core/quota.go:449` | medium | `reloadFromDiskLocked` returns `recoverCorruptLedgerLocked`'s (often nil) result, so the constructor returns `(ledger, nil)` on a corrupt ledger; only signal is `BudgetStatus().LedgerWarning`. Callers checking only `err` treat a fail-closed corrupt ledger as a clean start. |
 | Cache has no size bound / eviction beyond lazy TTL expiry | stability | `internal/core/cache.go:22` | medium | search/extract maps grow unbounded; entries deleted only lazily on a Get that finds them expired (67, 95). A long-lived MCP server with many distinct never-repeated queries accumulates entries. No background sweep / max-entries cap. |
 | refreshExpiredEntriesLocked from Decide() mutates in-memory state without persisting | correctness | `internal/core/quota.go:188` | low | `Decide()` discards the `changed` return and never persists (intentional, 184-186). A second process Deciding the same provider re-reads stale disk and may see the pre-refresh value; two processes can transiently disagree on FreeRemaining across a month boundary. |
-| routeFor duplicates Router's route-resolution logic and bypasses Router | quality | `internal/core/service.go:259` | high | `Service.routeFor` reaches into `s.router.matrix` and reimplements the task→TaskGeneral fallback already in `Router.Select` (`router.go:45-48`). The Router field is built but only its matrix is read; Select is never called — leaky abstraction that can drift. |
+| routeFor duplicates Router's route-resolution logic and bypasses Router | quality | `internal/core/service.go:477` | high | `Service.routeFor` reaches into `s.router.matrix` and reimplements the task→TaskGeneral fallback already in `Router.Select` (`router.go:45-48`). The Router field is built but only its matrix is read; Select is never called — leaky abstraction that can drift. |
 | Search and Extract pipelines are ~90% duplicated | quality | `internal/core/service.go:57` | medium | The gate/timing/Record/trace/cache loop is copy-pasted between Search (57-127) and Extract (161-220); only the capability constant, empty check, and insight builder differ. Any fix must be applied twice. |
 | Provider call is unbounded by any Service-level timeout/deadline | stability | `internal/core/service.go:81` | medium | `provider.Search`/`Extract` invoked with the caller's ctx and no Service-imposed deadline (81, 185). A hung provider that ignores ctx blocks the whole route walk; no per-attempt timeout bounds fallback latency. |
 | No empty-results-then-success per-provider quota assertion | coverage | `internal/core/service_test.go:257` | medium | `TestServiceDoesNotDecrementFreeTierOnEmptyResults` covers a single empty provider; no test asserts that when an empty provider precedes a successful one, ONLY the successful provider's quota is recorded. Fallback test (273) checks route/trace, not per-provider ledger state. |

@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-01
+
+Theme: **make the center trustworthy** — every number Nólë reports about money
+and health is now labelled true, estimated, or unknown. No new MCP tools; this
+release adds fields to the existing `provider_status`/`budget_status` envelopes
+and turns `/health` into a real readiness check.
+
+### Added
+
+- **Drift signal.** When a provider rejects a call as over-quota (HTTP 429)
+  while Nólë's local free-tier counter still shows room, `budget_status` now
+  reports it (`has_drift`, `drift_signals[]`) and the affected provider carries a
+  `drift_warning` in `provider_status`. It is mechanical observability — Nólë
+  never debits on it, never reorders routes from it, and never judges provider
+  health. Signals persist across restarts (union-merged under the ledger file
+  lock) and age out of output after 24h. It is a best-effort EARLY signal: once
+  repeated 429s trip the circuit breaker, calls short-circuit and drift stops.
+- **Circuit-breaker state in `provider_status`.** Breakered providers now report
+  `breaker_state` (`closed`/`open`/`half-open`), `breaker_consec_fails`, and
+  `breaker_opened_at` (RFC3339, while open) — raw signals for the agent to reason
+  about, with no Nólë-computed recovery ETA. A provider that is currently
+  short-circuiting also reports `available: false` with `reason: circuit_open`.
+- **Honest per-provider quota metadata.** Each BYOK entry now carries a
+  `metering_model` (`credit-based` for all three today) and `budget_status`
+  states up front that `free_remaining` is Nólë's own issued-request estimate,
+  not a live provider-dashboard balance (`estimate_note`). Per-provider notes
+  spell out the real metering caveats (Brave's Feb-2026 credit/metered-billing
+  change + 1 req/sec cap; Tavily's per-credit search/extract cost; Firecrawl's
+  monthly-vs-one-time ambiguity — verify your dashboard).
+- **Cost-cap clarity.** `budget_status` exposes `hard_cap_source`
+  (`explicit`/`unset`), and `nole doctor` now says loudly when `cost-capped` is
+  set without `NOLE_HARD_CAP_CENTS` — premium providers are blocked until you set
+  it. Nólë never authorizes an unrequested default spend (it stays fail-closed).
+
+### Changed
+
+- **`/health` is now a real readiness check.** It returns `200 {"status":"ready",
+  ...}` iff at least one search-capable provider is available and allowed by the
+  cost policy, else `503 {"status":"not_ready", "reason": ...}`. The body shape
+  changed from `{"status":"ok"}` to `{status, timestamp, reason?,
+  available_providers}`. Because keyless DDGS is always available, a zero-key
+  deployment is correctly "ready". Readiness is orthogonal to budget — a hard-cap
+  hit is a `/api/budget` concern, not a health one.
+
+### Notes
+
+- No MCP tool was added, renamed, or removed; the tool set is unchanged
+  (`search, extract, search_and_extract, provider_status, budget_status,
+  research`). Existing free-tier quota numbers are unchanged (1000/month per BYOK
+  provider) — verified against current provider pricing as the honest fail-safe
+  floor; the honesty work is metadata + the drift signal, not new integers.
+
 ## [0.6.0] - 2026-06-01
 
 ### Added

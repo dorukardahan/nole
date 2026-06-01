@@ -16,6 +16,16 @@ type BYOKProvider struct {
 	FreeTierNote    string
 	EnvExample      string
 	Unlocks         []string
+	// MeteringModel / RateLimitNote / EstimateOnly are STATIC, build-time
+	// descriptive metadata about how the provider's free tier actually meters.
+	// They must never be computed from observed runtime behaviour (429s,
+	// latency) — that would make Nólë "learn" provider health, which it must
+	// not. They describe the provider's published model so budget_status can be
+	// honest that FreeRemaining is Nólë's own issued-request estimate, not a
+	// live dashboard balance.
+	MeteringModel string // "call-count" | "credit-based" | "one-time-grant"
+	RateLimitNote string
+	EstimateOnly  bool
 }
 
 // byokProviders is the authoritative slice; never modify after package init.
@@ -28,9 +38,12 @@ var byokProviders = []BYOKProvider{
 		SupportsSearch:  true,
 		SupportsExtract: false,
 		SignupURL:       "https://api.search.brave.com",
-		FreeTierNote:    "1000 calls/month — credit card required at signup; Nólë caps usage at the local monthly quota.",
+		FreeTierNote:    "Free tier changed in Feb 2026: new accounts get ~1000 queries/month from a $5 monthly credit, then metered billing (card on file); legacy accounts keep 2000/month. Nólë caps at 1000/month as a fail-safe floor and counts its own calls.",
 		EnvExample:      "export BRAVE_API_KEY=BSA...",
 		Unlocks:         []string{"fast_general_search", "news_search_quality"},
+		MeteringModel:   "credit-based",
+		RateLimitNote:   "~1000 queries/month estimate (legacy plans 2000) + a 1 req/sec rate cap Nólë does not track; beyond the free credit Brave bills the card on file.",
+		EstimateOnly:    true,
 	},
 	{
 		Name:            "tavily",
@@ -40,9 +53,12 @@ var byokProviders = []BYOKProvider{
 		SupportsSearch:  true,
 		SupportsExtract: true,
 		SignupURL:       "https://tavily.com",
-		FreeTierNote:    "1000 calls/month, no credit card required.",
+		FreeTierNote:    "~1000 API credits/month, no credit card required.",
 		EnvExample:      "export TAVILY_API_KEY=tvly-...",
 		Unlocks:         []string{"url_extraction", "semantic_search_quality"},
+		MeteringModel:   "credit-based",
+		RateLimitNote:   "credit-based: a search costs ~1 credit, an advanced extract ~2; Nólë debits 1 per call, so the local count can over-read remaining credits.",
+		EstimateOnly:    true,
 	},
 	{
 		Name:            "firecrawl",
@@ -52,9 +68,12 @@ var byokProviders = []BYOKProvider{
 		SupportsSearch:  true,
 		SupportsExtract: true,
 		SignupURL:       "https://firecrawl.dev",
-		FreeTierNote:    "1000 calls/month free tier — verify dashboard balance before high-volume use.",
+		FreeTierNote:    "~1000 credits/month per Firecrawl's pricing (some trackers list 500 one-time — verify your dashboard); no credit card required.",
 		EnvExample:      "export FIRECRAWL_API_KEY=fc-...",
 		Unlocks:         []string{"url_extraction"},
+		MeteringModel:   "credit-based",
+		RateLimitNote:   "free tier is in flux between monthly and one-time across Firecrawl's own pages and third-party trackers; Nólë tracks 1000/month as an estimate — verify your dashboard.",
+		EstimateOnly:    true,
 	},
 }
 

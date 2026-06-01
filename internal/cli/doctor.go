@@ -113,13 +113,29 @@ func newDoctorCommand() *cobra.Command {
 			budget := svc.BudgetStatus()
 			fmt.Fprintln(cmd.OutOrStdout(), "")
 			fmt.Fprintf(cmd.OutOrStdout(), "- budget: policy=%s hard_cap=$%d.%02d spent=$%d.%02d no_hidden_paid_spend=%t ledger=%s\n", budget.Policy, budget.HardCapCents/100, budget.HardCapCents%100, budget.SpentCents/100, budget.SpentCents%100, budget.NoHiddenPaidSpend, budget.LedgerState)
+			// Cost-capped with no hard cap silently blocks every premium provider.
+			// Say so loudly rather than leaving the user to wonder why paid
+			// providers never fire. We stay fail-closed (no default spend).
+			if budget.HardCapSource == "unset" {
+				fmt.Fprintln(cmd.OutOrStdout(), "  cost_cap_note: cost-capped policy set but NOLE_HARD_CAP_CENTS is not — premium providers are BLOCKED. Set NOLE_HARD_CAP_CENTS=<cents> to authorize bounded paid spend.")
+			}
 			if budget.LedgerWarning != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "  ledger_warning: %s\n", budget.LedgerWarning)
 			}
 			for _, e := range budget.Entries {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s free_remaining=%d estimated_cost_cents=%d spent_cents=%d\n", e.Provider, e.CostClass, e.FreeRemaining, e.EstimatedCostCents, e.SpentCents)
+				line := fmt.Sprintf("  %-12s %s free_remaining=%d estimated_cost_cents=%d spent_cents=%d", e.Provider, e.CostClass, e.FreeRemaining, e.EstimatedCostCents, e.SpentCents)
+				if e.MeteringModel != "" {
+					line += fmt.Sprintf(" metering=%s", e.MeteringModel)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), line)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "  (free_remaining is a local quota counter; resets monthly)")
+			if budget.EstimateNote != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "  estimate_note: %s\n", budget.EstimateNote)
+			}
+			for _, d := range budget.DriftSignals {
+				fmt.Fprintf(cmd.OutOrStdout(), "  drift: %s — %s (observed %s)\n", d.Provider, d.Reason, d.ObservedAt)
+			}
 
 			if checkMCP {
 				fmt.Fprintln(cmd.OutOrStdout(), "")

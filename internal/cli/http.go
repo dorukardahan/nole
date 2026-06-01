@@ -24,6 +24,16 @@ type httpHandler struct {
 	server *http.Server
 }
 
+// healthResponse is the body of GET/HEAD /health. Status is "ready" (HTTP 200)
+// or "not_ready" (HTTP 503); Reason is set only when not ready;
+// AvailableProviders lists the search-capable providers currently ready.
+type healthResponse struct {
+	Status             string   `json:"status"`
+	Timestamp          string   `json:"timestamp"`
+	Reason             string   `json:"reason,omitempty"`
+	AvailableProviders []string `json:"available_providers"`
+}
+
 func newHTTPHandler(svc *core.Service) (*httpHandler, error) {
 	// Use the existing MCP server builder from mcpserver package
 	// We import it indirectly via a constructor
@@ -57,17 +67,40 @@ func logEncodeErr(endpoint string, err error) {
 func (h *httpHandler) buildMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// Health endpoint
+	// Health endpoint — a REAL readiness check (not an always-200 stub). Ready
+	// iff at least one search-capable provider is available AND allowed by the
+	// cost policy. "Available" already folds in circuit-breaker state (a
+	// breakered provider that is currently short-circuiting reports
+	// Available=false), so a degraded upstream flips /health to 503 without this
+	// handler needing any breaker handle. Keyless DDGS is always available and
+	// allowed, so a zero-key deployment is correctly "ready" — that is the
+	// honest default. Readiness is orthogonal to budget: a hard-cap hit is a
+	// /api/budget concern, not a health one.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if !allowReadMethods(w, r) {
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		status := map[string]interface{}{
-			"status":    "ok",
-			"timestamp": time.Now().Format(time.RFC3339),
+		resp := h.svc.ProviderStatus(r.Context())
+		ready := make([]string, 0, len(resp.Providers))
+		for _, p := range resp.Providers {
+			if core.HasCapability(p.Capabilities, core.CapabilitySearch) && p.Available && p.AllowedByPolicy {
+				ready = append(ready, p.Name)
+			}
 		}
-		logEncodeErr("/health", json.NewEncoder(w).Encode(status))
+		body := healthResponse{
+			Status:             "ready",
+			Timestamp:          time.Now().UTC().Format(time.RFC3339),
+			AvailableProviders: ready,
+		}
+		code := http.StatusOK
+		if len(ready) == 0 {
+			body.Status = "not_ready"
+			body.Reason = "no search-capable provider is available and allowed by policy"
+			code = http.StatusServiceUnavailable
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		logEncodeErr("/health", json.NewEncoder(w).Encode(body))
 	})
 
 	// MCP Streamable HTTP endpoint
