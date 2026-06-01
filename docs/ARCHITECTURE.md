@@ -161,11 +161,12 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 | `checkMCPStdioSmoke` | func | `internal/cli/doctor.go:165` | Redirects os.Stdout to pipe, builds `mcpserver.New`, asserts 0 stdout bytes at startup. |
 | `checkMCPProtocolSmoke` | func | `internal/cli/doctor.go:229` | Spawns `<binary> mcp`, runs initialize + tools/list handshake (10s timeout), validates tools + JSON-only stdout. |
 | `rpcIDMatches` | func | `internal/cli/doctor.go:421` | Matches a JSON-RPC id (number or numeric string) against wanted int. |
-| `newResearchCommand` | func | `internal/cli/research.go:15` | `research <question>`; runs `researchPipeline` w/ `--max-steps` (default 3). |
-| `researchPipeline` | func | `internal/cli/research.go:79` | Searches [general,research,docs], dedupes URLs, extracts up to 5 non-pdf/non-reddit sources (truncate 2000), synthesizes summary. |
-| `synthesizeSummary` | func | `internal/cli/research.go:175` | Pure markdown builder (first paragraph, header-strip, 300-char cap); no LLM. |
+| `newResearchCommand` | func | `internal/cli/research.go:12` | `research <question>`; thin wrapper over `core.Service.Research` w/ `--max-steps`; prints sources + short extract previews (no summary). |
+| `printResearchReport` | func | `internal/cli/research.go:54` | Human view: header + sources + short extract previews (full content in `--json`). |
+| `Service.Research` | method | `internal/core/research.go` | Classifies the question, fans `Service.Search` across task-fit routes, extracts `min(sources, max_steps, 5)` non-pdf/non-reddit URLs (truncate 2000); returns evidence (sources + extracts) — NO composed summary (the agent synthesizes). |
+| `Service.SearchAndExtract` | method | `internal/core/service.go` | One search + extract of the top `min(extract_top, 3)` result URLs; per-URL failure is non-fatal (`extract_errors`), URLs de-duplicated. |
 | `newHTTPHandler` | func | `internal/cli/http.go:26` | Wraps `core.Service` + `mcpserver.New` via `buildMCPServer`. |
-| `httpHandler.start` | method | `internal/cli/http.go:36` | Registers `/health`, `/mcp`, `/api/providers`, `/api/budget`, `/api/search`, `/api/extract` w/ 1MiB caps + slowloris timeouts. |
+| `httpHandler.start` | method | `internal/cli/http.go:36` | Registers `/health`, `/mcp`, `/api/providers`, `/api/budget`, `/api/search`, `/api/extract`, `/api/search_and_extract`, `/api/research` w/ 1MiB caps + slowloris timeouts. |
 | `httpHandler.handleMCP` | method | `internal/cli/http.go:158` | POST-only JSON-RPC bridge → `mcp.HandleMessage`; `-32700`/`-32603` envelopes on failure. |
 | `httpBuildContext` | func | `internal/cli/http.go:229` | Injects `InProcessSession` if `Mcp-Session-Id` present, else sets `mcpserver.EphemeralCtxKey`. |
 | `httpSessionForRequest` | func | `internal/cli/http.go:247` | Legacy helper retained only for tests (deprecated path). |
@@ -173,7 +174,7 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 | `parseShellEnvAssignment` | func | `internal/cli/env_file.go:45` | Parses `KEY=VALUE` (supports `export `, comments, quotes); existing env wins. |
 | `parseDoubleQuotedShellValue` | func | `internal/cli/env_file.go:121` | Double-quoted shell values w/ escapes + `os.ExpandEnv`, preserving `\$`. |
 
-**Data flow.** Entry is `root.go:14-24`. Before any service call, `app.go:25` calls `loadDefaultNoleEnvFile()`. `search.go`/`extract.go` parse `--insight` (`app.go:282`), call `runSearch`→`Service.Search`/`Service.Extract`, apply `applyXxxInsightMode`, then `writeJSONTo` or `writeHumanRoutingInsight`. On error with `--json` they emit `buildCLIErrorWithInsightMode`. `plan.go` classify/route-plan call pure core planners (provider-free). `research.go` fans `Service.Search` across 3 task types, dedupes, `Service.Extract` on ≤5 URLs, `synthesizeSummary` (no model). `http.go` re-exposes Service over REST + MCP bridge. `doctor.go --mcp` runs `checkMCPStdioSmoke` (0 stdout) + `checkMCPProtocolSmoke` (subprocess handshake).
+**Data flow.** Entry is `root.go:14-24`. Before any service call, `app.go:25` calls `loadDefaultNoleEnvFile()`. `search.go`/`extract.go` parse `--insight` (`app.go:282`), call `runSearch`→`Service.Search`/`Service.Extract`, apply `applyXxxInsightMode`, then `writeJSONTo` or `writeHumanRoutingInsight`. On error with `--json` they emit `buildCLIErrorWithInsightMode`. `plan.go` classify/route-plan call pure core planners (provider-free). `research.go` is a thin wrapper over `core.Service.Research`, which classifies the question, fans `Service.Search` across task-fit routes, dedupes, and `Service.Extract`s `min(sources, max_steps, 5)` URLs, returning evidence (sources + extracts) with no composed summary; `core.Service.SearchAndExtract` does one search + top-N extract. `http.go` re-exposes Service over REST (incl. `/api/search_and_extract`, `/api/research`) + MCP bridge, with `route_trace` opt-in via `include_trace`. `doctor.go --mcp` runs `checkMCPStdioSmoke` (0 stdout) + `checkMCPProtocolSmoke` (subprocess handshake).
 
 ### Area: cli-setup — `nole setup` MCP client config writers + local-extract Scrapling bootstrap
 
@@ -206,7 +207,7 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 
 ### Area: mcp — MCP server surface (stdio + HTTP) and tool registration (`internal/cli/{mcp.go,serve.go}` + `internal/mcpserver/*`)
 
-**Purpose.** Exposes the engine as a Model Context Protocol server over two transports: stdio (`nole mcp`) for local single-process agent usage, and Streamable-HTTP (`nole serve --mcp`) for team/remote usage. Constructs an `mcp-go` server, registers four tools (search, extract, provider_status, budget_status) wrapping `core.Service`, serializes responses/errors as JSON. Central concern: once-per-session emission of a setup_tip with transport-aware semantics (stdio one-per-process, HTTP persistent-per-session, HTTP ephemeral-always) and a bounded dedup map.
+**Purpose.** Exposes the engine as a Model Context Protocol server over two transports: stdio (`nole mcp`) for local single-process agent usage, and Streamable-HTTP (`nole serve --mcp`) for team/remote usage. Constructs an `mcp-go` server, registers the tools (search, extract, search_and_extract, provider_status, budget_status, research — extract and search_and_extract gated on a configured extract provider) wrapping `core.Service`, serializes responses/errors as JSON; `search`/`extract`/`search_and_extract` omit `route_trace` by default unless `include_trace` is set. Central concern: once-per-session emission of a setup_tip with transport-aware semantics (stdio one-per-process, HTTP persistent-per-session, HTTP ephemeral-always) and a bounded dedup map.
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|

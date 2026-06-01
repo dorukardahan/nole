@@ -109,6 +109,31 @@ type ExtractResponse struct {
 	RouteTrace     []RouteAttempt    `json:"route_trace,omitempty"`
 }
 
+// SearchAndExtractRequest drives the combined search→read primitive: search,
+// then extract the top ExtractTop result URLs in a single call.
+type SearchAndExtractRequest struct {
+	Query      string   `json:"query"`
+	Task       TaskType `json:"task,omitempty"`
+	Limit      int      `json:"limit"`
+	ExtractTop int      `json:"extract_top"`
+}
+
+// SearchAndExtractResponse pairs the search results with the extracted content of
+// the top result(s). ExtractErrors records per-URL extract failures so a single
+// bad URL is observable rather than silently dropped — the call itself stays
+// successful as long as the search succeeded.
+type SearchAndExtractResponse struct {
+	Search        SearchResponse    `json:"search"`
+	Extracts      []ExtractResponse `json:"extracts"`
+	ExtractErrors []ExtractError    `json:"extract_errors,omitempty"`
+}
+
+// ExtractError is a sanitized per-URL extract failure inside SearchAndExtract.
+type ExtractError struct {
+	URL   string `json:"url"`
+	Error string `json:"error"`
+}
+
 type RouteAttempt struct {
 	Provider           string            `json:"provider"`
 	Status             string            `json:"status"`

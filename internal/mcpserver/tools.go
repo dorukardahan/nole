@@ -11,13 +11,17 @@ import (
 	"sync"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/safeerr"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 const (
-	searchToolDescription  = "Search the public web for internet research, current information, technical docs, news, fact-checking, code examples, pricing, people/company lookups, or deep-research source discovery using free-tier task-based provider routing."
-	extractToolDescription = "Extract clean readable content from a public web page URL for summarization, citation, documentation lookup, or research context using free-tier routing with local URL safety preflight."
+	searchToolDescription           = "Search the public web for internet research, current information, technical docs, news, fact-checking, code examples, pricing, people/company lookups, or deep-research source discovery using free-tier task-based provider routing."
+	extractToolDescription          = "Extract clean readable content from a public web page URL for summarization, citation, documentation lookup, or research context using free-tier routing with local URL safety preflight."
+	searchAndExtractToolDescription = "Search the public web and extract the clean readable content of the top result(s) in a single call — the combined search-then-read primitive for grounding an answer or following up on a hit."
+	researchToolDescription         = "Run a multi-step research pass (search across task-fit routes, then extract top sources) and return the deduplicated sources and extracted content for the agent to synthesize. Returns evidence, not a composed answer."
+	includeTraceDescription         = "Include the full per-attempt route_trace debug blob in the response (default false; the compact routing_insight is always present)."
 )
 
 // tipStateMaxEntries caps the number of client-supplied session IDs tracked in
@@ -71,6 +75,7 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		mcp.WithString("query", mcp.Required(), mcp.Description("Natural-language web search or internet research query")),
 		mcp.WithString("task", mcp.Description(taskDesc), mcp.Enum(buildTaskEnumValues()...)),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of search results to return")),
+		mcp.WithBoolean("include_trace", mcp.Description(includeTraceDescription)),
 	)
 	// tipState tracks which client-supplied session IDs have already received
 	// the setup_tip. Only persistent sessions (client-supplied Mcp-Session-Id
@@ -115,6 +120,12 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		resp, err := svc.Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit})
 		if err != nil {
 			return mcp.NewToolResultError(string(toolErrorJSON("search", err, resp.Route, resp.RouteTrace))), nil
+		}
+		// route_trace is opt-in on the agent surface: omit the debug blob by
+		// default (the compact routing_insight stays). Success path only — the
+		// error envelope above keeps its trace.
+		if !req.GetBool("include_trace", false) {
+			resp.RouteTrace = nil
 		}
 
 		// Check whether this is an ephemeral HTTP request (no Mcp-Session-Id
@@ -191,6 +202,7 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 			mcp.WithDescription(extractToolDescription),
 			mcp.WithString("url", mcp.Required(), mcp.Description("Public http(s) web page URL to read and extract")),
 			mcp.WithString("format", mcp.Description("Output format, default markdown")),
+			mcp.WithBoolean("include_trace", mcp.Description(includeTraceDescription)),
 		)
 		s.AddTool(extractTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			url, err := req.RequireString("url")
@@ -201,6 +213,46 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 			resp, err := svc.Extract(ctx, core.ExtractRequest{URL: url, Format: format})
 			if err != nil {
 				return mcp.NewToolResultError(string(toolErrorJSON("extract", err, resp.Route, resp.RouteTrace))), nil
+			}
+			if !req.GetBool("include_trace", false) {
+				resp.RouteTrace = nil
+			}
+			b, err := json.MarshalIndent(resp, "", "  ")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(string(b)), nil
+		})
+
+		// search_and_extract is gated alongside extract: its extract leg is a
+		// no-op without a configured extract provider, so advertising it would
+		// mislead.
+		saeTool := mcp.NewTool(
+			"search_and_extract",
+			mcp.WithDescription(searchAndExtractToolDescription),
+			mcp.WithString("query", mcp.Required(), mcp.Description("Natural-language web search or internet research query")),
+			mcp.WithString("task", mcp.Description(taskDesc), mcp.Enum(buildTaskEnumValues()...)),
+			mcp.WithNumber("limit", mcp.Description("Maximum number of search results to return")),
+			mcp.WithNumber("extract_top", mcp.Description("How many of the top results to also extract (default 1, max 3)")),
+			mcp.WithBoolean("include_trace", mcp.Description(includeTraceDescription)),
+		)
+		s.AddTool(saeTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			query, err := req.RequireString("query")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			task := core.NormalizeTaskParam(req.GetString("task", ""))
+			limit := int(req.GetFloat("limit", 5))
+			extractTop := int(req.GetFloat("extract_top", 1))
+			resp, err := svc.SearchAndExtract(ctx, core.SearchAndExtractRequest{Query: query, Task: task, Limit: limit, ExtractTop: extractTop})
+			if err != nil {
+				return mcp.NewToolResultError(string(toolErrorJSON("search_and_extract", err, resp.Search.Route, resp.Search.RouteTrace))), nil
+			}
+			if !req.GetBool("include_trace", false) {
+				resp.Search.RouteTrace = nil
+				for i := range resp.Extracts {
+					resp.Extracts[i].RouteTrace = nil
+				}
 			}
 			b, err := json.MarshalIndent(resp, "", "  ")
 			if err != nil {
@@ -222,6 +274,34 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 	budgetTool := mcp.NewTool("budget_status", mcp.WithDescription("Show local cost policy, cap, spend, and free-tier budget/quota status"))
 	s.AddTool(budgetTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		b, err := json.MarshalIndent(svc.BudgetStatus(), "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(b)), nil
+	})
+
+	// research is registered unconditionally: even with no extract provider it
+	// still returns deduplicated multi-source SOURCES (honest evidence), so
+	// gating it would hide a genuinely useful capability.
+	researchTool := mcp.NewTool(
+		"research",
+		mcp.WithDescription(researchToolDescription),
+		mcp.WithString("question", mcp.Required(), mcp.Description("The research question to investigate across multiple sources")),
+		mcp.WithNumber("max_steps", mcp.Description("Maximum search passes; also caps how many sources are extracted (default 3)")),
+	)
+	s.AddTool(researchTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		question, err := req.RequireString("question")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		maxSteps := int(req.GetFloat("max_steps", 3))
+		report, err := svc.Research(ctx, question, maxSteps)
+		if err != nil {
+			// ResearchReport carries no route/trace, so the toolErrorJSON envelope
+			// (which requires them) does not apply; return a sanitized message.
+			return mcp.NewToolResultError(safeerr.Message(err)), nil
+		}
+		b, err := json.MarshalIndent(report, "", "  ")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

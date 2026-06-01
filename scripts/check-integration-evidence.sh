@@ -26,7 +26,7 @@ grep -Fq "MCP stdio smoke: verified by nole doctor --mcp" "$target" \
   || fail "must record MCP stdio smoke evidence"
 grep -Fq "MCP smoke binary: temporary binary built from current repository state" "$target" \
   || fail "must state MCP smoke uses the current repository binary"
-grep -Fq "Tools observed: search, extract, provider_status, budget_status" "$target" \
+grep -Fq "Tools observed: search, extract, search_and_extract, provider_status, budget_status, research" "$target" \
   || fail "must record required MCP tools"
 grep -Fq "Repo-tested setup writers: Claude Code, Codex CLI, OpenCode, Cursor, Kimi" "$target" \
   || fail "must distinguish repo-tested setup writers"

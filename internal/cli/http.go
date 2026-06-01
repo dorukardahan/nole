@@ -105,9 +105,10 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		// loopback; this matters when the user passes --listen 0.0.0.0.
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var req struct {
-			Query string `json:"query"`
-			Task  string `json:"task"`
-			Limit int    `json:"limit"`
+			Query        string `json:"query"`
+			Task         string `json:"task"`
+			Limit        int    `json:"limit"`
+			IncludeTrace bool   `json:"include_trace"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeHTTPJSONError(w, http.StatusBadRequest, map[string]string{"error": safeerr.Message(err)})
@@ -129,6 +130,11 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			writeHTTPJSONError(w, http.StatusInternalServerError, buildCLIError("search", err, resp.Route, resp.RouteTrace))
 			return
 		}
+		// route_trace is opt-in on the agent surface; omit by default (the compact
+		// routing_insight stays). The error path above keeps its trace.
+		if !req.IncludeTrace {
+			resp.RouteTrace = nil
+		}
 		w.Header().Set("Content-Type", "application/json")
 		logEncodeErr("/api/search", json.NewEncoder(w).Encode(resp))
 	})
@@ -141,8 +147,9 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var req struct {
-			URL    string `json:"url"`
-			Format string `json:"format"`
+			URL          string `json:"url"`
+			Format       string `json:"format"`
+			IncludeTrace bool   `json:"include_trace"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeHTTPJSONError(w, http.StatusBadRequest, map[string]string{"error": safeerr.Message(err)})
@@ -156,8 +163,78 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			writeHTTPJSONError(w, http.StatusInternalServerError, buildCLIError("extract", err, resp.Route, resp.RouteTrace))
 			return
 		}
+		if !req.IncludeTrace {
+			resp.RouteTrace = nil
+		}
 		w.Header().Set("Content-Type", "application/json")
 		logEncodeErr("/api/extract", json.NewEncoder(w).Encode(resp))
+	})
+
+	// Combined search→read primitive: search, then extract the top result(s).
+	mux.HandleFunc("/api/search_and_extract", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var req struct {
+			Query        string `json:"query"`
+			Task         string `json:"task"`
+			Limit        int    `json:"limit"`
+			ExtractTop   int    `json:"extract_top"`
+			IncludeTrace bool   `json:"include_trace"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeHTTPJSONError(w, http.StatusBadRequest, map[string]string{"error": safeerr.Message(err)})
+			return
+		}
+		resp, err := h.svc.SearchAndExtract(r.Context(), core.SearchAndExtractRequest{
+			Query:      req.Query,
+			Task:       core.NormalizeTaskParam(req.Task),
+			Limit:      req.Limit,
+			ExtractTop: req.ExtractTop,
+		})
+		if err != nil {
+			writeHTTPJSONError(w, http.StatusInternalServerError, buildCLIError("search_and_extract", err, resp.Search.Route, resp.Search.RouteTrace))
+			return
+		}
+		if !req.IncludeTrace {
+			resp.Search.RouteTrace = nil
+			for i := range resp.Extracts {
+				resp.Extracts[i].RouteTrace = nil
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		logEncodeErr("/api/search_and_extract", json.NewEncoder(w).Encode(resp))
+	})
+
+	// Multi-step research → structured evidence (sources + extracts), no answer.
+	mux.HandleFunc("/api/research", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var req struct {
+			Question string `json:"question"`
+			MaxSteps int    `json:"max_steps"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeHTTPJSONError(w, http.StatusBadRequest, map[string]string{"error": safeerr.Message(err)})
+			return
+		}
+		if req.MaxSteps == 0 {
+			req.MaxSteps = 3
+		}
+		report, err := h.svc.Research(r.Context(), req.Question, req.MaxSteps)
+		if err != nil {
+			// ResearchReport has no route/trace, so buildCLIError (which needs them)
+			// does not apply; return a minimal sanitized envelope.
+			writeHTTPJSONError(w, http.StatusInternalServerError, map[string]string{"operation": "research", "error": safeerr.Message(err)})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		logEncodeErr("/api/research", json.NewEncoder(w).Encode(report))
 	})
 
 	return mux

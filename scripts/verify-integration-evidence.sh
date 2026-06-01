@@ -36,8 +36,8 @@ common_env=(
 "${common_env[@]}" "$nole" bench --evidence-md >"$tmpdir/route-evidence.md"
 
 mcp_tools="unknown"
-if grep -Fq 'tools: [budget_status extract provider_status search]' "$tmpdir/doctor-mcp.txt"; then
-  mcp_tools="search, extract, provider_status, budget_status"
+if grep -Fq 'tools: [budget_status extract provider_status research search search_and_extract]' "$tmpdir/doctor-mcp.txt"; then
+  mcp_tools="search, extract, search_and_extract, provider_status, budget_status, research"
 fi
 
 provider_status="generated with provider keys unset"
