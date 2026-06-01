@@ -345,6 +345,13 @@ resolve_version() {
 
 main() {
   local os arch asset version base
+  # Reject an unknown NOLE_INSTALL_VERIFY early. Without this, a typo such as
+  # `required` or `REQUIRE` would fall through to `auto` semantics and silently
+  # weaken the very policy the user was trying to strengthen — fail loud instead.
+  case "$VERIFY_MODE" in
+    auto|require|off) : ;;
+    *) die "invalid NOLE_INSTALL_VERIFY='${VERIFY_MODE}' (expected one of: auto, require, off)" ;;
+  esac
   os="$(detect_os)"
   arch="$(detect_arch)"
   asset="nole-${os}-${arch}"

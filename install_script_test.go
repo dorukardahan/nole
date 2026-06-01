@@ -499,6 +499,29 @@ func TestInstall_MalformedReleaseTag_FailsClosed(t *testing.T) {
 	}
 }
 
+// An unknown NOLE_INSTALL_VERIFY value must fail early, not silently degrade to
+// `auto` (which would weaken the strict policy a user typo'd toward). (Codex PR #44.)
+func TestInstall_InvalidVerifyMode_Fails(t *testing.T) {
+	skipUnlessInstallerToolsPresent(t)
+	body := []byte("invalid-verify-mode-binary\n")
+	srv, _ := validSumServer(t, "v0.10.0", body)
+	defer srv.Close()
+
+	installDir := t.TempDir()
+	out, err := runInstallerEnv(t, srv.URL, "testowner/testrepo", installDir,
+		"NOLE_INSTALL_VERIFY=required", // common typo for `require`
+	)
+	if err == nil {
+		t.Fatalf("an unknown NOLE_INSTALL_VERIFY must fail early; output:\n%s", out)
+	}
+	if !strings.Contains(out, "invalid NOLE_INSTALL_VERIFY") {
+		t.Fatalf("expected an explicit invalid-mode error:\n%s", out)
+	}
+	if _, statErr := os.Stat(filepath.Join(installDir, "nole")); !os.IsNotExist(statErr) {
+		t.Fatalf("nothing should install when the verify mode is invalid")
+	}
+}
+
 // A genuine non-release ref (not version-shaped) still soft-skips, so an install
 // pinned to a branch/dev ref is not bricked by the malformed-tag guard above.
 func TestInstall_NonReleaseRef_SoftSkip(t *testing.T) {
