@@ -44,7 +44,7 @@ func TestTavilySearchHappyPath(t *testing.T) {
 		resp := tavilySearchResponse{
 			Query: body.Query,
 			Results: []tavilyResult{
-				{Title: "Tavily Result", URL: "https://example.com", Content: "test content", Score: 0.95},
+				{Title: "Tavily Result", URL: "https://example.com", Content: "test content"},
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")

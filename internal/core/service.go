@@ -50,9 +50,13 @@ func NewService(registry *Registry, ledger QuotaLedger, matrix RouteMatrix, opts
 }
 
 func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
-	if req.Task == "" {
-		req.Task = TaskGeneral
-	}
+	// Resolve the task as the very first step: an explicitly-supplied known task
+	// wins; otherwise the deterministic planner classifies the query so the
+	// curated task→provider matrix actually fires instead of everything
+	// defaulting to general. `source` is observability only — the planner is a
+	// static keyword table, not intelligence.
+	task, source := resolveTask(req)
+	req.Task = task
 	if req.Limit <= 0 {
 		req.Limit = 5
 	} else if req.Limit > maxSearchLimit {
@@ -62,12 +66,17 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 	// A caller that is already cancelled does no work and surfaces its own
 	// cancellation immediately.
 	if err := ctx.Err(); err != nil {
-		return cancelledSearchResponse(req, route), err
+		return cancelledSearchResponse(req, route, source), err
 	}
 	if s.cache != nil {
 		if cached, ok := s.cache.GetSearch(req); ok {
 			cached.Query = req.Query
 			cached.Task = req.Task
+			// Resolution happens before the cache key (which keys on the resolved
+			// task), so an omitted-task and an explicit-task caller can share one
+			// entry via different sources. Overwrite with THIS call's source so it
+			// stays honest, mirroring the Query/Task overwrite above.
+			cached.TaskSource = source
 			if len(cached.Route) == 0 {
 				cached.Route = append([]string(nil), route...)
 			}
@@ -89,28 +98,56 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 	//     fetch returns, so distinct/sequential queries are never coalesced.
 	key := searchCacheKey(req)
 	ch := s.sfSearch.DoChan(key, func() (any, error) {
-		return s.searchUncached(context.WithoutCancel(ctx), req, route)
+		return s.searchUncached(context.WithoutCancel(ctx), req, route, source)
 	})
 	select {
 	case <-ctx.Done():
-		return cancelledSearchResponse(req, route), ctx.Err()
+		return cancelledSearchResponse(req, route, source), ctx.Err()
 	case res := <-ch:
 		resp := res.Val.(SearchResponse)
 		resp.Query = req.Query
 		resp.Task = req.Task
+		resp.TaskSource = source
+		// A follower coalesced onto a leader with the same resolved task but a
+		// different source receives the leader's response, including its
+		// already-built insight. Rebuild it so the "(task detected/default)"
+		// qualifier matches THIS caller's TaskSource. Skip on the error path: its
+		// insight (BuildErrorRoutingInsight) carries no source qualifier, so there
+		// is nothing to reconcile.
+		if res.Err == nil {
+			resp.RoutingInsight = BuildSearchRoutingInsight(resp)
+		}
 		return resp, res.Err
 	}
 }
 
+// resolveTask decides the task a search will route on, and how that task was
+// chosen. An explicitly-supplied known search task is honored verbatim
+// (supplied); otherwise — empty, unknown, or the extract key on a search call —
+// the deterministic planner classifies the query (detected when it finds a
+// signal, default when it falls back to general). Leniency lives here: a bogus
+// task never errors, it just classifies. The planner is pure keyword matching,
+// so this stays deterministic.
+func resolveTask(req SearchRequest) (TaskType, TaskSource) {
+	if IsKnownSearchTask(req.Task) {
+		return req.Task, TaskSourceSupplied
+	}
+	classification := ClassifyQuery(req.Query, PlanOptions{})
+	if classification.PrimaryTask != TaskGeneral {
+		return classification.PrimaryTask, TaskSourceDetected
+	}
+	return TaskGeneral, TaskSourceDefault
+}
+
 // cancelledSearchResponse builds the minimal response returned when the caller's
-// context is already done, so callers can still read Query/Task/Route.
-func cancelledSearchResponse(req SearchRequest, route []string) SearchResponse {
-	resp := SearchResponse{Query: req.Query, Task: req.Task, Route: append([]string(nil), route...)}
+// context is already done, so callers can still read Query/Task/Route/TaskSource.
+func cancelledSearchResponse(req SearchRequest, route []string, source TaskSource) SearchResponse {
+	resp := SearchResponse{Query: req.Query, Task: req.Task, TaskSource: source, Route: append([]string(nil), route...)}
 	resp.RoutingInsight = BuildErrorRoutingInsight("search", resp.Route, nil)
 	return resp
 }
 
-func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route []string) (SearchResponse, error) {
+func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route []string, source TaskSource) (SearchResponse, error) {
 	var lastErr error
 	trace := make([]RouteAttempt, 0, len(route)+1)
 	if s.cache != nil {
@@ -153,6 +190,7 @@ func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route [
 		}
 		resp.Query = req.Query
 		resp.Task = req.Task
+		resp.TaskSource = source
 		resp.Provider = provider.Name()
 		resp.Route = append([]string(nil), route...)
 		if len(resp.Results) == 0 {
@@ -160,6 +198,11 @@ func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route [
 			trace = append(trace, attemptWithDecision(name, "failed", "empty_results", decision, latency, 0))
 			continue
 		}
+		// Surface the provider's freshness signal in date order for recency tasks
+		// (news/factcheck). Pure pass-through reorder of provider-supplied dates —
+		// never drops/filters/judges, never touches Score. Run once here so the
+		// cached slice and the returned slice are identical.
+		applyRecencySort(req.Task, resp.Results)
 		// Only debit quota on a successful response. Recording before the
 		// provider call (the prior shape) burned free-tier quota on
 		// transient outages, 5xx responses, empty results and invalid keys,
@@ -192,11 +235,11 @@ func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route [
 		return resp, nil
 	}
 	if lastErr != nil {
-		resp := SearchResponse{Query: req.Query, Task: req.Task, Route: append([]string(nil), route...), RouteTrace: trace}
+		resp := SearchResponse{Query: req.Query, Task: req.Task, TaskSource: source, Route: append([]string(nil), route...), RouteTrace: trace}
 		resp.RoutingInsight = BuildErrorRoutingInsight("search", resp.Route, resp.RouteTrace)
 		return resp, lastErr
 	}
-	resp := SearchResponse{Query: req.Query, Task: req.Task, Route: append([]string(nil), route...), RouteTrace: trace}
+	resp := SearchResponse{Query: req.Query, Task: req.Task, TaskSource: source, Route: append([]string(nil), route...), RouteTrace: trace}
 	resp.RoutingInsight = BuildErrorRoutingInsight("search", resp.Route, resp.RouteTrace)
 	return resp, NoFreeQuotaError{Task: req.Task, Provider: route}
 }

@@ -215,6 +215,13 @@ func intCachePart(v int) string {
 	return strconv.Itoa(v)
 }
 
+// cloneSearchResponse makes a shallow-by-value copy: the Results slice is
+// re-allocated, but each SearchResult is copied by value, so the
+// SearchResult.Score *float64 pointer is SHARED across cache entries. Score is
+// treated as immutable after adapter construction — never mutate *Score in
+// place, or this aliasing becomes a data race. The recency sort reorders
+// SearchResult values (it moves the pointer, never dereferences-and-assigns), so
+// it is safe.
 func cloneSearchResponse(resp SearchResponse) SearchResponse {
 	resp.Results = append([]SearchResult(nil), resp.Results...)
 	resp.Route = append([]string(nil), resp.Route...)

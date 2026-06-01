@@ -79,7 +79,7 @@ var plannerRules = []intentRule{
 		{"arxiv", 5}, {"paper", 4}, {"papers", 4}, {"scholar", 4}, {"doi", 4}, {"survey", 3}, {"citation", 3}, {"journal", 3}, {"academic", 3}, {"research paper", 4}, {"literature", 2},
 	}},
 	{task: TaskNews, label: "news", phrases: []weightedPhrase{
-		{"latest", 4}, {"news", 5}, {"today", 3}, {"recent", 3}, {"current", 2}, {"announced", 3}, {"announcement", 3}, {"changelog", 2}, {"release notes", 2}, {"breaking", 4},
+		{"latest", 4}, {"news", 5}, {"today", 3}, {"recent", 3}, {"current", 2}, {"announced", 3}, {"announcement", 3}, {"changelog", 2}, {"release notes", 2}, {"breaking", 4}, {"this week", 3}, {"tonight", 3}, {"upcoming", 3}, {"concert", 3}, {"concerts", 3},
 	}},
 	{task: TaskCode, label: "code", phrases: []weightedPhrase{
 		{"github", 4}, {"code", 4}, {"implementation", 4}, {"implement", 3}, {"example", 2}, {"examples", 2}, {"snippet", 3}, {"function", 2}, {"library", 2}, {"package", 1}, {"bug", 3}, {"error", 3}, {"stack overflow", 3}, {"stackoverflow", 3},
@@ -95,6 +95,9 @@ var plannerRules = []intentRule{
 	}},
 	{task: TaskResearch, label: "research", phrases: []weightedPhrase{
 		{"compare", 2}, {"comparison", 2}, {"landscape", 3}, {"overview", 2}, {"alternatives", 2}, {"deep dive", 3},
+	}},
+	{task: TaskSemantic, label: "semantic", phrases: []weightedPhrase{
+		{"semantic search", 4}, {"related concepts", 3}, {"find similar", 3}, {"conceptually", 3},
 	}},
 }
 
@@ -259,7 +262,7 @@ func taskLabel(task TaskType) string {
 }
 
 func taskPriority(task TaskType) int {
-	for i, candidate := range []TaskType{TaskDocs, TaskPricing, TaskAcademic, TaskNews, TaskCode, TaskSocial, TaskFactcheck, TaskPeople, TaskResearch, TaskGeneral} {
+	for i, candidate := range []TaskType{TaskDocs, TaskPricing, TaskAcademic, TaskNews, TaskCode, TaskSocial, TaskFactcheck, TaskPeople, TaskResearch, TaskSemantic, TaskGeneral} {
 		if task == candidate {
 			return i
 		}

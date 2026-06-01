@@ -62,6 +62,9 @@ func (p Provider) Capabilities() []core.Capability {
 type firecrawlSearchRequest struct {
 	Query string `json:"query"`
 	Limit int    `json:"limit"`
+	// TBS is set only for recency tasks (news/factcheck) → "qdr:m" (past month);
+	// omitempty keeps every other task's request byte-identical to before.
+	TBS string `json:"tbs,omitempty"`
 }
 
 type firecrawlSearchResponse struct {
@@ -101,6 +104,14 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		Query: req.Query,
 		Limit: limit,
 	}
+	// Task-aware freshness (allowlist): recency tasks get a conservative past-month
+	// window. firecrawl web-source results carry no per-result date (only
+	// sources=news would, deferred to v0.6.0), so this filters but adds no
+	// PublishedAt to pass through yet.
+	switch req.Task {
+	case core.TaskNews, core.TaskFactcheck:
+		body.TBS = "qdr:m"
+	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: marshal request: %w", err)
@@ -129,6 +140,8 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: decode response: %w", err)
 	}
 
+	// Firecrawl web-source results carry no relevance score or publication date,
+	// so Score stays nil and PublishedAt empty (never fabricated).
 	results := make([]core.SearchResult, 0, len(fcresp.Data.Web))
 	for _, r := range fcresp.Data.Web {
 		snippet := r.Description

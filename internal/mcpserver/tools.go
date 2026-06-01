@@ -69,7 +69,7 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		"search",
 		mcp.WithDescription(searchToolDescription),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Natural-language web search or internet research query")),
-		mcp.WithString("task", mcp.Description(taskDesc)),
+		mcp.WithString("task", mcp.Description(taskDesc), mcp.Enum(buildTaskEnumValues()...)),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of search results to return")),
 	)
 	// tipState tracks which client-supplied session IDs have already received
@@ -106,7 +106,11 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		task := core.TaskType(req.GetString("task", "general"))
+		// NormalizeTaskParam maps aliases (community→social) and returns "" for
+		// blank/unknown/extract so the service classifies the query instead of
+		// misrouting. The enum above is advisory only (mcp-go does not enforce
+		// it), so leniency must live here, not in an error.
+		task := core.NormalizeTaskParam(req.GetString("task", ""))
 		limit := int(req.GetFloat("limit", 5))
 		resp, err := svc.Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit})
 		if err != nil {
@@ -234,5 +238,20 @@ func buildTaskDescription() string {
 		}
 		parts = append(parts, fmt.Sprintf("%s (%s)", string(t), core.TaskDescription(t)))
 	}
-	return "Task type: " + strings.Join(parts, ", ")
+	return "Optional. If omitted, Nólë auto-detects the task from the query. Task type: " + strings.Join(parts, ", ")
+}
+
+// buildTaskEnumValues returns the canonical search-task values advertised on the
+// MCP `task` enum (every TaskType except the extract routing key). The enum is
+// advisory — leniency and aliasing are enforced server-side via
+// NormalizeTaskParam — but it typo-proofs the common case for the agent.
+func buildTaskEnumValues() []string {
+	values := make([]string, 0, len(core.TaskTypes()))
+	for _, t := range core.TaskTypes() {
+		if t == core.TaskExtract {
+			continue
+		}
+		values = append(values, string(t))
+	}
+	return values
 }
