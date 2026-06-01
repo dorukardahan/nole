@@ -780,14 +780,26 @@ func mergeLedgerEntries(seeds map[string]QuotaEntry, loaded []QuotaEntry) map[st
 			if strings.TrimSpace(loadedEntry.PeriodStart) != "" {
 				merged.PeriodStart = loadedEntry.PeriodStart
 			}
-			// If the seeded floor dropped below what the on-disk entry was sized
-			// for (e.g. the v0.7.1 tavily/firecrawl 1000->500 credit-vs-call
-			// correction), the inherited FreeRemaining can exceed the new ceiling
-			// and keep over-reading until the next monthly rollover. Re-base it on
-			// calls already consumed this period against the NEW floor so the
-			// correction lands on the first load. merged.FreeQuota is already the
-			// seed's. Idempotent once disk carries the new floor.
-			merged.FreeRemaining = rebasedRemainingForFloor(loadedEntry.FreeQuota, loadedEntry.FreeRemaining, seed.FreeQuota)
+			if seed.FreeQuota > 0 {
+				// Seed defines the current free-tier floor (incl. the v0.7.1
+				// 1000->500/250 credit-vs-call correction). Re-base the inherited
+				// counter onto it, preserving calls already consumed so the
+				// correction lands on the first load. merged.FreeQuota is already the
+				// seed's. Idempotent once disk carries the new floor.
+				merged.FreeRemaining = rebasedRemainingForFloor(loadedEntry.FreeQuota, loadedEntry.FreeRemaining, seed.FreeQuota)
+			} else if loadedEntry.FreeQuota > 0 {
+				// Seed has no free floor (premium-capable seeds FreeQuota=0) but the
+				// loaded entry CARRIES free-tier accounting from an earlier
+				// free->premium transition. Preserve FreeQuota/RefreshWindow in
+				// memory so a paid-mode Record (recordLocked persists the in-memory
+				// entry) does not write FreeQuota=0 and wipe the anti-oscillation
+				// state. The floor is re-applied and re-based when paid mode is later
+				// disabled and the free-tier seed returns.
+				merged.FreeQuota = loadedEntry.FreeQuota
+				if loadedEntry.RefreshWindow != "" {
+					merged.RefreshWindow = loadedEntry.RefreshWindow
+				}
+			}
 		} else if loadedEntry.FreeQuota > 0 {
 			merged.FreeRemaining = loadedEntry.FreeRemaining
 			merged.FreeQuota = loadedEntry.FreeQuota

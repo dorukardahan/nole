@@ -203,10 +203,16 @@ func TestPremiumReloadPreservesCarriedQuotaForAntiOscillation(t *testing.T) {
 
 	// Reload #1: still in paid mode -> premium seed (FreeQuota=0).
 	premiumSeed := []QuotaEntry{{Provider: "tavily", CostClass: CostClassPremiumCapable}}
-	if _, err := NewFileQuotaLedgerWithPolicy(path, QuotaPolicy{Policy: CostPolicyFreeFirst}, premiumSeed); err != nil {
+	pl, err := NewFileQuotaLedgerWithPolicy(path, QuotaPolicy{Policy: CostPolicyFreeFirst}, premiumSeed)
+	if err != nil {
 		t.Fatalf("construct premium ledger: %v", err)
 	}
-	// The carried free_quota must survive on disk (NOT persisted to 0).
+	// In MEMORY the premium entry must still carry the free-tier accounting, so a
+	// later persist (e.g. a paid Record) cannot write FreeQuota=0.
+	if pm, _ := pl.Get("tavily"); pm.FreeQuota != 1000 {
+		t.Fatalf("premium reload must carry FreeQuota=1000 in memory, got %d", pm.FreeQuota)
+	}
+	// The carried free_quota must also survive on disk (NOT persisted to 0).
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read ledger: %v", err)
@@ -234,6 +240,73 @@ func TestPremiumReloadPreservesCarriedQuotaForAntiOscillation(t *testing.T) {
 	got, _ := ledger.Get("tavily")
 	if got.CostClass != CostClassFreeTierBYOK || got.FreeQuota != 500 || got.FreeRemaining != 350 {
 		t.Fatalf("anti-oscillation: paid-off toggle should rebase to 500/350 (consumed 150 preserved), got class=%s quota=%d remaining=%d", got.CostClass, got.FreeQuota, got.FreeRemaining)
+	}
+}
+
+// Codex P2 (round 5): a paid Record must not wipe the carried free-tier quota.
+// recordLocked persists the in-memory entry; if a premium reload had dropped the
+// carried FreeQuota to 0, the first paid call would write 0 to disk and a later
+// paid-off toggle would grant a fresh floor. Verify the carried quota survives a
+// paid Record and the subsequent free reload still rebases to the lowered floor.
+func TestPaidRecordPreservesCarriedQuotaForAntiOscillation(t *testing.T) {
+	prevNow := nowUTC
+	defer func() { nowUTC = prevNow }()
+	nowUTC = func() time.Time {
+		ts, _ := time.Parse("2006-01", "2026-06")
+		return ts
+	}
+
+	path := filepath.Join(t.TempDir(), "quota-ledger.json")
+	payload := `{
+  "schema_version": 2,
+  "policy": {"policy": "cost-capped", "hard_cap_cents": 100},
+  "entries": [
+    {"provider": "tavily", "cost_class": "premium-capable", "free_remaining": 850, "free_quota": 1000, "estimated_cost_cents": 5, "refresh_window": "monthly", "period_start": "2026-06", "keyless_free": false, "unknown": false}
+  ],
+  "updated_at": "2026-06-01T00:00:00Z"
+}`
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatalf("write ledger: %v", err)
+	}
+
+	// Paid mode ON under a cost-capped policy that allows the call (est 5 <= 100).
+	policy := QuotaPolicy{Policy: CostPolicyCostCapped, HardCapCents: 100}
+	premiumSeed := []QuotaEntry{{Provider: "tavily", CostClass: CostClassPremiumCapable, EstimatedCostCents: 5}}
+	ledger, err := NewFileQuotaLedgerWithPolicy(path, policy, premiumSeed)
+	if err != nil {
+		t.Fatalf("construct premium ledger: %v", err)
+	}
+	// A paid call records spend and persists the in-memory entry.
+	if err := ledger.Record("tavily"); err != nil {
+		t.Fatalf("paid Record should be allowed under cost-capped within cap: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read ledger: %v", err)
+	}
+	if strings.Contains(string(raw), `"free_quota": 0`) {
+		t.Fatalf("paid Record wiped the carried free_quota (persisted 0):\n%s", raw)
+	}
+	if !strings.Contains(string(raw), `"free_quota": 1000`) {
+		t.Fatalf("paid Record should preserve carried free_quota=1000:\n%s", raw)
+	}
+
+	// Now disable paid mode: the carried accounting must rebase to the new floor.
+	freeSeed := []QuotaEntry{{
+		Provider:      "tavily",
+		CostClass:     CostClassFreeTierBYOK,
+		FreeRemaining: 500,
+		FreeQuota:     500,
+		RefreshWindow: RefreshMonthly,
+		PeriodStart:   "2026-06",
+	}}
+	free, err := NewFileQuotaLedgerWithPolicy(path, QuotaPolicy{Policy: CostPolicyFreeFirst}, freeSeed)
+	if err != nil {
+		t.Fatalf("construct free ledger: %v", err)
+	}
+	got, _ := free.Get("tavily")
+	if got.CostClass != CostClassFreeTierBYOK || got.FreeQuota != 500 || got.FreeRemaining != 350 {
+		t.Fatalf("after paid Record + paid-off toggle, want free 500/350 (consumed 150 preserved), got class=%s quota=%d remaining=%d", got.CostClass, got.FreeQuota, got.FreeRemaining)
 	}
 }
 
