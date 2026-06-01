@@ -139,6 +139,11 @@ func TestConfigDumpIsReadOnly(t *testing.T) {
 // A credential-bearing NOLE_QUOTA_LEDGER_PATH (e.g. s3://user:pass@host) must
 // be redacted in the ledger_path field, not just in config_env.
 func TestConfigDumpRedactsCredentialLedgerPath(t *testing.T) {
+	// defaultService() builds a file-backed ledger from NOLE_QUOTA_LEDGER_PATH;
+	// a credential URL path would otherwise create a junk file/dir under cwd.
+	// Pin cwd to a temp dir so any such artifact is created there and cleaned up,
+	// never in the repo tree.
+	t.Chdir(t.TempDir())
 	t.Setenv("NOLE_DISABLE_ENV_FILE", "1")
 	t.Setenv("NOLE_QUOTA_LEDGER_PATH", "s3://user:FAKESECRET-leak-me@bucket/nole-ledger.json")
 	root := NewRootCommand()
