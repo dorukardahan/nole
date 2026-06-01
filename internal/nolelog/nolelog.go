@@ -9,11 +9,13 @@
 //     structured logging can never corrupt the MCP JSON-RPC stream on stdout, a
 //     REST JSON body, or a --json command's machine-readable output. (w is a
 //     parameter, not hardcoded, only so tests can capture output.)
-//  2. It cannot emit a raw secret. Plain field values flow through
-//     safeerr.Redact and error fields through safeerr.Message, so an API key,
-//     bearer token, cookie, or credential-bearing URL accidentally handed to
-//     the logger is stripped before it reaches the writer. There is no exported
-//     way to attach an un-redacted value.
+//  2. It redacts secrets handed to it, in layers. Error fields flow through
+//     safeerr.Message; plain field values through safeerr.Redact (which strips
+//     credential-shaped content — a URL with userinfo, an inline "token=..."),
+//     AND F additionally redacts the whole value when the field KEY names a
+//     credential (api_key/token/secret/...), catching a bare token whose text
+//     has no marker. This is defense-in-depth — no call site logs a secret — not
+//     a guarantee a caller cannot defeat by mislabelling one under a benign key.
 //
 // NOLE_LOG selects the format: "text" (default, human-readable logfmt),
 // "json" (one compact object per line), or "off" (silent). A nil *Logger and a
@@ -72,12 +74,42 @@ type Field struct {
 	Val string
 }
 
-// F builds a field from a plain value, running the value through safeerr.Redact
-// so a value that turns out to carry a credential (a URL with userinfo, a
-// fat-fingered token) is stripped before logging. Keys are developer-controlled
-// constants and are not redacted.
+const redactedMarker = "[REDACTED]"
+
+// F builds a field from a plain value with two layers of secret-safety:
+//   - if the KEY names a credential (token/secret/password/authorization/
+//     bearer/cookie/credential/api_key/apikey/*_key), the value is fully replaced
+//     with [REDACTED]. This catches a bare token value (e.g. "tvly-...") whose
+//     text carries no credential marker for safeerr.Redact to match — the case
+//     `F("api_key", os.Getenv("TAVILY_API_KEY"))`.
+//   - otherwise the value is run through safeerr.Redact, which strips
+//     credential-shaped content (a URL with userinfo, an inline "token=...").
+//
+// Keys are developer-controlled constants. This is defense-in-depth, not a
+// licence to pass secrets: no call site logs one, and a caller that deliberately
+// puts a credential under a benign field name can still defeat it.
 func F(key, val string) Field {
+	if isSensitiveKey(key) {
+		return Field{Key: key, Val: redactedMarker}
+	}
 	return Field{Key: key, Val: safeerr.Redact(val)}
+}
+
+// isSensitiveKey reports whether a field key names a credential, so F redacts its
+// value wholesale. Matches common credential nouns plus key-shaped names
+// (api_key/apikey/x_key/key) while leaving benign words like "monkey"/"keyword".
+func isSensitiveKey(key string) bool {
+	k := strings.ToLower(strings.TrimSpace(key))
+	if k == "key" {
+		return true
+	}
+	for _, marker := range []string{"token", "secret", "password", "passwd", "authorization", "bearer", "cookie", "credential", "apikey", "api_key", "api-key"} {
+		if strings.Contains(k, marker) {
+			return true
+		}
+	}
+	return strings.HasSuffix(k, "_key") || strings.HasSuffix(k, "-key") ||
+		strings.HasPrefix(k, "key_") || strings.HasPrefix(k, "key-")
 }
 
 // Err builds an "error" field from err, routed through safeerr.Message (which

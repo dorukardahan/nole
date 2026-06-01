@@ -34,23 +34,22 @@ prefer 'nole mcp' (stdio).`,
 				return fmt.Errorf("specify --mcp to start the HTTP server (serves the MCP endpoint at /mcp and the REST API at /api/*; see docs/CLIENTS/README.md)")
 			}
 
-			// Build the service FIRST: defaultService() loads the local env file
-			// (~/.config/nole/.env), so NOLE_LOG set only there is in the
-			// environment before we read it. Constructing the logger earlier would
-			// pin it to the process-env default and ignore an env-file NOLE_LOG
-			// (Codex review on PR #41).
-			svc := defaultService()
-
-			// One logger for the whole serve lifecycle (binding warning + the
-			// handler's encode/lifecycle diagnostics), so NOLE_LOG governs all of
-			// it consistently. Always os.Stderr — stdout stays MCP/REST only.
-			logger := nolelog.FromEnv(os.Stderr)
-
+			// SECURITY notice: a non-loopback bind exposes the unauthenticated
+			// endpoints (provider keys + quota) beyond this host. This is the only
+			// runtime warning of that exposure, so it is printed UNCONDITIONALLY to
+			// stderr and is NOT routed through nolelog — a verbosity knob like
+			// NOLE_LOG=off must never silence a safety message (Codex review on
+			// PR #41). Same rationale as main.go's raw fatal print.
 			if !bindIsLoopback(listen) {
-				logger.Warn("serve.non_loopback_bind",
-					nolelog.F("addr", listen),
-					nolelog.F("warning", "endpoints are UNAUTHENTICATED and expose provider keys and quota; front with a reverse proxy / network ACL"))
+				fmt.Fprintf(os.Stderr, "warning: binding %s is not loopback; these endpoints are UNAUTHENTICATED and expose your provider keys and quota. Front it with a reverse proxy / network ACL.\n", listen)
 			}
+
+			// Build the service first: defaultService() loads the local env file
+			// (~/.config/nole/.env), so NOLE_LOG set only there is honored by the
+			// handler's diagnostic logger (encode failures + server lifecycle), not
+			// just a process-env NOLE_LOG. Always os.Stderr — stdout stays MCP/REST.
+			svc := defaultService()
+			logger := nolelog.FromEnv(os.Stderr)
 
 			handler, err := newHTTPHandler(svc, logger)
 			if err != nil {

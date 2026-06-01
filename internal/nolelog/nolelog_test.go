@@ -97,6 +97,39 @@ func TestFRedactsPlainValue(t *testing.T) {
 	}
 }
 
+// A bare token value carries no credential marker for safeerr.Redact to match,
+// so F must redact it by KEY when the key names a credential. Locks the Codex
+// PR #41 finding: F("api_key", <rawtoken>) must NOT emit the raw token.
+func TestFRedactsByCredentialKey(t *testing.T) {
+	cases := []string{"api_key", "API_KEY", "tavily_token", "x-secret", "authorization", "session_cookie", "brave_key", "key"}
+	for _, key := range cases {
+		var buf bytes.Buffer
+		l := New(&buf, ModeJSON)
+		l.Warn("provider.call", F(key, "tvly-FAKE-rawtoken-no-marker"))
+		out := buf.String()
+		if strings.Contains(out, "tvly-FAKE-rawtoken-no-marker") {
+			t.Fatalf("F(%q, ...) leaked a bare token: %q", key, out)
+		}
+		if !strings.Contains(out, "[REDACTED]") {
+			t.Fatalf("F(%q, ...) should redact by key, got %q", key, out)
+		}
+	}
+}
+
+// Benign keys that merely contain "key"-ish substrings must NOT be over-redacted,
+// so observability of normal fields (a cache key word, etc.) is preserved.
+func TestFKeepsBenignKeyedValues(t *testing.T) {
+	var buf bytes.Buffer
+	l := New(&buf, ModeJSON)
+	l.Warn("x", F("monkey", "banana"), F("keyword", "search"), F("step", "1"))
+	out := buf.String()
+	for _, want := range []string{"banana", "search", "\"step\":\"1\""} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("benign field over-redacted, missing %q: %q", want, out)
+		}
+	}
+}
+
 func TestOffModeWritesNothing(t *testing.T) {
 	var buf bytes.Buffer
 	l := New(&buf, ModeOff)

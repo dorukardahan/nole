@@ -23,14 +23,15 @@ structured logger, a config dump, and a machine-readable doctor.
   silences them. The logger writes ONLY to the writer it is constructed with
   (always `os.Stderr` in production) and NEVER references `os.Stdout`, so it can
   never corrupt the MCP JSON-RPC stream, a REST body, or a `--json` command's
-  output. Field values flow through `safeerr.Redact` and error fields through
-  `safeerr.Message`, so there is no API to log a raw secret. Wired into the
-  service (research step failures) and the `serve` HTTP path (encode failures,
-  the non-loopback warning, and server lifecycle) via a new `core.WithLogger`
-  option, replacing the ad-hoc `fmt.Fprintf(os.Stderr, ...)` sites. The
-  top-level fatal error in `main.go` stays raw on stderr (it is the command's
-  result, not a diagnostic) so `NOLE_LOG=off` can never hide why a run exited
-  non-zero.
+  output. Plain field values flow through `safeerr.Redact` and are fully redacted
+  when the field key names a credential (`api_key`/`token`/`secret`/…); error
+  fields flow through `safeerr.Message`. Wired into the service (research step
+  failures) and the `serve` HTTP path (encode failures, server lifecycle) via a
+  new `core.WithLogger` option, replacing the ad-hoc `fmt.Fprintf(os.Stderr, …)`
+  diagnostic sites. Two stderr messages stay RAW and unconditional — never routed
+  through the logger, so `NOLE_LOG=off` can never silence them: the top-level
+  fatal error in `main.go` (the command's result) and `serve`'s non-loopback bind
+  warning (the only runtime notice that unauthenticated endpoints expose keys).
 - **`nole config dump [--json]`** — prints the effective configuration: cost
   policy, hard-cap source, log mode, ledger path/state, recognized non-secret
   `NOLE_*` env vars, provider cost classes, and quota floors. Secrets appear as

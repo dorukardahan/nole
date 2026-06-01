@@ -9,10 +9,12 @@ import (
 )
 
 // Regression (Codex PR #41): when NOLE_LOG is set ONLY in the local env file
-// (~/.config/nole/.env), the serve logger must still honor it. serve.go builds
-// defaultService() (which loads the env file) BEFORE constructing the logger, so
-// nolelog.FromEnv sees the env-file value rather than the process-env default.
-// This test mirrors that order and asserts the resolved mode.
+// (~/.config/nole/.env), the serve handler's diagnostic logger must still honor
+// it. serve.go builds defaultService() (which loads the env file) BEFORE
+// constructing the logger, so nolelog.FromEnv sees the env-file value rather than
+// the process-env default. (The non-loopback security warning is intentionally
+// NOT governed by NOLE_LOG — it is a raw, unconditional stderr notice.)
+// This test mirrors serve's order and asserts the resolved mode.
 func TestServeLoggerHonorsEnvFileNoleLog(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
