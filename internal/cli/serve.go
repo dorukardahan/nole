@@ -34,6 +34,13 @@ prefer 'nole mcp' (stdio).`,
 				return fmt.Errorf("specify --mcp to start the HTTP server (serves the MCP endpoint at /mcp and the REST API at /api/*; see docs/CLIENTS/README.md)")
 			}
 
+			// Build the service FIRST: defaultService() loads the local env file
+			// (~/.config/nole/.env), so NOLE_LOG set only there is in the
+			// environment before we read it. Constructing the logger earlier would
+			// pin it to the process-env default and ignore an env-file NOLE_LOG
+			// (Codex review on PR #41).
+			svc := defaultService()
+
 			// One logger for the whole serve lifecycle (binding warning + the
 			// handler's encode/lifecycle diagnostics), so NOLE_LOG governs all of
 			// it consistently. Always os.Stderr — stdout stays MCP/REST only.
@@ -45,7 +52,6 @@ prefer 'nole mcp' (stdio).`,
 					nolelog.F("warning", "endpoints are UNAUTHENTICATED and expose provider keys and quota; front with a reverse proxy / network ACL"))
 			}
 
-			svc := defaultService()
 			handler, err := newHTTPHandler(svc, logger)
 			if err != nil {
 				return err
