@@ -61,16 +61,41 @@ If this matrix changes, update `scripts/check-release-builds.sh`, CI and this do
 
 ## Checksums and signing
 
-v0.1 prep currently validates `SHA256SUMS`. Signing is not yet configured.
+Two integrity layers, only the first is mandatory:
 
-Before a public release, decide whether to add:
+- **`SHA256SUMS` is the mandatory integrity floor.** Every release ships it; the
+  installers verify the downloaded asset against it and fail closed on any
+  mismatch. This needs only `sha256sum`/`shasum` (or PowerShell `Get-FileHash`),
+  so it works on the zero-dependency path with no extra tooling.
+- **GitHub build-provenance attestations are an additive second factor**
+  (since v0.10.0). `release.yml` generates keyless, Sigstore-backed attestations
+  via `actions/attest-build-provenance` (OIDC identity, no repo Secret) for both
+  the per-binary artifacts and the `SHA256SUMS` file. Attestations are resolved by
+  artifact digest through the GitHub attestation API by `gh attestation verify` —
+  they are **NOT uploaded as release assets**.
 
-- signed checksum files;
-- provenance/SLSA attestations;
-- cosign signatures;
-- GitHub artifact attestations.
+Verification contract (`install.sh` today; the same model is planned for the
+forthcoming `install.ps1` and `nole self-update`):
 
-Do not claim signed artifacts exist until the signing mechanism is implemented and verified.
+- SHA256 is checked first and always; a mismatch fails closed.
+- The attestation is then verified **only when a usable `gh` is present**
+  (`gh >= 2.93.0`, which carries the CVE-2026-48501 token-leak fix), hardened to
+  the exact release-workflow signer identity. Absence of `gh` is a graceful skip
+  with a clear log line — the zero-dependency curl|bash path still installs.
+- A genuine attestation mismatch fails closed; a missing attestation on a
+  KNOWN-signed release (resolved version `>= SIGNED_SINCE`, currently `v0.10.0`)
+  while the API is reachable also fails closed (downgrade defense); a missing
+  attestation on a pre-signing release, or an unreachable/anonymous API,
+  soft-skips.
+- `NOLE_INSTALL_VERIFY=auto|require|off` (default `auto`) controls the optional
+  gate. `require` turns every soft-skip into a hard error (for supply-chain-strict
+  installs); `off` skips the attestation entirely (SHA256 still mandatory).
+
+State precisely that SHA256 is mandatory and the attestation is additive /
+best-effort. Do not imply the attestation closes a full on-path MITM in `auto`
+mode (an attacker who replaces both the binary and `SHA256SUMS` and strips the
+attestation is only stopped in `require` mode, or for versions `>= SIGNED_SINCE`
+when the API is reachable).
 
 ## Install script (`scripts/install.sh`)
 
@@ -83,10 +108,15 @@ binaries. It must stay in sync with the artifact matrix above:
 - resolves the latest release tag from the GitHub API (or honours
   `NOLE_INSTALL_VERSION`), downloads the asset and `SHA256SUMS` into a temp dir;
 - **verifies the SHA256 checksum BEFORE installing and fails closed on any
-  mismatch** — SHA256 is the only integrity check today (assets are unsigned, per
-  the section above), so the installer must never install an unverified binary;
-- installs to `~/.local/bin` (overridable via `NOLE_INSTALL_DIR`) with a rm-first
-  move (Apple-Silicon-safe), touching no secrets and sending no telemetry.
+  mismatch** — SHA256 is the mandatory integrity floor, so the installer never
+  installs an unverified binary;
+- then runs the **additive, optional** `gh attestation verify` gate described in
+  "Checksums and signing" above (soft-skips when `gh` is absent so the
+  zero-dependency path is preserved; fails closed on a real mismatch);
+- installs to `~/.local/bin` (overridable via `NOLE_INSTALL_DIR`) via
+  stage-in-place + atomic `rename(2)` (Apple-Silicon-safe — `rename` never writes
+  into the existing signed Mach-O inode — and non-destructive: the old binary
+  survives a failed install), touching no secrets and sending no telemetry.
 
 It hits the network, so CI lints it with `bash -n` (in `audit.sh`) rather than
 running it end-to-end; a `go test` harness exercises the download + checksum +
@@ -98,8 +128,12 @@ the OS/arch mapping here and in the script together.
 An approved tag-triggered release uploads:
 
 - one binary per target in the artifact matrix;
-- `SHA256SUMS`;
-- optional signatures/attestations if implemented.
+- `SHA256SUMS`.
+
+It also generates build-provenance attestations (via
+`actions/attest-build-provenance`, keyless OIDC) for the binaries and for
+`SHA256SUMS`. These are resolved at verify time through the GitHub attestation
+API — they are **not** uploaded as release assets.
 
 Asset upload happens inside the GitHub Release workflow for approved semantic
 version tags. Do not push a tag until the release version and changelog scope are
@@ -118,11 +152,15 @@ The workflow:
 4. runs `scripts/secret-scan.sh`;
 5. builds the Linux, macOS and Windows binary matrix with
    `scripts/check-release-builds.sh`;
-6. creates a GitHub Release with the assets, `SHA256SUMS`, the standard release
+6. generates build-provenance attestations for the binaries and `SHA256SUMS`
+   (keyless OIDC via `actions/attest-build-provenance`; no repo Secret added);
+7. creates a GitHub Release with the assets, `SHA256SUMS`, the standard release
    preamble and GitHub-generated release notes.
 
-It uses only GitHub-hosted runner tooling, official checkout/setup-go actions
-and the GitHub CLI with `GITHUB_TOKEN`.
+It uses only GitHub-hosted runner tooling, official checkout/setup-go/attest
+actions and the GitHub CLI with `GITHUB_TOKEN`. The attest step needs the added
+`id-token: write` and `attestations: write` permissions; signing is keyless
+(Sigstore/OIDC), so no signing key or repo Secret is configured.
 
 ## Homebrew
 

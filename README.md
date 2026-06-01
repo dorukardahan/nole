@@ -115,7 +115,7 @@ bash install.sh
 nole doctor
 ```
 
-`NOLE_INSTALL_VERSION` pins a tag and `NOLE_INSTALL_DIR` overrides the location. SHA256 is the only integrity check today (assets are unsigned). Windows users download the `nole-windows-<arch>.exe` asset from the [releases page](https://github.com/dorukardahan/nole/releases) manually.
+`NOLE_INSTALL_VERSION` pins a tag and `NOLE_INSTALL_DIR` overrides the location. SHA256 is the mandatory integrity floor (fail-closed). Since v0.10.0 releases also carry keyless [build-provenance attestations](docs/PACKAGING.md#checksums-and-signing); when the GitHub CLI (`gh >= 2.93.0`) is present the installer additionally verifies the attestation, and `NOLE_INSTALL_VERIFY=require` makes that verification mandatory. Absence of `gh` is a graceful skip, so the zero-dependency path still installs on SHA256 alone. Windows users download the `nole-windows-<arch>.exe` asset from the [releases page](https://github.com/dorukardahan/nole/releases) manually.
 
 Or install a locally built binary by hand:
 
