@@ -71,8 +71,8 @@ func TestTavilyFreshnessForRecencyTasks(t *testing.T) {
 
 	got = tavilySearchRequest{}
 	_, _ = p.Search(context.Background(), core.SearchRequest{Query: "q", Task: core.TaskFactcheck})
-	if got.TimeRange != "month" || got.Topic != "" {
-		t.Fatalf("factcheck: topic=%q time_range=%q, want \"\"/month", got.Topic, got.TimeRange)
+	if got.TimeRange != "month" || got.Topic != "news" {
+		t.Fatalf("factcheck: topic=%q time_range=%q, want news/month (so Tavily returns published_date)", got.Topic, got.TimeRange)
 	}
 
 	got = tavilySearchRequest{}

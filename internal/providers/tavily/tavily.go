@@ -115,10 +115,12 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	// avoids emptying sparse-recency queries (the agent judges true recency via
 	// each result's published_date).
 	switch req.Task {
-	case core.TaskNews:
+	case core.TaskNews, core.TaskFactcheck:
+		// Both recency tasks use topic=news so Tavily returns published_date (it
+		// only does so under topic=news) — the recency sort needs those dates, and
+		// this matches how Brave/Firecrawl treat news==factcheck. time_range keeps
+		// it to the conservative month window.
 		body.Topic = "news"
-		body.TimeRange = "month"
-	case core.TaskFactcheck:
 		body.TimeRange = "month"
 	}
 	jsonBody, err := json.Marshal(body)
