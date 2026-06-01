@@ -106,7 +106,18 @@ Try the CLI:
 
 Search, extract, classify and route-plan JSON responses include a short `routing_insight` by default; search, extract and route-plan keep detailed `route_trace` for debugging where available. Human search/extract output prints the same one-line insight before results. Use `--insight off` to omit the user-facing insight, or `--insight verbose` to print the compact line plus route trace lines in human output. The insight is deterministic and sanitized; it should not contain API keys, auth headers, raw provider payloads or private URLs.
 
-Install the binary somewhere on PATH, or keep the absolute path for MCP configs:
+Install a prebuilt release binary with the install script — it detects your OS/arch, downloads the matching asset, **verifies its SHA256 checksum before installing** (fails closed on mismatch), and installs to `~/.local/bin`. Download-and-read first (recommended), then run:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/dorukardahan/nole/main/scripts/install.sh
+less install.sh   # read it before running
+bash install.sh
+nole doctor
+```
+
+`NOLE_INSTALL_VERSION` pins a tag and `NOLE_INSTALL_DIR` overrides the location. SHA256 is the only integrity check today (assets are unsigned). Windows users download the `nole-windows-<arch>.exe` asset from the [releases page](https://github.com/dorukardahan/nole/releases) manually.
+
+Or install a locally built binary by hand:
 
 ```bash
 mkdir -p ~/.local/bin
@@ -114,6 +125,7 @@ cp ./nole ~/.local/bin/nole
 export PATH="$HOME/.local/bin:$PATH"
 command -v nole
 nole doctor
+nole doctor --check-updates   # fail-soft notice if a newer release exists; silent offline
 ```
 
 If the agent/client process does not inherit PATH, use `/absolute/path/to/nole` in the MCP config.

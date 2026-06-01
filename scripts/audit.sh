@@ -30,6 +30,11 @@ if [ -n "$gofmt_files" ]; then
   exit 1
 fi
 
+# install.sh downloads release assets over the network, so it cannot run
+# end-to-end in CI; lint its syntax here (a functional test exercises it against
+# an httptest server in `go test`).
+run bash -n scripts/install.sh
+
 run ./scripts/check-docs-framing.sh
 run ./scripts/check-benchmark-claims.sh
 run ./scripts/check-integration-evidence.sh

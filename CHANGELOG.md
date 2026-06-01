@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-02
+
+Theme: **onboarding** — make Nólë easy to install and keep current, and make the
+zero-key story explicit, without changing the gateway's behaviour. Adds the CLI's
+first outbound network call (the opt-in update check), isolated and fail-soft.
+
+### Added
+
+- **`scripts/install.sh`** — one-command install of a prebuilt release binary:
+  detects OS/arch (Linux/macOS; amd64/arm64), downloads the matching
+  `nole-<os>-<arch>` asset + `SHA256SUMS`, **verifies the checksum before
+  installing** (fails closed on mismatch), and installs to `~/.local/bin`
+  (rm-first — the Apple-Silicon-safe order). Touches no secrets, sends no
+  telemetry. Overridable via `NOLE_INSTALL_VERSION` / `NOLE_INSTALL_DIR` /
+  `NOLE_INSTALL_REPO`. Windows is directed to the `.exe` asset (the bash installer
+  targets Unix). Docs lead with download-then-run; pipe-to-bash as a convenience.
+- **keyless-aware setup message** — `nole setup` now states up front that Nólë
+  works with ZERO keys (keyless DDGS web search out of the box; `nole setup
+  --local-extract` adds keyless local URL extraction) and that provider keys are
+  optional, before listing them.
+- **`nole doctor --check-updates`** — fail-soft staleness check (new
+  `internal/selfupdate` package): compares the running version to the latest
+  published release and prints a one-line notice if behind. SILENT when offline or
+  on any error, never fails `doctor`, sends no auth header, and makes no network
+  call unless the flag is passed. Works in human and `--json` modes (the JSON
+  `update` field). Endpoint overridable via `NOLE_RELEASES_API`.
+
+### Notes
+
+- `internal/selfupdate` is the CLI's first outbound network call: anonymous,
+  short-timeout, fail-soft, never writes stdout. Version comparison is per-segment
+  NUMERIC (so 0.10.0 > 0.9.0) and treats any non-release version (`dev`,
+  pre-releases, garbage) as "not behind" (no nag). `install.sh` is syntax-linted in
+  `audit.sh` and exercised end-to-end against an httptest server in `go test`
+  (install + checksum-mismatch-fails-closed).
+
 ## [0.8.0] - 2026-06-01
 
 Theme: **observability** — make the gateway's behaviour and configuration

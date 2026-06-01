@@ -15,9 +15,31 @@ import (
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/mcpserver"
+	"github.com/dorukardahan/nole/internal/selfupdate"
+	"github.com/dorukardahan/nole/internal/version"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/spf13/cobra"
 )
+
+// updateReport is the optional staleness result surfaced by doctor
+// --check-updates. Present only when the check actually completed; an
+// offline/failed check leaves it absent (the check is fail-soft and silent).
+type updateReport struct {
+	Current string `json:"current"`
+	Latest  string `json:"latest,omitempty"`
+	Stale   bool   `json:"stale"`
+}
+
+// checkForUpdate runs the fail-soft staleness check against the latest published
+// release. It returns (report, true) only when the check completed; on offline
+// or any error it returns (nil, false) so callers print nothing.
+func checkForUpdate(ctx context.Context) (*updateReport, bool) {
+	res := selfupdate.CheckLatest(ctx, version.Version)
+	if !res.Checked {
+		return nil, false
+	}
+	return &updateReport{Current: res.Current, Latest: res.Latest, Stale: res.Stale}, true
+}
 
 // mcpReport is the machine-readable form of the --mcp stdio/protocol smoke,
 // nested under doctorReport.MCP when both --json and --mcp are set.
@@ -46,6 +68,7 @@ type doctorReport struct {
 	PaidModeActive []string          `json:"paid_mode_active,omitempty"`
 	Budget         core.BudgetStatus `json:"budget"`
 	MCP            *mcpReport        `json:"mcp,omitempty"`
+	Update         *updateReport     `json:"update,omitempty"`
 }
 
 // writePaidModeWarnings emits any provider-specific safety warnings to the
@@ -80,6 +103,7 @@ func writePaidModeWarnings(w io.Writer) {
 func newDoctorCommand() *cobra.Command {
 	var checkMCP bool
 	var jsonOut bool
+	var checkUpdates bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check nole configuration and provider health",
@@ -88,7 +112,7 @@ func newDoctorCommand() *cobra.Command {
 				// Machine-readable mode mirrors the human checks but emits one JSON
 				// document to stdout. On --mcp smoke failure it still returns the same
 				// error (exit 1) as the human path, after writing the report.
-				return runDoctorJSON(cmd, checkMCP)
+				return runDoctorJSON(cmd, checkMCP, checkUpdates)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "nole doctor")
 			fmt.Fprintln(cmd.OutOrStdout(), "- binary: ok")
@@ -167,6 +191,18 @@ func newDoctorCommand() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "  drift: %s — %s (observed %s)\n", d.Provider, d.Reason, d.ObservedAt)
 			}
 
+			if checkUpdates {
+				// Fail-soft: prints nothing when offline or on any error.
+				if rep, ok := checkForUpdate(cmd.Context()); ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "")
+					if rep.Stale {
+						fmt.Fprintf(cmd.OutOrStdout(), "- update: nole %s is behind the latest release %s — https://github.com/dorukardahan/nole/releases\n", rep.Current, rep.Latest)
+					} else {
+						fmt.Fprintf(cmd.OutOrStdout(), "- update: up to date (%s)\n", rep.Current)
+					}
+				}
+			}
+
 			if checkMCP {
 				fmt.Fprintln(cmd.OutOrStdout(), "")
 				startup := checkMCPStdioSmoke(cmd.Context())
@@ -200,6 +236,7 @@ func newDoctorCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&checkMCP, "mcp", false, "also check MCP stdio startup/stdout health")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output the doctor report as JSON")
+	cmd.Flags().BoolVar(&checkUpdates, "check-updates", false, "check GitHub for a newer release (fail-soft, silent when offline)")
 	return cmd
 }
 
@@ -208,7 +245,7 @@ func newDoctorCommand() *cobra.Command {
 // and the optional MCP smoke) and writes one JSON document to stdout. When --mcp
 // is set and the smoke fails it returns the same "mcp smoke failed" error as the
 // human path AFTER writing the report, so exit-code behavior is identical.
-func runDoctorJSON(cmd *cobra.Command, checkMCP bool) error {
+func runDoctorJSON(cmd *cobra.Command, checkMCP, checkUpdates bool) error {
 	svc := defaultService()
 	providerResp := svc.ProviderStatus(cmd.Context())
 	statuses := providerResp.Providers
@@ -252,6 +289,13 @@ func runDoctorJSON(cmd *cobra.Command, checkMCP bool) error {
 			ProtocolReason:      protocol.Reason,
 		}
 		smokeFailed = !startup.OK || !protocol.OK
+	}
+
+	if checkUpdates {
+		// Fail-soft: absent from the report when offline or on any error.
+		if rep, ok := checkForUpdate(cmd.Context()); ok {
+			report.Update = rep
+		}
 	}
 
 	if err := writeJSONTo(cmd.OutOrStdout(), report); err != nil {
