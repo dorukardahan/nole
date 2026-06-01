@@ -72,6 +72,27 @@ Before a public release, decide whether to add:
 
 Do not claim signed artifacts exist until the signing mechanism is implemented and verified.
 
+## Install script (`scripts/install.sh`)
+
+`scripts/install.sh` is the user-facing installer for the published release
+binaries. It must stay in sync with the artifact matrix above:
+
+- detects OS via `uname -s` (Linux/Darwin; Windows is rejected with a manual
+  `.exe` download message) and arch via `uname -m` (amd64/arm64), resolving the
+  asset name `nole-<os>-<arch>` exactly as `check-release-builds.sh` produces it;
+- resolves the latest release tag from the GitHub API (or honours
+  `NOLE_INSTALL_VERSION`), downloads the asset and `SHA256SUMS` into a temp dir;
+- **verifies the SHA256 checksum BEFORE installing and fails closed on any
+  mismatch** — SHA256 is the only integrity check today (assets are unsigned, per
+  the section above), so the installer must never install an unverified binary;
+- installs to `~/.local/bin` (overridable via `NOLE_INSTALL_DIR`) with a rm-first
+  move (Apple-Silicon-safe), touching no secrets and sending no telemetry.
+
+It hits the network, so CI lints it with `bash -n` (in `audit.sh`) rather than
+running it end-to-end; a `go test` harness exercises the download + checksum +
+install path against an httptest server. When the artifact matrix changes, update
+the OS/arch mapping here and in the script together.
+
 ## GitHub Release assets
 
 An approved tag-triggered release uploads:

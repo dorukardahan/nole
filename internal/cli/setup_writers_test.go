@@ -45,6 +45,29 @@ func TestSetupClaudeFlagPrintsInstructionsAndWritesNoFile(t *testing.T) {
 	}
 }
 
+// The post-setup message must state up front that Nólë works with ZERO keys
+// (keyless DDGS + optional local Scrapling), so onboarding doesn't imply keys
+// are required. Locks the v0.9.0 keyless-aware onboarding line.
+func TestSetupMessageStatesKeylessOperation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"setup", "--claude"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("setup --claude: %v\n%s", err, out.String())
+	}
+	text := out.String()
+	for _, want := range []string{"ZERO keys", "DDGS", "keyless", "OPTIONAL"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("keyless onboarding message missing %q:\n%s", want, text)
+		}
+	}
+}
+
 // TestSetupClaudeFlagWithWrapperUsesWrapperPath asserts that the printed
 // instruction targets the wrapper path when --mcp-wrapper is given.
 func TestSetupClaudeFlagWithWrapperUsesWrapperPath(t *testing.T) {

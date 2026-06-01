@@ -56,6 +56,8 @@ cp ./nole "$NOLE_BIN"
 
 After this succeeds, use `"$NOLE_BIN"` as the MCP command path if the client inherits the env file, or use `$HOME/.local/bin/nole-mcp` as the MCP command path for GUI/service clients that need the generated env-sourcing wrapper.
 
+To install a prebuilt release binary instead of building from source, `scripts/install.sh` detects OS/arch, downloads the matching `nole-<os>-<arch>` asset, verifies its `SHA256SUMS` checksum before installing (fails closed on mismatch), and installs to `~/.local/bin`. Prefer download-then-run over pipe-to-bash. After install, `nole doctor --check-updates` prints a fail-soft notice when a newer release exists (silent offline; never fails `doctor`). Nólë works with ZERO keys via keyless DDGS search, so an install with no provider keys is fully functional.
+
 ## PATH and absolute binary discovery
 
 Prefer a user-local binary directory:
