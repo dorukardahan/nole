@@ -207,6 +207,10 @@ func TestServiceSearchCacheHitOverwritesTaskSource(t *testing.T) {
 	if second.TaskSource != TaskSourceDetected {
 		t.Fatalf("cache-hit task_source = %q, want detected (overwritten per-caller)", second.TaskSource)
 	}
+	// The insight must stay consistent with the per-caller source.
+	if !strings.Contains(second.RoutingInsight, "(task detected)") {
+		t.Fatalf("cache-hit insight must match its source, got %q", second.RoutingInsight)
+	}
 	if len(second.Results) == 0 {
 		t.Fatalf("cache hit should still return results")
 	}

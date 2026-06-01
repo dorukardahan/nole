@@ -108,6 +108,15 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		resp.Query = req.Query
 		resp.Task = req.Task
 		resp.TaskSource = source
+		// A follower coalesced onto a leader with the same resolved task but a
+		// different source receives the leader's response, including its
+		// already-built insight. Rebuild it so the "(task detected/default)"
+		// qualifier matches THIS caller's TaskSource. Skip on the error path: its
+		// insight (BuildErrorRoutingInsight) carries no source qualifier, so there
+		// is nothing to reconcile.
+		if res.Err == nil {
+			resp.RoutingInsight = BuildSearchRoutingInsight(resp)
+		}
 		return resp, res.Err
 	}
 }
