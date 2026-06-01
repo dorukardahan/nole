@@ -206,7 +206,7 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 
 ### Area: mcp — MCP server surface (stdio + HTTP) and tool registration (`internal/cli/{mcp.go,serve.go}` + `internal/mcpserver/*`)
 
-**Purpose.** Exposes the engine as a Model Context Protocol server over two transports: stdio (`nole mcp`) for local single-process agent usage, and Streamable-HTTP (`nole serve --mcp`) for team/remote usage. Constructs an `mcp-go` server, registers four tools (search, extract, provider_status, budget_status) wrapping `core.Service`, serializes responses/errors as JSON. Central concern: once-per-session emission of a setup_tip with transport-aware semantics (stdio one-per-process, HTTP persistent-per-session, HTTP ephemeral-always) and a bounded dedup map.
+**Purpose.** Exposes the engine as a Model Context Protocol server over two transports: stdio (`nole mcp`) for local single-process agent usage, and Streamable-HTTP (`nole serve --mcp`) for team/remote usage. Constructs an `mcp-go` server, registers the tools (search, extract, search_and_extract, provider_status, budget_status, research — extract and search_and_extract gated on a configured extract provider) wrapping `core.Service`, serializes responses/errors as JSON; `search`/`extract`/`search_and_extract` omit `route_trace` by default unless `include_trace` is set. Central concern: once-per-session emission of a setup_tip with transport-aware semantics (stdio one-per-process, HTTP persistent-per-session, HTTP ephemeral-always) and a bounded dedup map.
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-01
+
+### Added
+
+- `search_and_extract` — a combined primitive (MCP tool + `POST
+  /api/search_and_extract`) that searches, then extracts the top result(s) in a
+  single call, collapsing the common search-then-read round-trip. `extract_top`
+  (default 1, max 3) controls how many top results are read; a per-URL extract
+  failure is non-fatal and recorded in `extract_errors`.
+- `research` is now reachable by agents — an MCP `research` tool and `POST
+  /api/research` expose the multi-step search→extract pass, returning the
+  deduplicated sources and extracted content (the same pipeline `nole research`
+  uses).
+- `include_trace` (default false) on the MCP/REST `search` and `extract`
+  surfaces to opt back into the full per-attempt `route_trace`.
+
+### Changed
+
+- **Semi-breaking:** the MCP/REST `search` and `extract` success responses now
+  OMIT `route_trace` by default (the compact `routing_insight` is still always
+  present). Opt back in with `include_trace: true`. The CLI is unchanged —
+  `--insight off|compact|verbose` still governs it there.
+- **Semi-breaking:** `research` (CLI, MCP, and REST) no longer returns a composed
+  `summary`/answer. It returns evidence — sources + extracts — for the calling
+  agent to synthesize; the `synthesizeSummary` string-concatenation was removed.
+
+### Notes
+
+- The research pipeline moved into the core package so the MCP and REST surfaces
+  can share it. A degraded research sub-step now logs to the `nole serve` /
+  `nole mcp` server's stderr (it previously logged from the CLI process).
+
 ## [0.5.0] - 2026-06-01
 
 ### Added
@@ -428,7 +460,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/dorukardahan/nole/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dorukardahan/nole/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dorukardahan/nole/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/dorukardahan/nole/compare/v0.3.1...v0.3.2

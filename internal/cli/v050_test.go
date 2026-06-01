@@ -71,33 +71,6 @@ func TestRESTSearchSurfacesTaskSource(t *testing.T) {
 	}
 }
 
-// classifiedResearchTasks must drive the research fan-out from the question's
-// classification (replacing the old hardcoded [general,research,docs]), be
-// deterministic, de-duplicated, and top up with broad coverage.
-func TestClassifiedResearchTasksDrivesFanOut(t *testing.T) {
-	if got := classifiedResearchTasks("latest AI news this week"); len(got) == 0 || got[0] != core.TaskNews {
-		t.Fatalf("recency question should lead with news, got %v", got)
-	}
-	if got := classifiedResearchTasks("Go net/http documentation reference"); len(got) == 0 || got[0] != core.TaskDocs {
-		t.Fatalf("docs question should lead with docs, got %v", got)
-	}
-
-	gen := classifiedResearchTasks("jaguar")
-	if len(gen) == 0 || gen[0] != core.TaskGeneral {
-		t.Fatalf("no-signal question should lead with general, got %v", gen)
-	}
-	seen := map[core.TaskType]bool{}
-	for _, task := range gen {
-		if seen[task] {
-			t.Fatalf("fan-out contains a duplicate task: %v", gen)
-		}
-		seen[task] = true
-	}
-	if !seen[core.TaskResearch] {
-		t.Fatalf("fan-out should include research for breadth, got %v", gen)
-	}
-}
-
 // REST must normalize task aliases like MCP does (not raw-cast), so an explicit
 // alias routes correctly and reports task_source=supplied instead of misrouting
 // to general/default. Guards the must-fix REST/MCP divergence.

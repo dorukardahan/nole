@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/dorukardahan/nole/internal/safeerr"
 	"github.com/dorukardahan/nole/internal/safenet"
 )
 
@@ -17,6 +18,10 @@ import (
 // <= 0 falls back to a sensible default instead of leaking through to a
 // provider as "no limit".
 const maxSearchLimit = 20
+
+// maxExtractTop caps how many top search results SearchAndExtract will also
+// extract in a single call, keeping the combined response context-bounded.
+const maxExtractTop = 3
 
 type Service struct {
 	registry *Registry
@@ -282,6 +287,56 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 		resp.URL = req.URL
 		return resp, res.Err
 	}
+}
+
+// SearchAndExtract runs a search, then extracts the top ExtractTop result URLs in
+// a single call — the combined "search then read the top hit" primitive. Each
+// extract reuses Service.Extract, so the SSRF preflight, cache, quota debit, and
+// routing all apply per URL. A per-URL extract failure is non-fatal and recorded
+// in ExtractErrors; only a search failure (or caller cancellation) aborts. URLs
+// are de-duplicated so a repeated result never double-debits the extract quota.
+func (s *Service) SearchAndExtract(ctx context.Context, req SearchAndExtractRequest) (SearchAndExtractResponse, error) {
+	n := req.ExtractTop
+	if n <= 0 {
+		n = 1
+	}
+	if n > maxExtractTop {
+		n = maxExtractTop
+	}
+
+	searchResp, err := s.Search(ctx, SearchRequest{Query: req.Query, Task: req.Task, Limit: req.Limit})
+	if err != nil {
+		// A search failure (or cancellation surfaced by Search) is fatal — there
+		// is nothing to extract.
+		return SearchAndExtractResponse{Search: searchResp}, err
+	}
+
+	out := SearchAndExtractResponse{Search: searchResp}
+	seen := make(map[string]bool)
+	attempted := 0
+	for _, r := range searchResp.Results {
+		url := strings.TrimSpace(r.URL)
+		if url == "" || seen[url] {
+			continue
+		}
+		seen[url] = true
+		er, eerr := s.Extract(ctx, ExtractRequest{URL: url, Format: "markdown"})
+		if eerr != nil {
+			// Surface caller cancellation immediately; never bury a Ctrl-C as a
+			// per-URL "extract error" on an otherwise-successful response.
+			if ctx.Err() != nil {
+				return out, ctx.Err()
+			}
+			out.ExtractErrors = append(out.ExtractErrors, ExtractError{URL: url, Error: safeerr.Message(eerr)})
+		} else {
+			out.Extracts = append(out.Extracts, er)
+		}
+		attempted++
+		if attempted >= n {
+			break
+		}
+	}
+	return out, nil
 }
 
 func cancelledExtractResponse(req ExtractRequest, route []string) ExtractResponse {

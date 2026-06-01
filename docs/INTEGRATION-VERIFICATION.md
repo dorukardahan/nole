@@ -15,7 +15,7 @@ Provider key handling: presence/status only; keys unset during this run
 - Core no-secret smoke commands execute locally.
 - MCP stdio smoke: verified by nole doctor --mcp.
 - MCP smoke binary: temporary binary built from current repository state.
-- Tools observed: search, extract, provider_status, budget_status.
+- Tools observed: search, extract, search_and_extract, provider_status, budget_status, research.
 - Provider status JSON: providers --json generated with provider keys unset.
 - Deterministic benchmark JSON and Markdown evidence generation complete without live provider calls.
 - Repo-tested setup writers: Claude Code, Codex CLI, OpenCode, Cursor, Kimi.
