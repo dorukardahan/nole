@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/dorukardahan/nole/internal/safeerr"
 )
 
 // This file implements `nole self-update`'s apply path. It mirrors
@@ -370,8 +372,13 @@ func verifyAttestation(ctx context.Context, file, repo, version string, mode Ver
 	return "no verifiable attestation for " + version + " (pre-signing release)", nil
 }
 
+// trim prepares external (gh) output for inclusion in a user-facing error: it
+// first runs the text through safeerr.Redact (north-star: never surface a
+// credential, even one a subprocess might echo — defense-in-depth) and then caps
+// the length. Redaction runs BEFORE the length cap so a token near the end is
+// masked rather than merely truncated.
 func trim(s string) string {
-	s = strings.TrimSpace(s)
+	s = strings.TrimSpace(safeerr.Redact(s))
 	if len(s) > 300 {
 		return s[:300] + "…"
 	}

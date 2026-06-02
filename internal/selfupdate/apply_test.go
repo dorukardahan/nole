@@ -338,6 +338,27 @@ func TestApply_OffMode_SkipsVerifierEntirely(t *testing.T) {
 	}
 }
 
+// A credential that a misbehaving gh might echo must be redacted before it is
+// surfaced in the fail-closed error (north-star: never surface a secret). (Codex PR #45.)
+func TestApply_RedactsGhOutputInError(t *testing.T) {
+	asset := mustAsset(t)
+	body := []byte("X\n")
+	sum := sha256.Sum256(body)
+	srv := releaseServer(t, "v1.0.0", asset, body, hex.EncodeToString(sum[:])) // signed -> fail-closed
+	exe := tempExe(t, "OLD\n")
+	// Build the credential from parts so this test's own fixture does not trip
+	// secret-scan, while remaining Bearer-shaped for safeerr.Redact to catch.
+	secretVal := "FAKE" + "TOKEN" + "abc123def456ghi"
+	setFakeGh(t, true, "2.93.0", true, "verify failed; Bearer "+secretVal, 1, nil)
+	_, err := Apply(context.Background(), newOpts(srv.URL, exe, "0.10.0", "v1.0.0", VerifyAuto))
+	if err == nil {
+		t.Fatalf("expected a fail-closed error")
+	}
+	if strings.Contains(err.Error(), secretVal) {
+		t.Fatalf("gh output token was NOT redacted in the surfaced error: %v", err)
+	}
+}
+
 func TestInstallBinary_ReplacesAtomically(t *testing.T) {
 	exe := tempExe(t, "ORIGINAL\n")
 	if err := installBinary([]byte("REPLACED\n"), exe); err != nil {
