@@ -227,3 +227,61 @@ jobs:
           git -C "$tapdir" -c user.name="nole-release" -c user.email="release@users.noreply.github.com" \
             commit -m "nole ${TAG}"
           git -C "$tapdir" push origin "HEAD:${tap_branch}"
+
+      # Auto-roll the Scoop bucket (dorukardahan/scoop-nole) to this release by
+      # rendering packaging/scoop/nole.json.tmpl with the version + the two published
+      # Windows SHA256SUMS and pushing nole.json. DORMANT until a SCOOP_BUCKET_TOKEN
+      # secret (a PAT with contents:write on the bucket repo — the default GITHUB_TOKEN
+      # cannot write to another repo) is configured AND the bucket repo exists; without
+      # the secret the step SKIPS cleanly (exit 0) so the release never fails. If the
+      # secret is set but the repo is missing, the clone fails LOUDLY (post-release) —
+      # see the setup note in docs/PACKAGING.md. Prereleases are skipped so the stable
+      # bucket only tracks stable releases. Mirrors the Update Homebrew tap step exactly.
+      - name: Update Scoop bucket
+        if: steps.release.outputs.prerelease != 'true'
+        env:
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SCOOP_BUCKET_TOKEN:-}" ]; then
+            echo "SCOOP_BUCKET_TOKEN not set — skipping Scoop bucket sync (manifest bumped manually)."
+            exit 0
+          fi
+          version="${TAG#v}"
+          # Match the EXACT SHA256SUMS line including the .exe suffix — the awk helper
+          # substring-matches "  <name>", so dropping .exe would return empty.
+          sha() { awk -v n="  $1" 'index($0, n) {print $1; exit}' dist/SHA256SUMS; }
+          wx="$(sha nole-windows-amd64.exe)"; wa="$(sha nole-windows-arm64.exe)"
+          for v in "$wx" "$wa"; do
+            [ -n "$v" ] || { echo "missing a Windows SHA256SUMS entry for the manifest" >&2; exit 1; }
+          done
+          rendered="$(sed \
+            -e "s/__VERSION__/${version}/g" \
+            -e "s/__SHA_WIN_AMD64__/${wx}/g" \
+            -e "s/__SHA_WIN_ARM64__/${wa}/g" \
+            packaging/scoop/nole.json.tmpl)"
+          bucketdir="$(mktemp -d)"
+          trap 'rm -rf "$bucketdir"' EXIT
+          # Authenticate BOTH clone and push with the PAT via GIT_CONFIG_* (Basic auth,
+          # NOT Bearer — Bearer is the REST scheme and is rejected for git-over-HTTPS).
+          # Identical mechanism to the Update Homebrew tap step; no token in the URL,
+          # process args, or any persisted .git/config. The base64 cred is ::add-mask::ed.
+          # Do NOT add `set -x` to this step: it would echo the credential.
+          basic_cred="$(printf 'x-access-token:%s' "${SCOOP_BUCKET_TOKEN}" | base64 | tr -d '\n')"
+          echo "::add-mask::${basic_cred}"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${basic_cred}"
+          git clone --depth 1 "https://github.com/dorukardahan/scoop-nole.git" "$bucketdir"
+          # Push to the bucket's ACTUAL default branch (don't assume 'main').
+          bucket_branch="$(git -C "$bucketdir" symbolic-ref --short HEAD)"
+          printf '%s\n' "$rendered" > "$bucketdir/nole.json"
+          git -C "$bucketdir" add nole.json
+          if git -C "$bucketdir" diff --cached --quiet; then
+            echo "bucket manifest already at ${TAG}; nothing to push."
+            exit 0
+          fi
+          git -C "$bucketdir" -c user.name="nole-release" -c user.email="release@users.noreply.github.com" \
+            commit -m "nole ${TAG}"
+          git -C "$bucketdir" push origin "HEAD:${bucket_branch}"
