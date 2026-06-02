@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-02
+
+Theme: **keyless Wikipedia/MediaWiki provider** — a new zero-setup search
+provider that reinforces encyclopedic routes. Additive: no CLI/MCP/env surface
+change, so the v1.0.0 stability commitment is unaffected.
+
+### Added
+
+- **Wikipedia/MediaWiki provider** (`internal/providers/wikipedia`) — keyless
+  search backed by the official MediaWiki Action API (`list=search` on English
+  Wikipedia), with a descriptive `User-Agent` per Wikimedia policy. It is routed
+  into the `factcheck`, `people`, and `academic` routes only, positioned before
+  the `ddgs` last-resort fallback — so it reinforces encyclopedic/biographical/
+  factual queries without becoming a general fallback and without displacing
+  DDGS. Cost class `keyless-free` (never triggers paid spend). Search + status
+  capabilities only (no extract), so the MCP extract-tool gating and the
+  surface-lock tests are unchanged. Snippets are HTML-sanitized; `maxlag`
+  backpressure and API error bodies are handled redaction-safely (no query/host
+  detail leaks); results — including disambiguation/list pages — pass through
+  verbatim for the agent to weigh (Nólë never judges quality). Because it is
+  routed before the DDGS fallback, it carries a **circuit breaker** (like the
+  other remote providers): a slow/unreachable upstream short-circuits fast in a
+  long-lived `serve`/MCP process instead of stalling those routes ahead of DDGS.
+  `nole route-plan --providers wikipedia` is accepted for inspection.
+
+### Notes
+
+- Routing-only addition: it changes which providers serve `factcheck`/`people`/
+  `academic` (see `docs/ROUTE-EVIDENCE.md`), not the result contract. `ddgs`
+  remains the final last-resort entry on every search route. Closes #43.
+
 ## [1.0.2] - 2026-06-02
 
 Theme: **fix the Homebrew tap auto-bump** — release-infra bugfix; no product

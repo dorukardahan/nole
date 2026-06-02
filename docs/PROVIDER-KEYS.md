@@ -12,6 +12,7 @@ Default policy is `free-first` and each supported BYOK provider is classified as
 | Tavily | `TAVILY_API_KEY` | 500 calls/month, monthly reset | `NOLE_TAVILY_PAID=1` | Free Researcher tier = 1000 credits/month, no card required; Nólë seeds a 500-call floor because advanced search/extract cost 2 credits while the ledger debits 1 per call. Paid plans charge per credit; review the dashboard before flipping the opt-in. |
 | Firecrawl | `FIRECRAWL_API_KEY` | 250 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Free plan = 1000 credits/month, reset monthly with no rollover, no card; Nólë seeds a 250-call floor because search is 2 credits per 10 results, so a 20-result search (Nólë permits up to 20) costs 4 credits while the ledger debits 1. Verify the dashboard balance matches Nólë's local counter before high-volume use. |
 | DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
+| Wikipedia/MediaWiki | none | Keyless encyclopedic search, no counter | n/a | Reinforces `factcheck`/`people`/`academic` routing only (not a general fallback). Uses the official MediaWiki Action API with a descriptive `User-Agent` per Wikimedia policy. Keyless does not mean guaranteed availability or unlimited use. |
 | Scrapling | `NOLE_SCRAPLING_PYTHON` | Local keyless extraction fallback, no counter | n/a | Prefer `nole setup --local-extract`, which creates an isolated venv and writes this variable locally. Nólë validates public URLs before calling it, but website terms and robots.txt remain the user's responsibility. |
 
 The free-tier numbers above are conservative anchors verified 2026-06 against each provider's published pricing. Tavily and Firecrawl meter in variable credits while the ledger debits 1 per call, so each floor is credits ÷ the priciest call Nólë can issue: Tavily 1000 ÷ 2 (advanced search/extract) = 500; Firecrawl 1000 ÷ 4 (a 20-result search at 2 credits per 10 results) = 250. This avoids over-reading remaining headroom; undercounting is the safe direction and the drift signal catches the rest. They are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
@@ -221,6 +222,31 @@ Notes:
 
 - Keyless does not mean guaranteed availability or unlimited use.
 - Treat DDGS as a useful fallback, not a hard SLA.
+
+## Wikipedia/MediaWiki
+
+Use for: keyless encyclopedic search reinforcing `factcheck`, `people`, and
+`academic` routing (tried before the DDGS backstop; not a general fallback).
+
+Setup: none. No key, no account.
+
+Notes:
+
+- Backed by the official MediaWiki Action API (`https://en.wikipedia.org/w/api.php`,
+  `list=search`). Nólë sends a descriptive `User-Agent` identifying the project,
+  per Wikimedia's User-Agent policy.
+- English Wikipedia only; results (including disambiguation/list pages) are passed
+  through verbatim for your agent to weigh — Nólë never judges result quality.
+- A result's `published_at` is the article's **last-edit timestamp**, not an
+  original publication date (that is what MediaWiki exposes). On the `factcheck`
+  route the service applies a recency tie-break, so a recently-edited article may
+  sort above an older one; the timestamp is passed through verbatim and `score`
+  stays unset (Nólë never computes relevance).
+- Keyless does not mean guaranteed availability or unlimited use; it honors the
+  API's `maxlag` backpressure and falls through to DDGS on error. Because it is
+  routed before the DDGS fallback, it carries a circuit breaker, so a persistently
+  slow/down upstream short-circuits fast in a long-lived `serve`/MCP process
+  rather than stalling the route on every request.
 
 ## Scrapling
 

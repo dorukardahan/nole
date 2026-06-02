@@ -141,3 +141,20 @@ summary above, while keeping service-level provider status checks and
 free-first cost policy gates in place. For extract, configured local Scrapling
 is tried first; when it is not configured, the service skips it and continues
 to Firecrawl and Tavily.
+
+## Wikipedia/MediaWiki insertion (v1.1.0)
+
+The keyless `wikipedia` provider (MediaWiki Action API) was added to the
+`factcheck`, `people`, and `academic` routes only, positioned immediately before
+`ddgs` — after the keyed providers, before the last-resort general fallback.
+
+This is a **capability-based extension, not a measured re-ranking**: Wikipedia
+was not part of the 2026-05-26 live run above, so no benchmark score is claimed
+for it, and the existing keyed providers' relative order is unchanged. The
+rationale is coverage, not a quality judgement (Nólë never judges quality): a
+primary encyclopedic source is a strong keyless complement for biographical
+(`people`), factual (`factcheck`), and scholarly-topic (`academic`) queries, and
+being keyless it is always available without consuming any BYOK free-tier quota.
+`ddgs` remains the final, last-resort entry on every search route (including
+these three). Wikipedia was deliberately NOT added to `general` or any other
+route, so it never becomes a general fallback.

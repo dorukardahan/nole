@@ -105,3 +105,24 @@ func TestRoutePlanCommandRejectsUnknownProviderOverride(t *testing.T) {
 		t.Fatal("expected unknown provider override to fail")
 	}
 }
+
+func TestRoutePlanCommandAcceptsWikipediaOverride(t *testing.T) {
+	// wikipedia is a registered, routed provider (factcheck/people/academic), so
+	// the planner override allowlist must accept it. Regression guard for the gap
+	// where validPlannerProvider rejected it after it joined the route matrix.
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"route-plan", "Ada Lovelace biography", "--providers", "wikipedia,ddgs", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("route-plan with wikipedia override failed: %v", err)
+	}
+	var got core.RoutePlan
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("route-plan output is not JSON: %v\n%s", err, out.String())
+	}
+	if len(got.Routes) == 0 || len(got.Routes[0].Route) != 2 || got.Routes[0].Route[0] != "wikipedia" || got.Routes[0].Route[1] != "ddgs" {
+		t.Fatalf("expected wikipedia override route, got %#v", got.Routes)
+	}
+}
