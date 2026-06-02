@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-02
+
+Theme: **install.ps1 functional test** — closes the one real test gap (the
+PowerShell installer was previously only `pwsh` parse-checked + diff-reviewed).
+No product surface change.
+
+### Added
+
+- **`install_ps1_script_test.go`** — a real functional test for
+  `scripts/install.ps1`, mirroring the `install.sh` suite case-for-case (15
+  tests): SHA256 verify + mismatch fail-closed, the full three-way attestation
+  taxonomy (unusable→soft-skip, signed+reachable mismatch / signed-but-missing /
+  malformed-tag → fail-closed, pre-signing / unreachable → soft-skip), and the
+  `NOLE_INSTALL_VERIFY=auto|require|off` modes — driven by a fake release server +
+  injected fake `gh` (reusing the install.sh harness). It shells out to `pwsh` and
+  **skips cleanly when pwsh is absent** (CI ubuntu ships pwsh 7; local macOS without
+  it just skips, so the gate never breaks). Validated against real pwsh 7.6.2.
+
+### Fixed
+
+- **`install.ps1` cross-platform guard** — the user-PATH persistence block uses
+  the Windows-only `User` `EnvironmentVariableTarget`, which throws on
+  pwsh-on-Linux/macOS (under `$ErrorActionPreference='Stop'`, aborting *after* the
+  binary is staged). It is now guarded so it runs on Windows (PowerShell 5.1 and
+  7+) and is skipped on non-Windows pwsh. No behaviour change on Windows (the only
+  platform the installer targets in production); it makes the script
+  inspectable/testable cross-platform.
+
 ## [1.1.0] - 2026-06-02
 
 Theme: **keyless Wikipedia/MediaWiki provider** — a new zero-setup search

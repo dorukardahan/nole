@@ -425,15 +425,25 @@ function Invoke-Main {
         Write-Log "installed to $exe"
 
         # --- PATH note (persistent user scope, no admin), dedupe, warn about new shell ---
-        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-        if (-not $userPath) { $userPath = '' }
-        if (";$userPath;" -notlike "*;$InstallDir;*") {
-            [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $InstallDir), 'User')
-            # SetEnvironmentVariable persists to the registry but the CURRENT shell and
-            # already-running processes won't see it until restarted — also update the
-            # in-session $env:Path AND tell the user to open a new terminal.
-            $env:Path = $env:Path.TrimEnd(';') + ';' + $InstallDir
-            Write-Log "added $InstallDir to your user PATH — open a NEW terminal (or restart) for it to take effect"
+        # The 'User' EnvironmentVariableTarget is registry-backed and Windows-only; it
+        # throws PlatformNotSupportedException on pwsh-on-Linux/macOS (under
+        # $ErrorActionPreference='Stop' that would abort AFTER the binary is installed).
+        # Guard it so the installer can be run/inspected cross-platform without faulting.
+        # $IsWindows is $true only on PS-on-Windows and $false on PS 7+ Linux/macOS; on
+        # Windows PowerShell 5.1 it is undefined ($null), so `-not (Test-Path
+        # Variable:IsWindows)` keeps 5.1 (which only ever runs on Windows) on the
+        # registry path.
+        if (-not (Test-Path Variable:IsWindows) -or $IsWindows) {
+            $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+            if (-not $userPath) { $userPath = '' }
+            if (";$userPath;" -notlike "*;$InstallDir;*") {
+                [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $InstallDir), 'User')
+                # SetEnvironmentVariable persists to the registry but the CURRENT shell and
+                # already-running processes won't see it until restarted — also update the
+                # in-session $env:Path AND tell the user to open a new terminal.
+                $env:Path = $env:Path.TrimEnd(';') + ';' + $InstallDir
+                Write-Log "added $InstallDir to your user PATH — open a NEW terminal (or restart) for it to take effect"
+            }
         }
 
         Write-Log "Nólë works with ZERO keys: keyless DDGS web search out of the box (run 'nole setup --local-extract' to add keyless local URL extraction). Provider keys are optional and only unlock higher-quality/extract routes."
