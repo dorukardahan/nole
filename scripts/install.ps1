@@ -258,7 +258,7 @@ function Invoke-AttestVerify {
     } elseif (Test-LooksLikeReleaseTag $Version) {
         # Version-SHAPED but MALFORMED (e.g. an attacker-served "v0.10" on the unpinned
         # latest path). We cannot confirm it predates signing, so bias to fail-closed.
-        Stop-WithError "attestation verification FAILED for $Asset: malformed release tag '$Version' could not be confirmed pre-signing — refusing to install (set NOLE_INSTALL_VERIFY=off to override)"
+        Stop-WithError "attestation verification FAILED for ${Asset}: malformed release tag '$Version' could not be confirmed pre-signing — refusing to install (set NOLE_INSTALL_VERIFY=off to override)"
     }
     # Pre-signing clean release, or a non-release ref (dev/branch) -> soft-skip.
     if ($VerifyMode -ceq 'require') {
