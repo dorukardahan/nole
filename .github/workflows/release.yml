@@ -191,10 +191,17 @@ jobs:
             -e "s/__SHA_LINUX_AMD64__/${lx}/g" \
             packaging/homebrew/nole.rb.tmpl)"
           tapdir="$(mktemp -d)"
+          # Scrub the clone (its .git/config carries the PAT via extraheader) on every
+          # exit path so the token never lingers — important if this ever runs on a
+          # self-hosted (non-ephemeral) runner.
+          trap 'rm -rf "$tapdir"' EXIT
           git clone --depth 1 "https://github.com/dorukardahan/homebrew-nole.git" "$tapdir"
           # Token via extraheader (not in the remote URL) so it does not leak into
           # git output/config history of the throwaway clone.
           git -C "$tapdir" config "http.https://github.com/.extraheader" "AUTHORIZATION: bearer ${HOMEBREW_TAP_TOKEN}"
+          # Push to the tap's ACTUAL default branch (don't assume 'main' — pushing a new
+          # 'main' to a 'master' repo would silently desync what brew installs).
+          tap_branch="$(git -C "$tapdir" symbolic-ref --short HEAD)"
           mkdir -p "$tapdir/Formula"
           printf '%s\n' "$rendered" > "$tapdir/Formula/nole.rb"
           git -C "$tapdir" add Formula/nole.rb
@@ -204,4 +211,4 @@ jobs:
           fi
           git -C "$tapdir" -c user.name="nole-release" -c user.email="release@users.noreply.github.com" \
             commit -m "nole ${TAG}"
-          git -C "$tapdir" push origin HEAD:main
+          git -C "$tapdir" push origin "HEAD:${tap_branch}"
