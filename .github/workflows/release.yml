@@ -196,16 +196,23 @@ jobs:
           # of the tap is refused on the runner — git then tries to prompt for a
           # username and fails non-interactively ("could not read Username ... No such
           # device or address"), so configuring the token only AFTER the clone (as an
-          # earlier version did) never worked once a real PAT was set. Supply the
-          # bearer token via GIT_CONFIG_* env: it applies to EVERY git invocation in
-          # this step (clone, symbolic-ref, push) and leaves no token in the remote
-          # URL, in process args, or in any persisted .git/config — it vanishes with
-          # the step's environment. extraheader (not the URL) keeps it out of git output.
-          # Do NOT add `set -x`/xtrace to this step: it would echo the expanded token
-          # in the export below. (GitHub also auto-masks secrets.HOMEBREW_TAP_TOKEN.)
+          # earlier version did) never worked once a real PAT was set.
+          #
+          # GitHub's Git-over-HTTPS expects BASIC auth (the token as the password),
+          # NOT Bearer — Bearer is the REST API scheme and is rejected for git
+          # clone/push. Encode "x-access-token:<token>" as a Basic credential, exactly
+          # as actions/checkout does. Supply it via GIT_CONFIG_* env so it applies to
+          # EVERY git invocation in this step (clone, symbolic-ref, push) with no token
+          # in the remote URL, in process args, or in any persisted .git/config — it
+          # vanishes with the step's environment.
+          # Do NOT add `set -x`/xtrace to this step: it would echo the credential. The
+          # base64 form is registered with ::add-mask:: (GitHub masks the raw secret,
+          # not its encoding) as belt-and-suspenders.
+          basic_cred="$(printf 'x-access-token:%s' "${HOMEBREW_TAP_TOKEN}" | base64 | tr -d '\n')"
+          echo "::add-mask::${basic_cred}"
           export GIT_CONFIG_COUNT=1
           export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
-          export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${HOMEBREW_TAP_TOKEN}"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${basic_cred}"
           git clone --depth 1 "https://github.com/dorukardahan/homebrew-nole.git" "$tapdir"
           # Push to the tap's ACTUAL default branch (don't assume 'main' — pushing a new
           # 'main' to a 'master' repo would silently desync what brew installs).
