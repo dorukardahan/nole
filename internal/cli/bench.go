@@ -14,6 +14,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/firecrawl"
 	"github.com/dorukardahan/nole/internal/providers/scrapling"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
+	"github.com/dorukardahan/nole/internal/providers/wikipedia"
 	"github.com/dorukardahan/nole/internal/safeerr"
 	"github.com/spf13/cobra"
 )
@@ -130,6 +131,7 @@ func comprehensiveBenchProviders() map[string]core.Provider {
 		"firecrawl": firecrawl.New(),
 		"scrapling": scrapling.New(),
 		"tavily":    tavily.New(),
+		"wikipedia": wikipedia.New(),
 	}
 }
 

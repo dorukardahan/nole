@@ -20,6 +20,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 	"github.com/dorukardahan/nole/internal/providers/scrapling"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
+	"github.com/dorukardahan/nole/internal/providers/wikipedia"
 	"github.com/dorukardahan/nole/internal/safeerr"
 )
 
@@ -65,8 +66,11 @@ func defaultService() *core.Service {
 		_ = registry.Register(mock.NewUnavailable("tavily"))
 	}
 
-	// DDGS — keyless free, always available
+	// DDGS — keyless free, always available (last-resort general fallback)
 	_ = registry.Register(ddgs.New())
+
+	// Wikipedia/MediaWiki — keyless free, reinforces factcheck/people/academic
+	_ = registry.Register(wikipedia.New())
 
 	// Scrapling — local Python extractor, keyless/free when installed
 	_ = registry.Register(scrapling.New())
@@ -92,6 +96,7 @@ func defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey string) []core.QuotaE
 		providerQuotaEntry("tavily", tavilyKey != ""),
 		providerQuotaEntry("firecrawl", firecrawlKey != ""),
 		{Provider: "ddgs", CostClass: core.CostClassKeylessFree, KeylessFree: true},
+		{Provider: "wikipedia", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 		{Provider: "scrapling", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 	}
 }

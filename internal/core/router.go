@@ -8,16 +8,20 @@ func DefaultRouteMatrix() RouteMatrix {
 	// live-web quality or provider ranking. See docs/BENCHMARKS.md and
 	// docs/ROUTE-EVIDENCE.md; do not reorder providers without new evidence.
 	return RouteMatrix{
-		// Search tasks
+		// Search tasks. "wikipedia" (keyless MediaWiki) reinforces the
+		// encyclopedic routes — factcheck/people/academic — placed before "ddgs"
+		// so it is tried before the last-resort general fallback but never
+		// displaces it. It is deliberately NOT in TaskGeneral (that would make it
+		// a general fallback) nor in any other route.
 		TaskGeneral:   {"brave", "tavily", "firecrawl", "ddgs"},
 		TaskNews:      {"firecrawl", "tavily", "brave", "ddgs"},
 		TaskDocs:      {"firecrawl", "brave", "tavily", "ddgs"},
-		TaskAcademic:  {"tavily", "firecrawl", "brave", "ddgs"},
-		TaskFactcheck: {"firecrawl", "tavily", "brave", "ddgs"},
+		TaskAcademic:  {"tavily", "firecrawl", "brave", "wikipedia", "ddgs"},
+		TaskFactcheck: {"firecrawl", "tavily", "brave", "wikipedia", "ddgs"},
 		TaskSemantic:  {"tavily", "brave", "firecrawl", "ddgs"},
 		TaskCode:      {"tavily", "firecrawl", "brave", "ddgs"},
 		TaskSocial:    {"firecrawl", "tavily", "brave", "ddgs"},
-		TaskPeople:    {"firecrawl", "brave", "tavily", "ddgs"},
+		TaskPeople:    {"firecrawl", "brave", "tavily", "wikipedia", "ddgs"},
 		TaskPricing:   {"firecrawl", "brave", "tavily", "ddgs"},
 		TaskResearch:  {"firecrawl", "tavily", "brave", "ddgs"},
 		// Extract tasks: only providers with extraction capability. Brave/DDGS are
