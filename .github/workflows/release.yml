@@ -91,11 +91,11 @@ jobs:
 
       # govulncheck runs in ci.yml but not on the published tag commit, so the
       # exact bits being released were never vuln-scanned. Mirror the ci.yml
-      # scan here. Pinned to a tagged govulncheck (ci.yml still uses @latest;
-      # pinning the release path is the safer default — consider pinning ci.yml
-      # to the same tag too).
+      # scan here. Pinned to the same tagged govulncheck as ci.yml (both pinned
+      # to v1.3.0 — reproducible scans + supply-chain hygiene on both paths; the
+      # vuln DB is still fetched fresh at run time).
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
 
       - name: Scan released commit for vulnerabilities
         run: govulncheck ./...

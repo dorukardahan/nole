@@ -73,7 +73,7 @@ is recommended on any change that touches networking, TLS, parsing, or
 provider HTTP code:
 
 ```bash
-GOBIN=/tmp go install golang.org/x/vuln/cmd/govulncheck@latest
+GOBIN=/tmp go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
 /tmp/govulncheck ./...
 ```
 

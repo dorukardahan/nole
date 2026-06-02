@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-06-02
+
+Theme: **docs + CI hygiene** — no behaviour, surface, or dependency change; the
+stable contract is untouched. Patch-level cleanup found by an adversarial doc/CI
+sweep.
+
+### Fixed
+
+- **README accuracy** — corrected four drifted claims: the MCP tool list now
+  matches the frozen contract (`search`, `research`, `provider_status`,
+  `budget_status` always; `extract`/`search_and_extract` when extract-capable);
+  the `research` description no longer claims Nólë "synthesizes" (it returns
+  evidence for the agent to synthesize — the core gateway invariant); `nole
+  version` dev-build output is described precisely (`dev` version + `unknown`
+  commit/date); the planner line drops the non-existent `--tasks` flag in favour
+  of the real `--task` / `--single-intent`.
+- **Release-notes pointer** — README pointed at `docs/RELEASE-NOTES-v0.7.1.md` as
+  "current"; now points at `CHANGELOG.md` + the GitHub Releases page (the
+  per-version notes file convention ended at v0.7.1; this no longer goes stale).
+
+### Changed
+
+- **`govulncheck` pinned to `@v1.3.0` across the board** — `ci.yml` was on
+  `@latest`; both `ci.yml` and `release.yml` now pin the current latest
+  (`v1.3.0`, was `v1.1.4` on the release path). Reproducible scans + supply-chain
+  hygiene; the vuln DB is still fetched fresh at run time, so detection coverage
+  is unchanged. `CONTRIBUTING.md` and `docs/ARCHITECTURE.md` no longer say
+  `@latest`, so local, CI, and documented scans agree.
+
 ## [1.0.0] - 2026-06-02
 
 Theme: **stability commitment** — declare the agent-facing surface stable under
