@@ -35,6 +35,20 @@ fi
 # an httptest server in `go test`).
 run bash -n scripts/install.sh
 
+# install.ps1 is the Windows installer. Parse-check it with pwsh when available
+# (GitHub-hosted Linux runners have pwsh preinstalled; a local macOS dev host may
+# not). The parse-only check needs no Windows and no extra PowerShell module.
+if command -v pwsh >/dev/null 2>&1; then
+  run pwsh -NoProfile -NonInteractive -Command '
+    $errs = $null
+    [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/install.ps1).Path, [ref]$null, [ref]$errs)
+    if ($errs) { $errs | ForEach-Object { Write-Error $_.ToString() }; exit 1 }
+    Write-Output "install.ps1 parse OK"
+  '
+else
+  echo "pwsh not found; skipping install.ps1 parse check (CI Linux runners have pwsh)"
+fi
+
 run ./scripts/check-docs-framing.sh
 run ./scripts/check-benchmark-claims.sh
 run ./scripts/check-integration-evidence.sh

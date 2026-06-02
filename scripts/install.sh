@@ -83,7 +83,7 @@ detect_os() {
     Linux)  printf 'linux' ;;
     Darwin) printf 'darwin' ;;
     MINGW*|MSYS*|CYGWIN*|Windows_NT)
-      die "Windows is not supported by this bash installer. Download the nole-windows-<arch>.exe asset from https://github.com/${REPO}/releases and place it on your PATH." ;;
+      die "Windows is not supported by this bash installer. Use the PowerShell installer instead: irm https://raw.githubusercontent.com/${REPO}/main/scripts/install.ps1 | iex  (or download the nole-windows-<arch>.exe asset from https://github.com/${REPO}/releases manually)." ;;
     *)
       die "unsupported OS '${uname_s}'. Download a binary manually from https://github.com/${REPO}/releases." ;;
   esac
