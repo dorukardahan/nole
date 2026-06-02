@@ -151,12 +151,33 @@ function Test-VersionIsSigned {
     return (Test-VersionGE -A $V -B $SignedSince.ToString())
 }
 
+# Invoke-Gh runs gh capturing combined stdout+stderr and the exit code, with
+# $ErrorActionPreference relaxed for the call. On PowerShell < 7.2 (incl. stock
+# Windows PowerShell 5.1 — the advertised `powershell -File` path) a redirected
+# native stderr (2>&1) is surfaced as a NativeCommandError that OBEYS the
+# script-wide 'Stop', so a normal soft-skippable gh failure that writes stderr
+# (offline/anonymous verify, old gh) would THROW before $LASTEXITCODE is read,
+# aborting the install instead of falling back to SHA256-only. Relaxing the
+# preference around the native call (we read the exit code explicitly) preserves
+# the intended soft-skip / fail-closed taxonomy. Returns @{ Output; Code }.
+function Invoke-Gh {
+    param([string[]]$GhArgs)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = (& gh @GhArgs 2>&1 | Out-String)
+        return [pscustomobject]@{ Output = $out; Code = $LASTEXITCODE }
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 # Test-GhVersionOk -> $true if the installed gh is >= GH_MIN_VERSION (CVE-2026-48501 fix).
 function Test-GhVersionOk {
     # gh --version prints 2+ lines ("gh version 2.93.0 (2026-04-01)\n..."); take line 0.
-    $lines = & gh --version 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $lines) { return $false }
-    $first = @($lines)[0]
+    $r = Invoke-Gh @('--version')
+    if ($r.Code -ne 0 -or -not $r.Output) { return $false }
+    $first = ($r.Output -split "`r?`n")[0]
     if ($first -notmatch 'gh version (\d+\.\d+\.\d+)') { return $false }
     return ([version]$matches[1] -ge $GhMin)
 }
@@ -193,8 +214,8 @@ function Invoke-AttestVerify {
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
         $reason = 'gh not installed'
     } else {
-        & gh attestation verify --help *> $null
-        if ($LASTEXITCODE -ne 0) {
+        $probe = Invoke-Gh @('attestation', 'verify', '--help')
+        if ($probe.Code -ne 0) {
             $reason = "installed gh lacks 'attestation verify'"
         } elseif (-not (Test-GhVersionOk)) {
             $reason = "gh < $($GhMin) (CVE-2026-48501)"
@@ -223,8 +244,9 @@ function Invoke-AttestVerify {
     if ($ghHost) { $ghArgs += @('--hostname', $ghHost) }
     # Capture output once for INTERNAL classification only; it is NEVER surfaced (it can
     # carry private URLs / auth detail — AGENTS.md: never print private URLs).
-    $out = (& gh @ghArgs 2>&1 | Out-String)
-    $rc  = $LASTEXITCODE
+    $r   = Invoke-Gh $ghArgs
+    $out = $r.Output
+    $rc  = $r.Code
     if ($rc -eq 0) {
         Write-Log "attestation verified (build provenance, $Repo)"
         return
