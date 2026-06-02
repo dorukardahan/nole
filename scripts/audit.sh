@@ -51,10 +51,11 @@ fi
 
 # The Homebrew formula template is the source of truth the release workflow renders
 # and pushes to the tap. Render it with a dummy version + dummy hashes and run
-# `brew style` (which enforces FormulaAudit/ComponentsOrder) when brew is available
-# — GitHub Linux runners and macOS dev hosts have it — so a stanza-order/style
-# regression cannot silently ship a broken formula. (`brew audit` by path is disabled
-# in recent brew; `brew style` is the available-by-path lint and catches the ordering.)
+# `brew style` (which enforces FormulaAudit/ComponentsOrder) when brew is on PATH —
+# macOS dev hosts have it; GitHub's Linux CI runners generally do NOT, so this is a
+# local-dev gate that skips on CI — catching a stanza-order/style regression before
+# it can ship a broken formula. (`brew audit` by path is disabled in recent brew;
+# `brew style` is the available-by-path lint and catches the ordering.)
 if command -v brew >/dev/null 2>&1; then
   hb_tap="$(mktemp -d)"
   mkdir -p "$hb_tap/Formula"
@@ -71,7 +72,7 @@ if command -v brew >/dev/null 2>&1; then
   HOMEBREW_NO_AUTO_UPDATE=1 run brew style "$hb_tap/Formula/nole.rb"
   rm -rf "$hb_tap"
 else
-  echo "brew not found; skipping Homebrew formula style check (CI Linux runners + macOS have brew)"
+  echo "brew not found; skipping Homebrew formula style check (local-dev gate — run it on a host with brew)"
 fi
 
 run ./scripts/check-docs-framing.sh
