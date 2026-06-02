@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-06-02
+
+Theme: **fix the Homebrew tap auto-bump** — release-infra bugfix; no product
+behaviour, surface, or dependency change.
+
+### Fixed
+
+- **`release.yml` "Update Homebrew tap" now authenticates the `git clone`**, not
+  just the push. The step had configured the PAT bearer token only *after* the
+  clone, so the clone ran unauthenticated; once a real `HOMEBREW_TAP_TOKEN` was
+  configured the clone was refused on the runner (`could not read Username ... No
+  such device or address`) and the step failed (the v0.13.0 auto-bump had never
+  actually run in prod — it was dormant without the secret). The token is now
+  supplied via `GIT_CONFIG_*` env so it applies to the clone, branch detection,
+  and push alike, with no token in the URL, process args, or any persisted
+  `.git/config`. Resolves the auto-bump path tracked in #48.
+
 ## [1.0.1] - 2026-06-02
 
 Theme: **docs + CI hygiene** — no behaviour, surface, or dependency change; the
