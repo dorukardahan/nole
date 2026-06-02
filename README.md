@@ -285,13 +285,13 @@ See `docs/BENCHMARKS.md`.
 Stable/core:
 
 - CLI: `nole search`, `nole extract`, `nole classify`, `nole route-plan`, `nole providers`, `nole doctor`, `nole bench`, `nole version`.
-- MCP stdio: `nole mcp` for agent tools `search`, `extract`, `provider_status`, `budget_status`.
+- MCP stdio: `nole mcp` for agent tools `search`, `research`, `provider_status`, `budget_status` (always advertised), plus `extract` and `search_and_extract` when an extract-capable provider is configured.
 - Routing insight: `routing_insight` is a compact user-facing explanation; `route_trace` remains the structured debugging surface. Agents should cite the compact insight in normal answers and reserve full traces for troubleshooting.
 
 Higher-level/aggregate:
 
-- `nole research <question>` runs a multi-step search + extract + synthesis pass with citations on top of the core routing layer.
-- `nole version` prints the binary's version, commit, and build date (stamped into release builds via `ldflags`; a development build reports `unknown` for the unstamped fields).
+- `nole research <question>` runs a multi-step search + extract pass on top of the core routing layer and returns cited evidence (deduplicated sources + extracted content) for your agent to synthesize — Nólë returns evidence, not a composed answer.
+- `nole version` prints the binary's version, commit, and build date (stamped into release builds via `ldflags`; a development build reports `dev` for the version and `unknown` for the unstamped commit/date fields).
 - `nole self-update` downloads, verifies (mandatory SHA256 + additive `gh attestation verify`), and atomically replaces the running binary with the latest release. `--check-only` reports without installing; `--version <tag>` pins a target; `--verify auto|require|off` controls the attestation gate. Anonymous and explicit-invocation only — it never auto-updates.
 
 Experimental:
@@ -331,7 +331,7 @@ See:
 
 - `docs/STABILITY.md` for the v1.0.0 stability commitment.
 - `docs/PUBLIC-RELEASE-CHECKLIST.md` for the release decision checklist.
-- `docs/RELEASE-NOTES-v0.7.1.md` for the current release notes.
+- `CHANGELOG.md` (and the [GitHub Releases](https://github.com/dorukardahan/nole/releases) page) for release notes — `CHANGELOG.md` is the canonical record for every version. The per-version `docs/RELEASE-NOTES-*.md` files were an early convention (the last one is v0.7.1).
 - `docs/PACKAGING.md` for release build automation and future package channels.
 - `docs/COST-QUOTA-CACHE-QUALITY.md` for the cost/quota/cache/output-quality audit.
 
@@ -345,7 +345,7 @@ Current maintenance line:
 
 1. Product framing and agent-readable install docs.
 2. CI and release gates for tests, vet, doctor, bench and public-safety checks.
-3. LLM-free multi-intent planner with `--task`/`--tasks` override compatibility.
+3. LLM-free multi-intent planner with `--task` override and `--single-intent` compatibility.
 4. Compact one-line Nólë insight alongside structured `route_trace`.
 5. Cost policy model: free-first default, premium-capable support, fail-closed no-hidden-spend behavior.
 6. Honest benchmark/evidence docs and optional sanitized live summaries.
