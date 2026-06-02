@@ -14,8 +14,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/dorukardahan/nole/internal/safeerr"
 )
 
 // This file implements `nole self-update`'s apply path. It mirrors
@@ -351,38 +349,28 @@ func verifyAttestation(ctx context.Context, file, repo, version string, mode Ver
 	// Could-not-verify (offline/anonymous) vs reachable-but-unverified. The set is
 	// CONSERVATIVE: a missed pattern falls through to fail-closed-on-signed, never
 	// soft-skips a genuine failure.
+	// We classify on the RAW output but never surface it — gh's message can carry
+	// private URLs / auth detail (AGENTS.md: never print private URLs). The user
+	// can re-run `gh attestation verify` for the verbatim reason.
 	if isUnreachable(out) {
 		if mode == VerifyRequire {
-			return "", fmt.Errorf("--verify require: could not reach/authenticate to the attestation API to verify %s — %s", filepath.Base(file), trim(out))
+			return "", fmt.Errorf("--verify require: could not reach or authenticate to the attestation API to verify %s (run 'gh attestation verify' manually for details)", filepath.Base(file))
 		}
 		return "attestation API unreachable/unauthenticated", nil
 	}
 	// Reachable, did not verify.
 	if isCleanRelease(version) {
 		if releaseAtLeast(version, SignedSince) {
-			return "", fmt.Errorf("attestation verification FAILED for %s (%s) — refusing to install (possible tampering; use --verify off to override): %s", filepath.Base(file), version, trim(out))
+			return "", fmt.Errorf("attestation verification FAILED for %s (%s) — refusing to install (possible tampering; use --verify off to override, or run 'gh attestation verify' manually for the reason)", filepath.Base(file), version)
 		}
 		// clean release below the cutover -> pre-signing
 	} else if looksLikeReleaseTag(version) {
-		return "", fmt.Errorf("attestation verification FAILED for %s: malformed release tag %q could not be confirmed pre-signing — refusing to install (use --verify off to override): %s", filepath.Base(file), version, trim(out))
+		return "", fmt.Errorf("attestation verification FAILED for %s: malformed release tag %q could not be confirmed pre-signing — refusing to install (use --verify off to override)", filepath.Base(file), version)
 	}
 	if mode == VerifyRequire {
 		return "", fmt.Errorf("--verify require but %s (%s) has no verifiable attestation (predates signing or is not a release tag)", filepath.Base(file), version)
 	}
 	return "no verifiable attestation for " + version + " (pre-signing release)", nil
-}
-
-// trim prepares external (gh) output for inclusion in a user-facing error: it
-// first runs the text through safeerr.Redact (north-star: never surface a
-// credential, even one a subprocess might echo — defense-in-depth) and then caps
-// the length. Redaction runs BEFORE the length cap so a token near the end is
-// masked rather than merely truncated.
-func trim(s string) string {
-	s = strings.TrimSpace(safeerr.Redact(s))
-	if len(s) > 300 {
-		return s[:300] + "…"
-	}
-	return s
 }
 
 // isUnreachable reports whether gh's output indicates a network/auth failure

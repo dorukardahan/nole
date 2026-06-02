@@ -338,9 +338,10 @@ func TestApply_OffMode_SkipsVerifierEntirely(t *testing.T) {
 	}
 }
 
-// A credential that a misbehaving gh might echo must be redacted before it is
-// surfaced in the fail-closed error (north-star: never surface a secret). (Codex PR #45.)
-func TestApply_RedactsGhOutputInError(t *testing.T) {
+// gh's raw output (which can carry private URLs / a credential a misbehaving gh
+// echoes) must NEVER be surfaced in the fail-closed error — we classify on it
+// internally but emit only a sanitized reason (north-star + AGENTS.md). (Codex PR #45.)
+func TestApply_DoesNotSurfaceGhOutputInError(t *testing.T) {
 	asset := mustAsset(t)
 	body := []byte("X\n")
 	sum := sha256.Sum256(body)

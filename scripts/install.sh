@@ -325,7 +325,7 @@ attest_verify() {
     *"rate limit"*|*"connection refused"*|*"no such host"*|*"i/o timeout"*|*"deadline exceeded"*|\
     *"dial tcp"*|*"lookup "*|*"network is unreachable"*|*"no route to host"*|*"TLS handshake"*|*"server misbehaving"*)
       if [ "$VERIFY_MODE" = "require" ]; then
-        die "NOLE_INSTALL_VERIFY=require: could not reach/authenticate to the attestation API to verify ${asset} — ${out}"
+        die "NOLE_INSTALL_VERIFY=require: could not reach or authenticate to the attestation API to verify ${asset} (run 'gh attestation verify' manually for details)"
       fi
       log "attestation API unreachable/unauthenticated — skipping attestation check (SHA256 already verified)"
       return 0
@@ -335,7 +335,7 @@ attest_verify() {
       # whether that is tampering or an expected pre-signing release:
       if is_clean_release "$version"; then
         if version_is_signed "$version"; then
-          die "attestation verification FAILED for ${asset} (${version}) — refusing to install (possible tampering; set NOLE_INSTALL_VERIFY=off to override): ${out}"
+          die "attestation verification FAILED for ${asset} (${version}) — refusing to install (possible tampering; set NOLE_INSTALL_VERIFY=off to override, or run 'gh attestation verify' manually for the reason)"
         fi
         # A well-formed release BELOW the cutover -> genuinely pre-signing.
       elif looks_like_release_tag "$version"; then
@@ -343,7 +343,7 @@ attest_verify() {
         # unpinned latest path, where the releases API is the same channel that
         # served the asset). We cannot confirm it predates signing, so bias to
         # fail-closed rather than soft-skipping a possibly-tampered artifact.
-        die "attestation verification FAILED for ${asset}: malformed release tag '${version}' could not be confirmed pre-signing — refusing to install (set NOLE_INSTALL_VERIFY=off to override): ${out}"
+        die "attestation verification FAILED for ${asset}: malformed release tag '${version}' could not be confirmed pre-signing — refusing to install (set NOLE_INSTALL_VERIFY=off to override)"
       fi
       # Pre-signing clean release, or a non-release ref (dev/branch) -> soft-skip.
       if [ "$VERIFY_MODE" = "require" ]; then
