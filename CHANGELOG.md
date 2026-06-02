@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-06-02
+
+Theme: **fix the Homebrew tap auto-bump** — release-infra bugfix; no product
+behaviour, surface, or dependency change.
+
+### Fixed
+
+- **`release.yml` "Update Homebrew tap" now authenticates the `git clone` with
+  the correct scheme.** Two latent bugs in the v0.13.0 auto-bump (dormant until a
+  real `HOMEBREW_TAP_TOKEN` was configured) surfaced on the v1.0.1 release:
+  (1) the PAT was configured only *after* `git clone`, so the clone ran
+  unauthenticated and the runner refused it (`could not read Username ... No such
+  device or address`); (2) the token was sent as `Authorization: Bearer`, which
+  is the REST-API scheme — GitHub's Git-over-HTTPS expects **Basic** auth (token
+  as the password), so even an authenticated clone/push would have been rejected.
+  Fix: encode `x-access-token:<token>` as a Basic credential (as
+  `actions/checkout` does) and supply it via `GIT_CONFIG_*` env so it applies to
+  the clone, branch detection, and push alike — with no token in the URL, process
+  args, or any persisted `.git/config`. Resolves the auto-bump path tracked in #48.
+
 ## [1.0.1] - 2026-06-02
 
 Theme: **docs + CI hygiene** — no behaviour, surface, or dependency change; the
