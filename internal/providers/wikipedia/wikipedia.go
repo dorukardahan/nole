@@ -128,27 +128,68 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	// gzip and decompresses ONLY when it adds the header itself; setting it
 	// manually would hand us a raw gzip body that DecodeJSONLimited cannot parse.
 
-	resp, err := providerhttp.DoWithRetryBreaker(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions(), p.breaker)
+	// Manage the breaker manually rather than via DoWithRetryBreaker: MediaWiki
+	// reports maxlag/rate-limiting as an HTTP 200 with an error BODY, which
+	// DoWithRetryBreaker — keyed off the HTTP status alone — would record as a
+	// SUCCESS (even resetting a prior failure streak), defeating the breaker during
+	// exactly the overload/rate-limit periods it exists to short-circuit. So we
+	// Allow() up front, run DoWithRetry, classify the FULL outcome (status +
+	// transport error + 200 error body), and record it once in the deferred call.
+	// Allow/Record are nil-safe, so an unbreakered Provider (bench map, tests)
+	// behaves exactly like a plain DoWithRetry.
+	allowed, gen := p.breaker.Allow()
+	if !allowed {
+		return core.SearchResponse{}, fmt.Errorf("wikipedia: search short-circuited; circuit breaker open after repeated en.wikipedia.org failures")
+	}
+	breakerFailure := false  // default = success
+	callerCancelled := false // caller's own cancellation is never the provider's fault
+	defer func() {
+		switch {
+		case callerCancelled:
+			p.breaker.RecordCancellation(gen)
+		case breakerFailure:
+			p.breaker.RecordFailure(gen)
+		default:
+			p.breaker.RecordSuccess(gen)
+		}
+	}()
+
+	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
 	if err != nil {
+		// A live caller context means a transport/dial error or client-side timeout
+		// (a slow/hung upstream) — a provider failure. A cancelled caller context is
+		// not.
+		if ctx.Err() != nil {
+			callerCancelled = true
+		} else {
+			breakerFailure = true
+		}
 		return core.SearchResponse{}, fmt.Errorf("wikipedia: search request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		// 5xx/transient is an upstream failure; a 4xx client error (e.g. a bad
+		// query) is not an outage and must not trip the breaker.
+		breakerFailure = providerhttp.ShouldTrip(resp.StatusCode, nil, ctx)
 		body, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxSearchResponseBytes)
 		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("wikipedia", "search", resp.StatusCode, body)
 	}
 
 	var wresp wikiSearchResponse
 	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxSearchResponseBytes, &wresp); err != nil {
+		// A 200 was received; a decode failure is a contract mismatch, not an
+		// outage — leave it a (default) success for breaker purposes.
 		return core.SearchResponse{}, fmt.Errorf("wikipedia: decode response: %w", err)
 	}
 
 	// MediaWiki reports maxlag / rate limiting as an HTTP 200 body with an
-	// {"error":{"code":...}} block (not a non-2xx status). Surface it as an
-	// error so the route walk falls through to DDGS — but echo ONLY the code,
-	// never error.info (which can carry host/lag/query text).
+	// {"error":{"code":...}} block (not a non-2xx status). This IS an upstream
+	// failure for the breaker (so repeated overload trips it and the route
+	// short-circuits to DDGS). Surface only the code, never error.info (which can
+	// carry host/lag/query text).
 	if wresp.Error != nil {
+		breakerFailure = true
 		switch wresp.Error.Code {
 		case "maxlag", "ratelimited":
 			return core.SearchResponse{}, fmt.Errorf("wikipedia: rate limited (api error code %q; details redacted)", wresp.Error.Code)

@@ -378,3 +378,38 @@ func TestWikipediaNilBreakerStatus(t *testing.T) {
 		t.Fatalf("unbreakered provider status drifted: %#v", st)
 	}
 }
+
+func TestWikipediaBreakerTripsOnMaxlag200(t *testing.T) {
+	// The subtle case Codex caught: MediaWiki reports maxlag/rate-limiting as an
+	// HTTP 200 with an error BODY. The breaker must count this as a FAILURE — if it
+	// recorded the 200 as a success (the DoWithRetryBreaker default), repeated
+	// overload would never trip the breaker and the route would keep hitting
+	// Wikipedia before DDGS during exactly the period the breaker should protect.
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK) // 200 — but the body is a maxlag error
+		_, _ = w.Write([]byte(`{"error":{"code":"maxlag","info":"lagged"}}`))
+	}))
+	defer srv.Close()
+
+	br := providerhttp.NewBreaker(providerhttp.BreakerOptions{Threshold: 2, Cooldown: time.Minute})
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}, breaker: br}
+
+	for i := 0; i < 2; i++ {
+		if _, err := p.Search(context.Background(), core.SearchRequest{Query: "x"}); err == nil {
+			t.Fatalf("call %d: expected a rate-limited error from the maxlag 200 body", i)
+		}
+	}
+	if !br.IsOpen() {
+		t.Fatal("breaker must open after repeated maxlag 200 responses (regression: a 200 error body was recorded as success)")
+	}
+	hitsBefore := atomic.LoadInt32(&hits)
+	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "x"}); err == nil {
+		t.Fatal("expected short-circuit while breaker open")
+	}
+	if got := atomic.LoadInt32(&hits); got != hitsBefore {
+		t.Fatalf("breaker did not short-circuit after maxlag: server hit again (%d -> %d)", hitsBefore, got)
+	}
+}
