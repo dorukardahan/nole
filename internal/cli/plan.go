@@ -121,7 +121,7 @@ func splitProviders(raw string) []string {
 
 func validPlannerProvider(provider string) bool {
 	switch provider {
-	case "brave", "tavily", "firecrawl", "ddgs":
+	case "brave", "tavily", "firecrawl", "wikipedia", "ddgs":
 		return true
 	default:
 		return false
