@@ -125,6 +125,14 @@ irm https://raw.githubusercontent.com/dorukardahan/nole/main/scripts/install.ps1
 
 Download-and-read first (recommended): `irm https://raw.githubusercontent.com/dorukardahan/nole/main/scripts/install.ps1 -OutFile install.ps1`, read it, then `powershell -ExecutionPolicy Bypass -File .\install.ps1`. It installs to `%LOCALAPPDATA%\Programs\nole` and adds it to your user PATH. (Or download the `nole-windows-<arch>.exe` asset from the [releases page](https://github.com/dorukardahan/nole/releases) manually.)
 
+**Homebrew** (macOS + Linux):
+
+```bash
+brew install dorukardahan/nole/nole
+```
+
+The formula installs the same prebuilt release binary and pins its SHA256 (Homebrew's integrity check). See `docs/PACKAGING.md` for the tap details.
+
 Or install a locally built binary by hand:
 
 ```bash

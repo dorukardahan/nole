@@ -49,6 +49,32 @@ else
   echo "pwsh not found; skipping install.ps1 parse check (CI Linux runners have pwsh)"
 fi
 
+# The Homebrew formula template is the source of truth the release workflow renders
+# and pushes to the tap. Render it with a dummy version + dummy hashes and run
+# `brew style` (which enforces FormulaAudit/ComponentsOrder) when brew is on PATH —
+# macOS dev hosts have it; GitHub's Linux CI runners generally do NOT, so this is a
+# local-dev gate that skips on CI — catching a stanza-order/style regression before
+# it can ship a broken formula. (`brew audit` by path is disabled in recent brew;
+# `brew style` is the available-by-path lint and catches the ordering.)
+if command -v brew >/dev/null 2>&1; then
+  hb_tap="$(mktemp -d)"
+  mkdir -p "$hb_tap/Formula"
+  hb_dummy="$(printf '0%.0s' $(seq 1 64))"
+  sed -e "s/__VERSION__/0.0.0/g" \
+      -e "s/__SHA_DARWIN_ARM64__/${hb_dummy}/g" -e "s/__SHA_DARWIN_AMD64__/${hb_dummy}/g" \
+      -e "s/__SHA_LINUX_ARM64__/${hb_dummy}/g"  -e "s/__SHA_LINUX_AMD64__/${hb_dummy}/g" \
+      packaging/homebrew/nole.rb.tmpl > "$hb_tap/Formula/nole.rb"
+  if grep -q '__' "$hb_tap/Formula/nole.rb"; then
+    echo "rendered Homebrew formula still contains __ placeholders" >&2
+    rm -rf "$hb_tap"
+    exit 1
+  fi
+  HOMEBREW_NO_AUTO_UPDATE=1 run brew style "$hb_tap/Formula/nole.rb"
+  rm -rf "$hb_tap"
+else
+  echo "brew not found; skipping Homebrew formula style check (local-dev gate — run it on a host with brew)"
+fi
+
 run ./scripts/check-docs-framing.sh
 run ./scripts/check-benchmark-claims.sh
 run ./scripts/check-integration-evidence.sh

@@ -164,16 +164,37 @@ actions and the GitHub CLI with `GITHUB_TOKEN`. The attest step needs the added
 
 ## Homebrew
 
-Homebrew is a future optional channel.
+Implemented as a **personal tap**: `dorukardahan/homebrew-nole` (a GitHub repo whose
+name must start with `homebrew-`). Users install with:
 
-Safe prep before publication:
+```bash
+brew install dorukardahan/nole/nole
+```
 
-- draft formula metadata locally;
-- point to an approved GitHub Release URL only after it exists;
-- verify checksum from the published asset;
-- test install locally when possible.
+(the `homebrew-` prefix is implicit; equivalently `brew tap dorukardahan/nole` then
+`brew install nole`).
 
-Do not publish or submit a formula without explicit Homebrew publication approval.
+- **Prebuilt-binary formula**, not build-from-source: the formula downloads the
+  matching `nole-<os>-<arch>` release asset (macOS/Linux × amd64/arm64) per platform
+  via `on_macos`/`on_linux` + `on_arm`/`on_intel` blocks and pins each asset's
+  `sha256`. That in-formula `sha256` IS Homebrew's integrity check (fail-closed on a
+  mismatched download) — sourced from the release's `SHA256SUMS` (see
+  [Checksums and signing](#checksums-and-signing)). A source-build formula is
+  deliberately avoided: a `go build` from a bottle has no ldflags, so `nole version`
+  / `doctor --check-updates` would report `dev` forever.
+- The build-provenance attestation is surfaced in the formula `caveats` (with the
+  `gh attestation verify` command), not wired into the formula — Homebrew's own
+  attestation verification is bottle-only, and the per-asset `sha256` is the
+  Homebrew-native integrity mechanism. SHA256 is sufficient and correct here.
+- **Source of truth:** `packaging/homebrew/nole.rb.tmpl` in this repo (reviewable in
+  PRs). The release workflow renders it (version + the four `SHA256SUMS` hashes) and
+  pushes `Formula/nole.rb` to the tap.
+- **Bump flow:** the `Update Homebrew tap` step in `release.yml` auto-rolls the tap on
+  each stable release IF a `HOMEBREW_TAP_TOKEN` secret (a fine-grained PAT with
+  `contents: write` on `homebrew-nole` only — the default `GITHUB_TOKEN` cannot write
+  to another repo) is configured. Without that secret the step skips cleanly and the
+  formula is bumped manually. Run `brew style --fix` + `brew audit --strict --new`
+  against the tap before publishing a brand-new formula.
 
 ## Scoop
 
