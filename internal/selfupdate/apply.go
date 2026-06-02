@@ -107,10 +107,10 @@ func (o *Options) resolve() {
 		o.HTTPClient = &http.Client{Timeout: 60 * time.Second} // large enough for a binary download
 	}
 	if o.apiBaseURL == "" {
-		o.apiBaseURL = strings.TrimSpace(os.Getenv("NOLE_RELEASES_API"))
-		if o.apiBaseURL == "" {
-			o.apiBaseURL = defaultBaseURL
-		}
+		// NOLE_RELEASES_API, then the installer's NOLE_INSTALL_API_URL, then the
+		// public API — so a mirror/GHE install resolves "latest" from the same API
+		// base install.sh used.
+		o.apiBaseURL = envAPIBase()
 	}
 	if o.downloadBaseURL == "" {
 		o.downloadBaseURL = strings.TrimSpace(os.Getenv("NOLE_INSTALL_DOWNLOAD_URL"))

@@ -126,6 +126,37 @@ func TestCheckLatestMalformedBaseURLIsFailSoft(t *testing.T) {
 	}
 }
 
+func TestEnvAPIBasePrecedence(t *testing.T) {
+	t.Setenv("NOLE_RELEASES_API", "")
+	t.Setenv("NOLE_INSTALL_API_URL", "")
+	if got := envAPIBase(); got != defaultBaseURL {
+		t.Fatalf("default should be %q, got %q", defaultBaseURL, got)
+	}
+	t.Setenv("NOLE_INSTALL_API_URL", "https://mirror.example")
+	if got := envAPIBase(); got != "https://mirror.example" {
+		t.Fatalf("NOLE_INSTALL_API_URL should be honored, got %q", got)
+	}
+	t.Setenv("NOLE_RELEASES_API", "https://releases.example")
+	if got := envAPIBase(); got != "https://releases.example" {
+		t.Fatalf("NOLE_RELEASES_API must take precedence, got %q", got)
+	}
+}
+
+// CheckLatest (and thus self-update's latest resolution) must honor the
+// installer's documented NOLE_INSTALL_API_URL so a mirror/GHE install resolves
+// "latest" from the same API base install.sh used. (Codex PR #45.)
+func TestCheckLatestHonorsInstallApiUrl(t *testing.T) {
+	srv := tagServer(t, "v9.9.9")
+	defer srv.Close()
+	t.Setenv("NOLE_RELEASES_API", "")
+	t.Setenv("NOLE_INSTALL_API_URL", srv.URL)
+	t.Setenv("NOLE_INSTALL_REPO", "")
+	got := CheckLatest(context.Background(), "0.9.0")
+	if !got.Checked || got.Latest != "v9.9.9" {
+		t.Fatalf("CheckLatest must resolve via NOLE_INSTALL_API_URL, got %+v", got)
+	}
+}
+
 func TestIsOlderTable(t *testing.T) {
 	cases := []struct {
 		current, latest string

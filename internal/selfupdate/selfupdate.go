@@ -43,6 +43,20 @@ func envRepo() string {
 	return defaultRepo
 }
 
+// envAPIBase resolves the releases API base. NOLE_RELEASES_API is the
+// selfupdate-specific override (used by tests and doctor); it falls back to the
+// installer's documented NOLE_INSTALL_API_URL so a mirror/GHE install resolves
+// "latest" from the SAME API base install.sh used, then to the public API.
+func envAPIBase() string {
+	if v := strings.TrimSpace(os.Getenv("NOLE_RELEASES_API")); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(os.Getenv("NOLE_INSTALL_API_URL")); v != "" {
+		return v
+	}
+	return defaultBaseURL
+}
+
 // Result is the outcome of a staleness check. Checked is false whenever the
 // check could not complete — callers MUST stay silent in that case. Stale and
 // Comparable are only meaningful when Checked is true. Comparable is false when
@@ -60,11 +74,7 @@ type Result struct {
 // It never errors, never writes output, and resolves the endpoint from
 // NOLE_RELEASES_API (default: the public GitHub API).
 func CheckLatest(ctx context.Context, current string) Result {
-	base := strings.TrimSpace(os.Getenv("NOLE_RELEASES_API"))
-	if base == "" {
-		base = defaultBaseURL
-	}
-	return checkLatest(ctx, current, base, envRepo(), &http.Client{Timeout: requestTimeout})
+	return checkLatest(ctx, current, envAPIBase(), envRepo(), &http.Client{Timeout: requestTimeout})
 }
 
 // checkLatest is the injectable core: tests pass an httptest base URL + client so
