@@ -9,9 +9,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 	"github.com/dorukardahan/nole/internal/safeerr"
 )
 
@@ -322,5 +325,56 @@ func TestWikipediaSearchDecodesGzipResponse(t *testing.T) {
 	}
 	if len(resp.Results) != 2 {
 		t.Fatalf("expected 2 results from gzip response, got %d", len(resp.Results))
+	}
+}
+
+func TestWikipediaBreakerShortCircuitsAfterFailures(t *testing.T) {
+	// Wikipedia is routed before the DDGS fallback, so it carries a breaker: after
+	// repeated upstream failures it must short-circuit (fail fast without another
+	// network call) so a slow/down en.wikipedia.org doesn't stall the route on
+	// every request before DDGS runs.
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusInternalServerError) // 5xx -> breaker failure
+	}))
+	defer srv.Close()
+
+	br := providerhttp.NewBreaker(providerhttp.BreakerOptions{Threshold: 2, Cooldown: time.Minute})
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}, breaker: br}
+
+	// Two failed Search calls reach the threshold and open the breaker.
+	for i := 0; i < 2; i++ {
+		if _, err := p.Search(context.Background(), core.SearchRequest{Query: "x"}); err == nil {
+			t.Fatalf("call %d: expected an error from HTTP 500", i)
+		}
+	}
+	if !br.IsOpen() {
+		t.Fatal("breaker should be open after reaching the failure threshold")
+	}
+	hitsBefore := atomic.LoadInt32(&hits)
+
+	// The next call must be short-circuited by the open breaker — no new server hit.
+	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "x"}); err == nil {
+		t.Fatal("expected a short-circuit error while the breaker is open")
+	}
+	if got := atomic.LoadInt32(&hits); got != hitsBefore {
+		t.Fatalf("breaker did not short-circuit: server hit again (%d -> %d)", hitsBefore, got)
+	}
+
+	// Status reflects the open breaker and folds it into Available=false.
+	st := p.Status(context.Background())
+	if st.BreakerState != "open" || st.Available {
+		t.Fatalf("status should show open breaker + Available=false: %#v", st)
+	}
+}
+
+// TestWikipediaNilBreakerStatus pins that an unbreakered Provider (the bench-map
+// / New() case) reports empty breaker fields and stays available — the nil-safe
+// path the rest of the suite relies on.
+func TestWikipediaNilBreakerStatus(t *testing.T) {
+	st := New().Status(context.Background())
+	if !st.Available || st.BreakerState != "" || st.BreakerConsecFails != 0 {
+		t.Fatalf("unbreakered provider status drifted: %#v", st)
 	}
 }

@@ -36,13 +36,16 @@ func defaultService() *core.Service {
 	}
 	tavilyKey := os.Getenv("TAVILY_API_KEY")
 
-	// One circuit breaker per remote API provider. In a long-lived `nole serve`
-	// / MCP process, a persistently-failing upstream trips its breaker and is
-	// short-circuited (fail fast, no burned timeout, no quota debit) until a
-	// cooldown probe recovers it. State is in-memory and per-process; one-shot
-	// CLI invocations never accumulate enough failures to trip. The keyless DDGS
-	// fallback and the local Scrapling extractor are intentionally left
-	// unbreakered so the free last-resort path is never short-circuited.
+	// One circuit breaker per remote provider that is NOT the last-resort
+	// fallback. In a long-lived `nole serve` / MCP process, a persistently-failing
+	// upstream trips its breaker and is short-circuited (fail fast, no burned
+	// timeout, no quota debit) until a cooldown probe recovers it. State is
+	// in-memory and per-process; one-shot CLI invocations never accumulate enough
+	// failures to trip. The keyless DDGS fallback and the local Scrapling extractor
+	// are intentionally left unbreakered so the free last-resort path is never
+	// short-circuited. Wikipedia is keyless too but is routed BEFORE that fallback
+	// (factcheck/people/academic), so it IS breakered — otherwise a slow
+	// en.wikipedia.org would stall those routes ahead of DDGS on every request.
 	breakerOpts := providerhttp.DefaultBreakerOptions()
 
 	// Firecrawl — real adapter (search + extract)
@@ -69,8 +72,10 @@ func defaultService() *core.Service {
 	// DDGS — keyless free, always available (last-resort general fallback)
 	_ = registry.Register(ddgs.New())
 
-	// Wikipedia/MediaWiki — keyless free, reinforces factcheck/people/academic
-	_ = registry.Register(wikipedia.New())
+	// Wikipedia/MediaWiki — keyless free, reinforces factcheck/people/academic.
+	// Breakered (it is routed before the DDGS fallback, so a slow upstream must
+	// not stall those routes on every request).
+	_ = registry.Register(wikipedia.New(wikipedia.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
 
 	// Scrapling — local Python extractor, keyless/free when installed
 	_ = registry.Register(scrapling.New())

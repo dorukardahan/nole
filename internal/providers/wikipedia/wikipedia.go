@@ -47,12 +47,30 @@ var wikiUserAgent = "Nole/" + version.Version + " (+https://github.com/dorukarda
 
 type Provider struct {
 	httpClient *http.Client
+	breaker    *providerhttp.Breaker
 }
 
-func New() Provider {
-	return Provider{
+type Option func(*Provider)
+
+// WithBreaker attaches a circuit breaker so persistent en.wikipedia.org failures
+// short-circuit fast instead of burning the per-call timeout + retry budget on
+// every factcheck/people/academic request in a long-lived serve/MCP process.
+// Wikipedia is a remote provider routed BEFORE the DDGS last-resort fallback, so
+// (unlike DDGS/Scrapling, which are the fallback and stay unbreakered) it needs a
+// breaker to keep a slow upstream from stalling the route ahead of DDGS. A nil
+// breaker (the default, e.g. the bench map) leaves behaviour unchanged.
+func WithBreaker(b *providerhttp.Breaker) Option {
+	return func(p *Provider) { p.breaker = b }
+}
+
+func New(opts ...Option) Provider {
+	p := Provider{
 		httpClient: &http.Client{Timeout: 20 * time.Second},
 	}
+	for _, opt := range opts {
+		opt(&p)
+	}
+	return p
 }
 
 func (p Provider) Name() string { return "wikipedia" }
@@ -110,7 +128,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	// gzip and decompresses ONLY when it adds the header itself; setting it
 	// manually would hand us a raw gzip body that DecodeJSONLimited cannot parse.
 
-	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
+	resp, err := providerhttp.DoWithRetryBreaker(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions(), p.breaker)
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("wikipedia: search request failed: %w", err)
 	}
@@ -169,14 +187,29 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 }
 
 func (p Provider) Status(ctx context.Context) core.ProviderStatus {
-	// Keyless and unbreakered: statically available, like DDGS/Scrapling. A live
-	// ping here would add latency to every status call and burn Wikimedia budget;
-	// the route walk discovers real failures at call time.
-	return core.ProviderStatus{
-		Name:         p.Name(),
-		Available:    true,
-		Capabilities: p.Capabilities(),
+	// Keyless: statically available (no key check, no live ping — a ping would add
+	// latency to every status call and burn Wikimedia budget; the route walk
+	// discovers real failures at call time). When a breaker is attached, surface
+	// its lifecycle for observability and fold "currently short-circuiting" into
+	// Available so /health and the route walk treat a tripped provider as
+	// not-ready (a breaker past its cooldown reports IsOpen()==false and stays
+	// Available; BreakerState still shows the raw lifecycle). Breaker helpers are
+	// nil-safe, so an unbreakered Provider (e.g. the bench map) reports empty
+	// breaker fields and Available=true.
+	state, consecFails, openedAt := providerhttp.BreakerStatusFields(p.breaker)
+	status := core.ProviderStatus{
+		Name:               p.Name(),
+		Available:          true,
+		Capabilities:       p.Capabilities(),
+		BreakerState:       state,
+		BreakerConsecFails: consecFails,
+		BreakerOpenedAt:    openedAt,
 	}
+	if p.breaker.IsOpen() {
+		status.Available = false
+		status.Reason = "circuit breaker open (recent en.wikipedia.org failures)"
+	}
+	return status
 }
 
 // stripSearchMatch removes the searchmatch span markup and decodes the entities

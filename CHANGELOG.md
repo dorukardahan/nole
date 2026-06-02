@@ -26,7 +26,11 @@ change, so the v1.0.0 stability commitment is unaffected.
   surface-lock tests are unchanged. Snippets are HTML-sanitized; `maxlag`
   backpressure and API error bodies are handled redaction-safely (no query/host
   detail leaks); results — including disambiguation/list pages — pass through
-  verbatim for the agent to weigh (Nólë never judges quality).
+  verbatim for the agent to weigh (Nólë never judges quality). Because it is
+  routed before the DDGS fallback, it carries a **circuit breaker** (like the
+  other remote providers): a slow/unreachable upstream short-circuits fast in a
+  long-lived `serve`/MCP process instead of stalling those routes ahead of DDGS.
+  `nole route-plan --providers wikipedia` is accepted for inspection.
 
 ### Notes
 

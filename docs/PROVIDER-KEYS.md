@@ -243,7 +243,10 @@ Notes:
   sort above an older one; the timestamp is passed through verbatim and `score`
   stays unset (Nólë never computes relevance).
 - Keyless does not mean guaranteed availability or unlimited use; it honors the
-  API's `maxlag` backpressure and falls through to DDGS on error.
+  API's `maxlag` backpressure and falls through to DDGS on error. Because it is
+  routed before the DDGS fallback, it carries a circuit breaker, so a persistently
+  slow/down upstream short-circuits fast in a long-lived `serve`/MCP process
+  rather than stalling the route on every request.
 
 ## Scrapling
 
