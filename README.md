@@ -308,6 +308,18 @@ Experimental:
 - Mark client integrations unverified until tested against the real client.
 - Do not change provider route ordering without sanitized benchmark/evidence.
 
+## Stability
+
+As of **v1.0.0**, Nólë follows [SemVer](https://semver.org/) for its agent-facing
+surface: CLI commands + primary flags + `--json` fields, the MCP tools + their
+params/result shapes, the documented `NOLE_*` env vars, and the install/integrity
+contract are stable for 1.x (additive changes are minor; removals/renames are
+major). The MCP-stdout-is-JSON-RPC-only and never-print-secrets invariants, and the
+cost-fail-closed default, are never weakened. HTTP/REST (`nole serve`), provider
+route ordering, log/trace formats, and `internal/...` packages are explicitly not
+frozen. Full details — and the surface-lock tests that enforce it — in
+[`docs/STABILITY.md`](docs/STABILITY.md).
+
 ## Release and packaging
 
 Nólë is a public repository, but published GitHub Releases are created only
@@ -317,6 +329,7 @@ automatically when a `v*.*.*` tag is pushed.
 
 See:
 
+- `docs/STABILITY.md` for the v1.0.0 stability commitment.
 - `docs/PUBLIC-RELEASE-CHECKLIST.md` for the release decision checklist.
 - `docs/RELEASE-NOTES-v0.7.1.md` for the current release notes.
 - `docs/PACKAGING.md` for release build automation and future package channels.

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-02
+
+Theme: **stability commitment** — declare the agent-facing surface stable under
+SemVer. No behaviour change; this release freezes the contract so integrations at
+1.x keep working across 1.x upgrades.
+
+### Added
+
+- **`docs/STABILITY.md`** — the v1.0.0 stability commitment: which surfaces are
+  frozen (CLI commands + primary flags + `--json` fields, MCP tools + params +
+  result shapes, the documented `NOLE_*` env vars, the install/integrity contract,
+  and the safety invariants) and which are explicitly NOT (HTTP/REST `serve`,
+  provider routing order, `route_trace`/`NOLE_LOG` formats, benchmark numbers,
+  `internal/...` packages, the ledger file format).
+- **Surface-lock tests** — `TestStableCLICommandSurface` (internal/cli) and
+  `TestStableMCPToolSurface{WithoutExtract,WithExtract}` (internal/mcpserver) pin
+  the exact frozen command + MCP-tool sets. They fail on any silent add/remove/
+  rename, forcing a conscious decision + a matching version bump.
+
+### Notes
+
+- SemVer from here: MAJOR = breaking surface change, MINOR = additive, PATCH =
+  fixes. The two safety invariants (MCP stdout is JSON-RPC only; secrets are never
+  printed/logged) and the cost-fail-closed default are never weakened in 1.x.
+- README points first-time integrators at `docs/STABILITY.md`.
+
 ## [0.13.0] - 2026-06-02
 
 Theme: **Homebrew** — `brew install` for macOS and Linux.
