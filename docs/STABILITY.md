@@ -55,6 +55,9 @@ set may grow in 1.x — are:
   `NOLE_<PROVIDER>_ESTIMATED_COST_CENTS`.
 - **Cache/ledger:** `NOLE_CACHE_TTL` / `NOLE_CACHE_TTL_SECONDS` /
   `NOLE_CACHE_MAX_ENTRIES`, `NOLE_QUOTA_LEDGER_PATH`.
+- **Reliability tuning** (per-provider HTTP retry + circuit breaker):
+  `NOLE_RETRY_MAX_ATTEMPTS`, `NOLE_RETRY_BASE_DELAY_MS`, `NOLE_BREAKER_THRESHOLD`,
+  `NOLE_BREAKER_COOLDOWN_MS`.
 - **Diagnostics/loading:** `NOLE_LOG`, `NOLE_DISABLE_ENV_FILE`,
   `NOLE_SCRAPLING_PYTHON` (written by `nole setup --local-extract`).
 - **Update/install:** `NOLE_RELEASES_API`, and the installer family
@@ -66,9 +69,10 @@ set may grow in 1.x — are:
 This is the authoritative list of the committed env surface. `nole config dump`
 echoes the subset that are *runtime* config (it omits install-time vars like the
 `NOLE_INSTALL_*` family and `NOLE_RELEASES_API`, and shows provider keys as
-set/unset only); the standard `XDG_STATE_HOME` and the test-only
-`NOLE_MCP_SMOKE_BINARY` are recognized but are NOT part of the committed product
-surface.
+set/unset only); the standard `XDG_STATE_HOME`, the test-only
+`NOLE_MCP_SMOKE_BINARY`, and the build-time `NOLE_BUILD_*` vars (used only by
+`scripts/check-release-builds.sh`) are recognized but are NOT part of the committed
+product surface.
 
 ### Install + integrity contract
 
