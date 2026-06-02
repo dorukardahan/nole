@@ -230,13 +230,17 @@ jobs:
 
       # Auto-roll the Scoop bucket (dorukardahan/scoop-nole) to this release by
       # rendering packaging/scoop/nole.json.tmpl with the version + the two published
-      # Windows SHA256SUMS and pushing nole.json. DORMANT until a SCOOP_BUCKET_TOKEN
-      # secret (a PAT with contents:write on the bucket repo — the default GITHUB_TOKEN
-      # cannot write to another repo) is configured AND the bucket repo exists; without
-      # the secret the step SKIPS cleanly (exit 0) so the release never fails. If the
-      # secret is set but the repo is missing, the clone fails LOUDLY (post-release) —
-      # see the setup note in docs/PACKAGING.md. Prereleases are skipped so the stable
-      # bucket only tracks stable releases. Mirrors the Update Homebrew tap step exactly.
+      # Windows SHA256SUMS and pushing nole.json. In the DEFAULT dormant state (no
+      # SCOOP_BUCKET_TOKEN secret) the step SKIPS cleanly (exit 0) before any clone,
+      # so a release NEVER fails for lack of it. ACTIVATION ORDER MATTERS: create the
+      # bucket repo (dorukardahan/scoop-nole) BEFORE adding the secret (a PAT with
+      # contents:write on it — the default GITHUB_TOKEN cannot write to another repo).
+      # If the secret is set while the repo is still missing, the clone fails LOUDLY
+      # here — the Release is already published (this step is downstream), so nothing
+      # is lost; the loud failure is INTENTIONAL: it surfaces a misconfigured PAT/repo
+      # rather than silently leaving the bucket stale, the same fail-loud behaviour as
+      # the Update Homebrew tap step. See docs/PACKAGING.md + the activation issue.
+      # Prereleases are skipped so the stable bucket only tracks stable releases.
       - name: Update Scoop bucket
         if: steps.release.outputs.prerelease != 'true'
         env:

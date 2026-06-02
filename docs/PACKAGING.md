@@ -213,8 +213,13 @@ scoop install nole
 > include `scoop-nole` and mirror its value into a new `SCOOP_BUCKET_TOKEN` secret
 > (the workflow reads the Scoop secret by name — do not rename it; `HOMEBREW_TAP_TOKEN`
 > is almost certainly scoped to `homebrew-nole` only and will 403 on `scoop-nole`).
-> Until both exist the step skips cleanly and never fails a release. The first stable
-> release after setup auto-populates `nole.json`. Tracked in the activation issue.
+> **Create the repo BEFORE adding the secret.** In the default no-secret state the
+> step skips cleanly and a release never fails for lack of it; but if you add the
+> secret while the repo does not yet exist, the post-release sync step fails loudly
+> (by design — it surfaces a misconfigured PAT/repo rather than silently leaving the
+> bucket stale; the Release itself is already published, so nothing is lost). The
+> first stable release after setup auto-populates `nole.json`. Tracked in the
+> activation issue.
 
 - **Prebuilt-binary manifest**, per-architecture: the manifest points `64bit` and
   `arm64` at the matching `nole-windows-<arch>.exe` release asset and pins each

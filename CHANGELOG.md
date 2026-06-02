@@ -35,8 +35,12 @@ the Homebrew tap. Additive packaging only; no binary/behaviour change.
 - The Scoop channel is **DORMANT** until the maintainer creates
   `dorukardahan/scoop-nole` and adds a `SCOOP_BUCKET_TOKEN` secret (a PAT with
   `contents: write` on that repo — `HOMEBREW_TAP_TOKEN` is scoped to `homebrew-nole`
-  only). See `docs/PACKAGING.md` and the activation issue. North-star unaffected —
-  packaging only.
+  only). **Create the repo before the secret:** the default no-secret state skips
+  cleanly (a release never fails for lack of it), but adding the secret before the
+  repo exists makes the post-release sync fail loudly (by design — surfaces a
+  misconfigured PAT/repo; the Release itself is already published). See
+  `docs/PACKAGING.md` and the activation issue. North-star unaffected — packaging
+  only.
 
 ## [1.1.1] - 2026-06-02
 
