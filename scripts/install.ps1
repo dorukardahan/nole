@@ -272,12 +272,25 @@ function Invoke-AttestVerify {
 # Windows-on-ARM, and not ProcessArchitecture): we install the binary matching the
 # OS/hardware, so an x64-emulated shell on an ARM64 box still gets the arm64 build.
 function Get-Arch {
-    $osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-    switch ($osArch) {
-        'X64'   { return 'amd64' }
-        'Arm64' { return 'arm64' }
+    # Prefer RuntimeInformation.OSArchitecture — it reports the OS/hardware arch
+    # correctly even under x64 emulation on Windows-on-ARM. But on stock Windows
+    # PowerShell 5.1 that type can be unavailable or shadowed (leaving it blank), so
+    # fall back to the environment arch vars: PROCESSOR_ARCHITEW6432 holds the REAL
+    # arch when a 32-bit shell runs under WOW64, else PROCESSOR_ARCHITECTURE.
+    $arch = $null
+    try {
+        $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+    } catch {
+        $arch = $null
+    }
+    if ([string]::IsNullOrWhiteSpace($arch)) {
+        $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+    }
+    switch -Regex ($arch) {
+        '^(x64|amd64)$' { return 'amd64' }   # switch -Regex is case-insensitive
+        '^arm64$'       { return 'arm64' }
         default {
-            Stop-WithError "unsupported architecture '$osArch'. Download a binary manually from https://github.com/$Repo/releases."
+            Stop-WithError "unsupported architecture '$arch'. Download a binary manually from https://github.com/$Repo/releases."
         }
     }
 }
