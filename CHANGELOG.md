@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-06-02
+
+Theme: **Windows install** — a first-class PowerShell installer with the same
+verification contract as the bash installer, so Windows is no longer "download
+the .exe manually".
+
+### Added
+
+- **`scripts/install.ps1`** — PowerShell installer mirroring `scripts/install.sh`
+  exactly: detects arch via `RuntimeInformation.OSArchitecture` (correct under
+  x64 emulation on Windows-on-ARM), downloads `nole-windows-<arch>.exe` +
+  `SHA256SUMS`, verifies SHA256 with `Get-FileHash` (mandatory floor, fail-closed),
+  runs the additive `gh attestation verify` gate with the identical three-way
+  taxonomy + `SignedSince` floor + malformed-tag guard + `gh >= 2.93.0`
+  (CVE-2026-48501) gate + `--hostname` derivation, installs to
+  `%LOCALAPPDATA%\Programs\nole` (stage-in-place + atomic `Move-Item`) and adds it
+  to the user PATH. Honors the same `NOLE_INSTALL_*` env overrides. `install.sh`'s
+  Windows message and the README now point at it.
+
+### Notes
+
+- Native-command error handling is the key porting trap: `gh` is invoked with
+  `$PSNativeCommandUseErrorActionPreference` disabled so a non-zero exit does not
+  throw (it would skip the soft-skip classification and break the zero-dep floor);
+  `$ErrorActionPreference='Stop'` still governs cmdlets so downloads/hashing
+  fail-closed. gh's output is classified internally but never surfaced (it can
+  carry private URLs). `audit.sh` parse-checks `install.ps1` with `pwsh` when
+  available (CI Linux runners have it; local macOS skips).
+
 ## [0.11.0] - 2026-06-02
 
 Theme: **self-update** — let an installed nole upgrade itself, with the same
