@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-06-02
+
+Theme: **REST (`nole serve`) hardening + parity proof** — close the test gaps and
+one real defect on the HTTP surface, and document its true status honestly. No
+change to any committed (CLI/MCP/env) surface.
+
+### Fixed
+
+- **REST error bodies no longer silently truncate.** `writeHTTPJSONError` is now a
+  handler method that routes its encode failure through the same `logEncodeErr`
+  path as the success encoders (it previously swallowed the error), so a partial
+  error response leaves a server-side log instead of vanishing.
+
+### Changed
+
+- **REST 400 decode-error bodies carry `operation`** (additive) — a strict subset
+  of the 500 `cliErrorEnvelope`, so a consumer parses `operation`+`error`
+  uniformly across 400 and 500.
+- **`docs/STABILITY.md`** now states the REST status honestly: its error envelope,
+  `route_trace`/`routing_insight`, task normalization, secret redaction, and
+  cost-fail-closed behaviour are **at parity with CLI/MCP** (shared `core` +
+  `safeerr` code), but REST stays **experimental** — the route/field shapes are
+  not surface-locked and the endpoints are unauthenticated (expose BYOK keys +
+  quota). Parity of the contract ≠ a stability freeze; auth + a REST surface-lock
+  are prerequisites for declaring it stable (a future PR).
+
+### Tests
+
+- New `internal/cli/http_rest_parity_test.go`: drives the REAL `buildMux` to prove
+  the 5-field error-envelope parity, the previously-untested `search_and_extract`
+  / `research` happy paths, the new 400 `operation` key on every POST route,
+  oversized-body 400s on all POST routes, unknown-path 404, the research
+  error-envelope divergence (forced via a cancelled context), and — the key
+  gap-closer — that a **provider-originated secret is redacted end-to-end** through
+  the live HTTP path (not just envelope shape). `serve_test.go` adds a
+  unit-testable `nonLoopbackWarning` (prints the exposure warning, never silenced
+  by `NOLE_LOG=off`) and a regression-lock on the deliberate 300s `WriteTimeout`.
+
 ## [1.2.0] - 2026-06-02
 
 Theme: **Scoop (Windows package manager)** — a `scoop install` channel, mirroring

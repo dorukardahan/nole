@@ -95,10 +95,17 @@ matrix (`nole-<os>-<arch>` for darwin/linux × amd64/arm64 plus
 These are intentionally **not** frozen — integrate against them only with that in
 mind:
 
-- **HTTP/REST (`nole serve`)** — the `serve` command itself and its flags persist
-  (they are in the stable command set; removing them would be breaking), but the
-  HTTP **route shapes and behaviour are experimental** and may change as REST gains
-  the hardening CLI/MCP already have. Depend on CLI or MCP stdio for stability.
+- **HTTP/REST (`nole serve`)** — the `serve` command and its `--listen` / `--mcp`
+  flags persist (they are in the stable command set; removing them would be
+  breaking). The REST error envelope, `route_trace` / `routing_insight`, task
+  normalization, secret redaction, and cost fail-closed behaviour are **at parity
+  with CLI/MCP** — they are produced by the shared `core` + `safeerr` code paths,
+  not a divergent REST path. What is **still experimental and not frozen**: the
+  HTTP route *set* and request/response JSON field shapes are not pinned by a
+  surface-lock and may change, and the endpoints remain **unauthenticated** (they
+  expose your BYOK keys + quota to anyone who can reach the bind). Do not build
+  production integrations against REST yet — depend on CLI or MCP stdio for
+  stability.
 - **Provider routing order / route matrix** — may change with benchmark or
   real-usage evidence (it does not change the *result contract*, only which
   provider serves a request).

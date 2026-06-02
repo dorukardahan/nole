@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -35,14 +36,9 @@ prefer 'nole mcp' (stdio).`,
 			}
 
 			// SECURITY notice: a non-loopback bind exposes the unauthenticated
-			// endpoints (provider keys + quota) beyond this host. This is the only
-			// runtime warning of that exposure, so it is printed UNCONDITIONALLY to
-			// stderr and is NOT routed through nolelog — a verbosity knob like
-			// NOLE_LOG=off must never silence a safety message (Codex review on
-			// PR #41). Same rationale as main.go's raw fatal print.
-			if !bindIsLoopback(listen) {
-				fmt.Fprintf(os.Stderr, "warning: binding %s is not loopback; these endpoints are UNAUTHENTICATED and expose your provider keys and quota. Front it with a reverse proxy / network ACL.\n", listen)
-			}
+			// endpoints (provider keys + quota) beyond this host. Always os.Stderr,
+			// unconditional, NOT via nolelog — see nonLoopbackWarning.
+			nonLoopbackWarning(os.Stderr, listen)
 
 			// Build the service first: defaultService() loads the local env file
 			// (~/.config/nole/.env), so NOLE_LOG set only there is honored by the
@@ -73,6 +69,20 @@ prefer 'nole mcp' (stdio).`,
 	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8765", "bind address (host:port)")
 	cmd.Flags().BoolVar(&mcp, "mcp", false, "enable the HTTP server (MCP endpoint + REST API)")
 	return cmd
+}
+
+// nonLoopbackWarning writes the unauthenticated-exposure warning to w when addr
+// is not a loopback bind, and nothing otherwise. It is the ONLY runtime warning
+// of that exposure, so RunE calls it with os.Stderr and it is printed
+// UNCONDITIONALLY — it deliberately does NOT route through nolelog, because a
+// verbosity knob like NOLE_LOG=off must never silence a safety message (Codex
+// review on PR #41; same rationale as main.go's raw fatal print). Split out from
+// RunE purely so it is unit-testable with a buffer.
+func nonLoopbackWarning(w io.Writer, addr string) {
+	if bindIsLoopback(addr) {
+		return
+	}
+	fmt.Fprintf(w, "warning: binding %s is not loopback; these endpoints are UNAUTHENTICATED and expose your provider keys and quota. Front it with a reverse proxy / network ACL.\n", addr)
 }
 
 // bindIsLoopback reports whether addr binds only to a loopback interface. A
