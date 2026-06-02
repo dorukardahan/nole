@@ -65,10 +65,17 @@ jobs:
           git fetch --force --tags origin "refs/tags/$tag:refs/tags/$tag"
           git checkout --detach "$tag"
 
+          # A hyphenated tag (e.g. v1.2.0-rc.1) is a SemVer prerelease and is
+          # treated as one ALWAYS — on push AND on workflow_dispatch — so the
+          # Homebrew/Scoop stable channels (gated on prerelease != 'true') never
+          # sync a prerelease asset into the stable tap/bucket. The dispatch
+          # `prerelease` input can ADDITIONALLY force a non-hyphenated tag to be a
+          # prerelease (e.g. publishing v1.2.0 as a test prerelease), but it can
+          # never DOWNGRADE a hyphenated tag to stable.
           prerelease="false"
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            prerelease="$INPUT_PRERELEASE"
-          elif printf '%s' "$tag" | grep -Eq '[-]'; then
+          if printf '%s' "$tag" | grep -Eq '[-]'; then
+            prerelease="true"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$INPUT_PRERELEASE" = "true" ]; then
             prerelease="true"
           fi
 

@@ -30,6 +30,16 @@ the Homebrew tap. Additive packaging only; no binary/behaviour change.
   validates JSON shape with `jq` (required fields, both arch keys, bare-hex hashes,
   windows-`.exe` URLs); skips if `jq` is absent.
 
+### Fixed
+
+- **A hyphenated tag is always treated as a prerelease** in `release.yml`. The
+  `prerelease` flag was only inferred from a hyphenated tag on a `push`; a manual
+  `workflow_dispatch` for e.g. `v1.2.0-rc.1` with the default `prerelease=false`
+  input would have marked it stable and synced the rc asset into the **stable**
+  Homebrew tap **and** Scoop bucket. Now a hyphenated tag is a prerelease on both
+  push and dispatch; the dispatch input can only *additionally* force a
+  non-hyphenated tag to prerelease, never downgrade a hyphenated one to stable.
+
 ### Notes
 
 - The Scoop channel is **DORMANT** until the maintainer creates
