@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-02
+
+Theme: **self-update** — let an installed nole upgrade itself, with the same
+verification contract as `scripts/install.sh`. The natural continuation of
+`doctor --check-updates` (which only advises): now nole can apply the update.
+
+### Added
+
+- **`nole self-update`** — downloads the latest published release (or
+  `--version <tag>`), verifies it, and atomically replaces the running binary.
+  SHA256 is the mandatory integrity floor (verified in-process with
+  `crypto/sha256`, fail-closed on mismatch); a GitHub build-provenance
+  attestation is an additive, best-effort second gate via `gh attestation
+  verify` — the SAME three-way taxonomy and `gh >= 2.93.0` (CVE-2026-48501) gate
+  as the installer. Flags: `--check-only` (report only), `--version <tag>`,
+  `--verify auto|require|off`. The outbound check is anonymous (no auth header),
+  and the command never auto-runs — the user invokes it explicitly. For
+  consistency with `install.sh`, it honors the same env vars
+  (`NOLE_INSTALL_REPO` / `_API_URL` / `_DOWNLOAD_URL` / `_VERIFY` / `_VERSION`)
+  when the matching flag is unset; `NOLE_INSTALL_DIR` does not apply (it replaces
+  the running binary in place).
+
+### Notes
+
+- The self-replace is hand-rolled (no self-update library): a NEW file is staged
+  in the running binary's own directory and atomically `rename`d into place — it
+  never truncates/overwrites the running inode, which keeps it Apple-Silicon
+  codesign-safe. The stage uses `os.CreateTemp` (O_EXCL + a random name) so a
+  pre-planted symlink in a writable install dir cannot hijack the write. On
+  Windows the running `.exe` is renamed aside to `.old` first (it cannot be
+  deleted while running; the next self-update removes it). A failure before the
+  rename leaves the existing binary untouched.
+- Verification deliberately shells out to `gh` rather than vendoring
+  `sigstore-go` in-process: the latter would add ~70 transitive modules,
+  ~15-26 MB, and force a Go 1.25 toolchain for a feature that runs only at
+  upgrade time — exactly the heavy dependency the gateway avoids. SHA256 (the
+  mandatory floor) is in-process and needs no external tool.
+
 ## [0.10.0] - 2026-06-02
 
 Theme: **supply-chain provenance** — make release artifacts verifiable beyond a

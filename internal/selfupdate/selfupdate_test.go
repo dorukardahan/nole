@@ -25,7 +25,7 @@ func tagServer(t *testing.T, tag string) *httptest.Server {
 func TestCheckLatestStaleAgainstNewerRelease(t *testing.T) {
 	srv := tagServer(t, "v9.9.9")
 	defer srv.Close()
-	got := checkLatest(context.Background(), "0.9.0", srv.URL, srv.Client())
+	got := checkLatest(context.Background(), "0.9.0", srv.URL, "owner/repo", srv.Client())
 	if !got.Checked || !got.Stale || got.Latest != "v9.9.9" {
 		t.Fatalf("want checked+stale+latest=v9.9.9, got %+v", got)
 	}
@@ -34,7 +34,7 @@ func TestCheckLatestStaleAgainstNewerRelease(t *testing.T) {
 func TestCheckLatestUpToDate(t *testing.T) {
 	srv := tagServer(t, "v0.9.0")
 	defer srv.Close()
-	got := checkLatest(context.Background(), "0.9.0", srv.URL, srv.Client())
+	got := checkLatest(context.Background(), "0.9.0", srv.URL, "owner/repo", srv.Client())
 	if !got.Checked || got.Stale {
 		t.Fatalf("want checked + not stale, got %+v", got)
 	}
@@ -44,7 +44,7 @@ func TestCheckLatestOfflineIsSilentAndFailSoft(t *testing.T) {
 	srv := tagServer(t, "v9.9.9")
 	url := srv.URL
 	srv.Close() // now unreachable
-	got := checkLatest(context.Background(), "0.9.0", url, &http.Client{Timeout: time.Second})
+	got := checkLatest(context.Background(), "0.9.0", url, "owner/repo", &http.Client{Timeout: time.Second})
 	if got.Checked || got.Stale {
 		t.Fatalf("offline must be Checked:false, Stale:false (silent), got %+v", got)
 	}
@@ -55,7 +55,7 @@ func TestCheckLatestNon200IsFailSoft(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	got := checkLatest(context.Background(), "0.9.0", srv.URL, srv.Client())
+	got := checkLatest(context.Background(), "0.9.0", srv.URL, "owner/repo", srv.Client())
 	if got.Checked {
 		t.Fatalf("non-200 must be fail-soft (Checked:false), got %+v", got)
 	}
@@ -66,7 +66,7 @@ func TestCheckLatestEmptyTagIsFailSoft(t *testing.T) {
 		_, _ = w.Write([]byte(`{"tag_name":""}`))
 	}))
 	defer srv.Close()
-	got := checkLatest(context.Background(), "0.9.0", srv.URL, srv.Client())
+	got := checkLatest(context.Background(), "0.9.0", srv.URL, "owner/repo", srv.Client())
 	if got.Checked {
 		t.Fatalf("empty tag must be fail-soft, got %+v", got)
 	}
@@ -76,7 +76,7 @@ func TestCheckLatestDevBuildDoesNotWarn(t *testing.T) {
 	srv := tagServer(t, "v0.9.0")
 	defer srv.Close()
 	for _, cur := range []string{"dev", "dev-build-check", "unknown", ""} {
-		got := checkLatest(context.Background(), cur, srv.URL, srv.Client())
+		got := checkLatest(context.Background(), cur, srv.URL, "owner/repo", srv.Client())
 		if got.Stale {
 			t.Fatalf("non-release current %q must not be flagged stale, got %+v", cur, got)
 		}
@@ -89,7 +89,7 @@ func TestCheckLatestDevBuildDoesNotWarn(t *testing.T) {
 func TestCheckLatestReleaseBuildIsComparable(t *testing.T) {
 	srv := tagServer(t, "v0.9.0")
 	defer srv.Close()
-	got := checkLatest(context.Background(), "0.9.0", srv.URL, srv.Client())
+	got := checkLatest(context.Background(), "0.9.0", srv.URL, "owner/repo", srv.Client())
 	if !got.Checked || !got.Comparable {
 		t.Fatalf("a release-shaped current must be comparable, got %+v", got)
 	}
@@ -108,7 +108,7 @@ func TestCheckLatestRespectsContextTimeoutWithoutHang(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	got := checkLatest(ctx, "0.9.0", srv.URL, srv.Client())
+	got := checkLatest(ctx, "0.9.0", srv.URL, "owner/repo", srv.Client())
 	if got.Checked {
 		t.Fatalf("a timed-out request must be fail-soft, got %+v", got)
 	}
@@ -119,10 +119,41 @@ func TestCheckLatestRespectsContextTimeoutWithoutHang(t *testing.T) {
 
 func TestCheckLatestMalformedBaseURLIsFailSoft(t *testing.T) {
 	for _, base := range []string{"ht!tp://bad", "://nope", "http://127.0.0.1:0"} {
-		got := checkLatest(context.Background(), "0.9.0", base, &http.Client{Timeout: time.Second})
+		got := checkLatest(context.Background(), "0.9.0", base, "owner/repo", &http.Client{Timeout: time.Second})
 		if got.Checked {
 			t.Fatalf("malformed base %q must be fail-soft, got %+v", base, got)
 		}
+	}
+}
+
+func TestEnvAPIBasePrecedence(t *testing.T) {
+	t.Setenv("NOLE_RELEASES_API", "")
+	t.Setenv("NOLE_INSTALL_API_URL", "")
+	if got := envAPIBase(); got != defaultBaseURL {
+		t.Fatalf("default should be %q, got %q", defaultBaseURL, got)
+	}
+	t.Setenv("NOLE_INSTALL_API_URL", "https://mirror.example")
+	if got := envAPIBase(); got != "https://mirror.example" {
+		t.Fatalf("NOLE_INSTALL_API_URL should be honored, got %q", got)
+	}
+	t.Setenv("NOLE_RELEASES_API", "https://releases.example")
+	if got := envAPIBase(); got != "https://releases.example" {
+		t.Fatalf("NOLE_RELEASES_API must take precedence, got %q", got)
+	}
+}
+
+// CheckLatest (and thus self-update's latest resolution) must honor the
+// installer's documented NOLE_INSTALL_API_URL so a mirror/GHE install resolves
+// "latest" from the same API base install.sh used. (Codex PR #45.)
+func TestCheckLatestHonorsInstallApiUrl(t *testing.T) {
+	srv := tagServer(t, "v9.9.9")
+	defer srv.Close()
+	t.Setenv("NOLE_RELEASES_API", "")
+	t.Setenv("NOLE_INSTALL_API_URL", srv.URL)
+	t.Setenv("NOLE_INSTALL_REPO", "")
+	got := CheckLatest(context.Background(), "0.9.0")
+	if !got.Checked || got.Latest != "v9.9.9" {
+		t.Fatalf("CheckLatest must resolve via NOLE_INSTALL_API_URL, got %+v", got)
 	}
 }
 

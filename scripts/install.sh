@@ -223,6 +223,18 @@ gh_version_ok() {
   ver_ge "$ver" "$GH_MIN_VERSION"
 }
 
+# gh_host_from_api derives the gh --hostname from API_URL: empty for the public
+# default (api.github.com / github.com), otherwise the bare host (e.g. a GHE
+# instance "ghe.corp" from "https://ghe.corp/api/v3"). Keeps `gh attestation
+# verify` pointed at the same GitHub host the install was configured against.
+gh_host_from_api() {
+  case "$API_URL" in
+    *"://api.github.com"|*"://api.github.com/"*|*"://github.com"|*"://github.com/"*) printf '' ;;
+    *"://"*) printf '%s' "$API_URL" | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*#\1#' ;;
+    *) printf '' ;;
+  esac
+}
+
 # --- optional, additive attestation verification (GitHub build provenance) ---
 # PRECONDITION: SHA256 has ALREADY passed before this runs. This is the second,
 # OPTIONAL gate with a deliberate three-way fail taxonomy:
@@ -273,9 +285,18 @@ attest_verify() {
   # INVALID attestation. The if/else capture reads gh's true exit under `set -e`
   # (a bare `out=$(gh ...)` would instead ABORT the script on any non-zero gh exit,
   # turning every intended soft-skip into a brick).
-  local out rc
-  if out="$(gh attestation verify "$file" --repo "$REPO" \
-             --signer-workflow "${REPO}/.github/workflows/release.yml" 2>&1)"; then
+  # For a GHE/mirror install (NOLE_INSTALL_API_URL off github.com), the
+  # attestations live on that host, so tell gh to look there; a plain github.com
+  # install (or a download-only mirror whose API base is still github.com) passes
+  # no --hostname and uses gh's default. Build the argv so the optional flag is
+  # cleanly appended (the function's positional params are unused afterwards).
+  local out rc gh_host
+  gh_host="$(gh_host_from_api)"
+  set -- attestation verify "$file" --repo "$REPO" --signer-workflow "${REPO}/.github/workflows/release.yml"
+  if [ -n "$gh_host" ]; then
+    set -- "$@" --hostname "$gh_host"
+  fi
+  if out="$(gh "$@" 2>&1)"; then
     rc=0
   else
     rc=$?
@@ -304,7 +325,7 @@ attest_verify() {
     *"rate limit"*|*"connection refused"*|*"no such host"*|*"i/o timeout"*|*"deadline exceeded"*|\
     *"dial tcp"*|*"lookup "*|*"network is unreachable"*|*"no route to host"*|*"TLS handshake"*|*"server misbehaving"*)
       if [ "$VERIFY_MODE" = "require" ]; then
-        die "NOLE_INSTALL_VERIFY=require: could not reach/authenticate to the attestation API to verify ${asset} — ${out}"
+        die "NOLE_INSTALL_VERIFY=require: could not reach or authenticate to the attestation API to verify ${asset} (run 'gh attestation verify' manually for details)"
       fi
       log "attestation API unreachable/unauthenticated — skipping attestation check (SHA256 already verified)"
       return 0
@@ -314,7 +335,7 @@ attest_verify() {
       # whether that is tampering or an expected pre-signing release:
       if is_clean_release "$version"; then
         if version_is_signed "$version"; then
-          die "attestation verification FAILED for ${asset} (${version}) — refusing to install (possible tampering; set NOLE_INSTALL_VERIFY=off to override): ${out}"
+          die "attestation verification FAILED for ${asset} (${version}) — refusing to install (possible tampering; set NOLE_INSTALL_VERIFY=off to override, or run 'gh attestation verify' manually for the reason)"
         fi
         # A well-formed release BELOW the cutover -> genuinely pre-signing.
       elif looks_like_release_tag "$version"; then
@@ -322,7 +343,7 @@ attest_verify() {
         # unpinned latest path, where the releases API is the same channel that
         # served the asset). We cannot confirm it predates signing, so bias to
         # fail-closed rather than soft-skipping a possibly-tampered artifact.
-        die "attestation verification FAILED for ${asset}: malformed release tag '${version}' could not be confirmed pre-signing — refusing to install (set NOLE_INSTALL_VERIFY=off to override): ${out}"
+        die "attestation verification FAILED for ${asset}: malformed release tag '${version}' could not be confirmed pre-signing — refusing to install (set NOLE_INSTALL_VERIFY=off to override)"
       fi
       # Pre-signing clean release, or a non-release ref (dev/branch) -> soft-skip.
       if [ "$VERIFY_MODE" = "require" ]; then

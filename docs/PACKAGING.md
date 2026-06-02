@@ -74,8 +74,8 @@ Two integrity layers, only the first is mandatory:
   artifact digest through the GitHub attestation API by `gh attestation verify` —
   they are **NOT uploaded as release assets**.
 
-Verification contract (`install.sh` today; the same model is planned for the
-forthcoming `install.ps1` and `nole self-update`):
+Verification contract (`install.sh` and `nole self-update` today; the same model
+is planned for the forthcoming `install.ps1`):
 
 - SHA256 is checked first and always; a mismatch fails closed.
 - The attestation is then verified **only when a usable `gh` is present**

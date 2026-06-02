@@ -24,5 +24,6 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newServeCommand())
 	cmd.AddCommand(newSetupCommand())
 	cmd.AddCommand(newVersionCommand())
+	cmd.AddCommand(newSelfUpdateCommand())
 	return cmd
 }
