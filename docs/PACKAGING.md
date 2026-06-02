@@ -198,15 +198,46 @@ brew install dorukardahan/nole/nole
 
 ## Scoop
 
-Scoop is a future optional Windows channel.
+Implemented as a **personal bucket**: `dorukardahan/scoop-nole`. Windows users install with:
 
-Safe prep before publication:
+```powershell
+scoop bucket add nole https://github.com/dorukardahan/scoop-nole
+scoop install nole
+```
 
-- draft a manifest only after Windows release assets exist;
-- use published asset URLs and SHA256 values;
-- test install in a Windows environment if possible.
+> **Setup note (one-time, maintainer):** the `Update Scoop bucket` step is DORMANT
+> until two things exist: (1) the public repo `dorukardahan/scoop-nole` (any layout;
+> this workflow writes `nole.json` at the repo root), and (2) a repo secret
+> `SCOOP_BUCKET_TOKEN` = a fine-grained PAT with `contents: write` on `scoop-nole`
+> only. Alternatively, extend the existing `HOMEBREW_TAP_TOKEN` PAT's repo access to
+> include `scoop-nole` and mirror its value into a new `SCOOP_BUCKET_TOKEN` secret
+> (the workflow reads the Scoop secret by name — do not rename it; `HOMEBREW_TAP_TOKEN`
+> is almost certainly scoped to `homebrew-nole` only and will 403 on `scoop-nole`).
+> **Create the repo BEFORE adding the secret.** In the default no-secret state the
+> step skips cleanly and a release never fails for lack of it; but if you add the
+> secret while the repo does not yet exist, the post-release sync step fails loudly
+> (by design — it surfaces a misconfigured PAT/repo rather than silently leaving the
+> bucket stale; the Release itself is already published, so nothing is lost). The
+> first stable release after setup auto-populates `nole.json`. Tracked in the
+> activation issue.
 
-Do not publish a manifest without explicit Scoop publication approval.
+- **Prebuilt-binary manifest**, per-architecture: the manifest points `64bit` and
+  `arm64` at the matching `nole-windows-<arch>.exe` release asset and pins each
+  asset's `hash` (a bare lowercase sha256, sourced from the release `SHA256SUMS` —
+  the same value Homebrew uses). That in-manifest `hash` IS Scoop's integrity check
+  (fail-closed on a mismatched download). The `bin` shim exposes the command as `nole`.
+- **Source of truth:** `packaging/scoop/nole.json.tmpl` in this repo (reviewable in
+  PRs; `scripts/audit.sh` renders it with dummy values and validates JSON shape with
+  `jq`). The release workflow renders it (version + the two Windows `SHA256SUMS`
+  hashes) and pushes `nole.json` to the bucket root.
+- **Bump flow:** the `Update Scoop bucket` step in `release.yml` auto-rolls the bucket
+  on each stable release once the secret + repo above exist; without the secret it
+  skips cleanly (the manifest is bumped manually), and prereleases are always skipped.
+  The clone+push is authenticated exactly like the Homebrew tap (PAT via `GIT_CONFIG_*`
+  Basic auth).
+- The build-provenance attestation is verifiable on Windows with
+  `gh attestation verify <path>\nole.exe --repo dorukardahan/nole` (surfaced as a note,
+  not wired into the manifest — the per-asset `hash` is Scoop's native integrity check).
 
 ## npm wrapper
 

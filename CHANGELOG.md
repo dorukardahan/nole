@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-02
+
+Theme: **Scoop (Windows package manager)** — a `scoop install` channel, mirroring
+the Homebrew tap. Additive packaging only; no binary/behaviour change.
+
+### Added
+
+- **Scoop bucket channel** `dorukardahan/scoop-nole`:
+  `scoop bucket add nole https://github.com/dorukardahan/scoop-nole; scoop install nole`.
+  A prebuilt-binary manifest (`packaging/scoop/nole.json.tmpl`) points `64bit` +
+  `arm64` at the matching `nole-windows-<arch>.exe` release asset and pins each
+  asset's `hash` (bare lowercase sha256 from the release `SHA256SUMS` — Scoop's
+  integrity check, fail-closed); the `bin` shim exposes the command as `nole`.
+- **`Update Scoop bucket`** step in `release.yml` auto-rolls the bucket on each
+  stable release — renders the template (version + the two Windows checksums) and
+  pushes `nole.json`, authenticating clone+push with a PAT via `GIT_CONFIG_*` Basic
+  auth (the same mechanism as the Homebrew tap). It is **gated on a
+  `SCOOP_BUCKET_TOKEN` secret and skips cleanly when absent** (and on prereleases),
+  so a release never fails for lack of it.
+- **`scripts/audit.sh` Scoop check** — renders the manifest with dummy values and
+  validates JSON shape with `jq` (required fields, both arch keys, bare-hex hashes,
+  windows-`.exe` URLs); skips if `jq` is absent.
+
+### Fixed
+
+- **A hyphenated tag is always treated as a prerelease** in `release.yml`. The
+  `prerelease` flag was only inferred from a hyphenated tag on a `push`; a manual
+  `workflow_dispatch` for e.g. `v1.2.0-rc.1` with the default `prerelease=false`
+  input would have marked it stable and synced the rc asset into the **stable**
+  Homebrew tap **and** Scoop bucket. Now a hyphenated tag is a prerelease on both
+  push and dispatch; the dispatch input can only *additionally* force a
+  non-hyphenated tag to prerelease, never downgrade a hyphenated one to stable.
+
+### Notes
+
+- The Scoop channel is **DORMANT** until the maintainer creates
+  `dorukardahan/scoop-nole` and adds a `SCOOP_BUCKET_TOKEN` secret (a PAT with
+  `contents: write` on that repo — `HOMEBREW_TAP_TOKEN` is scoped to `homebrew-nole`
+  only). **Create the repo before the secret:** the default no-secret state skips
+  cleanly (a release never fails for lack of it), but adding the secret before the
+  repo exists makes the post-release sync fail loudly (by design — surfaces a
+  misconfigured PAT/repo; the Release itself is already published). See
+  `docs/PACKAGING.md` and the activation issue. North-star unaffected — packaging
+  only.
+
 ## [1.1.1] - 2026-06-02
 
 Theme: **install.ps1 functional test** — closes the one real test gap (the
