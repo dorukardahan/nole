@@ -150,7 +150,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			IncludeTrace bool   `json:"include_trace"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeHTTPJSONError(w, http.StatusBadRequest, map[string]string{"error": safeerr.Message(err)})
+			h.writeHTTPDecodeError(w, "search", err)
 			return
 		}
 		if req.Limit == 0 {
@@ -166,7 +166,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			Limit: req.Limit,
 		})
 		if err != nil {
-			writeHTTPJSONError(w, http.StatusInternalServerError, buildCLIError("search", err, resp.Route, resp.RouteTrace))
+			h.writeHTTPJSONError(w, "search", http.StatusInternalServerError, buildCLIError("search", err, resp.Route, resp.RouteTrace))
 			return
 		}
 		// route_trace is opt-in on the agent surface; omit by default (the compact
@@ -191,7 +191,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			IncludeTrace bool   `json:"include_trace"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeHTTPJSONError(w, http.StatusBadRequest, map[string]string{"error": safeerr.Message(err)})
+			h.writeHTTPDecodeError(w, "extract", err)
 			return
 		}
 		resp, err := h.svc.Extract(r.Context(), core.ExtractRequest{
@@ -199,7 +199,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			Format: req.Format,
 		})
 		if err != nil {
-			writeHTTPJSONError(w, http.StatusInternalServerError, buildCLIError("extract", err, resp.Route, resp.RouteTrace))
+			h.writeHTTPJSONError(w, "extract", http.StatusInternalServerError, buildCLIError("extract", err, resp.Route, resp.RouteTrace))
 			return
 		}
 		if !req.IncludeTrace {
@@ -224,7 +224,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			IncludeTrace bool   `json:"include_trace"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeHTTPJSONError(w, http.StatusBadRequest, map[string]string{"error": safeerr.Message(err)})
+			h.writeHTTPDecodeError(w, "search_and_extract", err)
 			return
 		}
 		resp, err := h.svc.SearchAndExtract(r.Context(), core.SearchAndExtractRequest{
@@ -234,7 +234,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			ExtractTop: req.ExtractTop,
 		})
 		if err != nil {
-			writeHTTPJSONError(w, http.StatusInternalServerError, buildCLIError("search_and_extract", err, resp.Search.Route, resp.Search.RouteTrace))
+			h.writeHTTPJSONError(w, "search_and_extract", http.StatusInternalServerError, buildCLIError("search_and_extract", err, resp.Search.Route, resp.Search.RouteTrace))
 			return
 		}
 		if !req.IncludeTrace {
@@ -259,7 +259,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			MaxSteps int    `json:"max_steps"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeHTTPJSONError(w, http.StatusBadRequest, map[string]string{"error": safeerr.Message(err)})
+			h.writeHTTPDecodeError(w, "research", err)
 			return
 		}
 		if req.MaxSteps == 0 {
@@ -268,8 +268,9 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		report, err := h.svc.Research(r.Context(), req.Question, req.MaxSteps)
 		if err != nil {
 			// ResearchReport has no route/trace, so buildCLIError (which needs them)
-			// does not apply; return a minimal sanitized envelope.
-			writeHTTPJSONError(w, http.StatusInternalServerError, map[string]string{"operation": "research", "error": safeerr.Message(err)})
+			// does not apply; return a minimal sanitized envelope (operation+error —
+			// the documented research-shape divergence, locked by a test).
+			h.writeHTTPJSONError(w, "research", http.StatusInternalServerError, map[string]string{"operation": "research", "error": safeerr.Message(err)})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -279,24 +280,27 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 	return mux
 }
 
+// httpServerTimeouts returns the server's slowloris-class timeouts. Extracted so
+// a test regression-locks them — especially the deliberate 300s WriteTimeout,
+// sized for the worst-case provider fallback chain (Service.Search/Extract try
+// providers sequentially, each with a 20-30s client timeout + up to 2 retries; a
+// naive 60s cap guillotines a legitimate handler mid-fallback — Codex review on
+// PR #25). 300s leaves room for the full route chain + DDGS Retry-After waits;
+// the Read/Header timeouts bound the client side independently. They matter most
+// under `--listen 0.0.0.0` but are cheap to set unconditionally. A future
+// "tidy-up" must not silently shrink WriteTimeout.
+func httpServerTimeouts() (readHeader, read, write, idle time.Duration) {
+	return 5 * time.Second, 30 * time.Second, 300 * time.Second, 120 * time.Second
+}
+
 func (h *httpHandler) start(ctx context.Context, addr string) error {
+	readHeader, read, write, idle := httpServerTimeouts()
 	h.server = &http.Server{
-		Handler: h.buildMux(),
-		// Slowloris-class hardening. Defaults are 0 which means "no limit";
-		// matter most when the user passes --listen 0.0.0.0:port, but cheap
-		// to set unconditionally.
-		//
-		// WriteTimeout sized for the worst-case provider-backed handler:
-		// Service.Search / Service.Extract try providers sequentially, each
-		// with a 20-30s provider client timeout and up to 2 retry attempts.
-		// A naive 60s cap can guillotine a legitimate handler mid-fallback
-		// (Codex review on PR #25). 300s leaves room for the full route
-		// chain plus DDGS rate-limit Retry-After waits; Read/Header timeouts
-		// still bound the client side independently.
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      300 * time.Second,
-		IdleTimeout:       120 * time.Second,
+		Handler:           h.buildMux(),
+		ReadHeaderTimeout: readHeader,
+		ReadTimeout:       read,
+		WriteTimeout:      write,
+		IdleTimeout:       idle,
 	}
 
 	listener, err := net.Listen("tcp", addr)
@@ -436,8 +440,23 @@ func buildMCPServer(svc *core.Service) *server.MCPServer {
 	return mcpserver.New(svc)
 }
 
-func writeHTTPJSONError(w http.ResponseWriter, status int, payload any) {
+// writeHTTPJSONError writes a JSON error body at status. It LOGS any encode
+// failure (via the same logEncodeErr path as the success encoders) instead of
+// swallowing it — a partial/truncated error body would otherwise vanish with no
+// server-side trace. endpoint labels the diagnostic log line.
+func (h *httpHandler) writeHTTPJSONError(w http.ResponseWriter, endpoint string, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	h.logEncodeErr(endpoint, json.NewEncoder(w).Encode(payload))
+}
+
+// writeHTTPDecodeError emits the 400 request-decode error body
+// {"operation":op,"error":...}. It is a strict subset of the cliErrorEnvelope
+// shape (no route/route_trace exist before dispatch), so a consumer parses
+// operation+error uniformly across 400 (decode) and 500 (service) responses.
+func (h *httpHandler) writeHTTPDecodeError(w http.ResponseWriter, op string, err error) {
+	h.writeHTTPJSONError(w, op, http.StatusBadRequest, map[string]string{
+		"operation": op,
+		"error":     safeerr.Message(err),
+	})
 }

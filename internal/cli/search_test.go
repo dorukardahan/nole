@@ -96,7 +96,9 @@ func TestHTTPJSONErrorEnvelopePreservesTraceAndRedactsSecrets(t *testing.T) {
 	})
 
 	recorder := httptest.NewRecorder()
-	writeHTTPJSONError(recorder, http.StatusInternalServerError, payload)
+	// writeHTTPJSONError is a method now (it logs encode failures); a zero-value
+	// handler has a nil logger, which is a safe no-op on the success path here.
+	(&httpHandler{}).writeHTTPJSONError(recorder, "extract", http.StatusInternalServerError, payload)
 
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
