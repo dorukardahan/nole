@@ -55,8 +55,10 @@ the set may grow). They include: `NOLE_COST_POLICY`, `NOLE_HARD_CAP_CENTS`,
 `NOLE_SCRAPLING_PYTHON` (written by `nole setup --local-extract`),
 `NOLE_DISABLE_ENV_FILE`, and the installer family `NOLE_INSTALL_VERSION` / `_DIR` /
 `_REPO` / `_API_URL` / `_DOWNLOAD_URL` / `_VERIFY`. Provider keys (`BRAVE_API_KEY` /
-`BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` / `FIRECRAWL_API_KEY`) are stable. The
-full recognized set is what `nole config dump` reports.
+`BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` / `FIRECRAWL_API_KEY`) are stable. This list is the authoritative
+stable env surface; `nole config dump` echoes the subset that are *runtime* config
+(it omits install-time vars like the `NOLE_INSTALL_*` family and `NOLE_RELEASES_API`,
+and shows provider keys as set/unset only).
 
 ### Install + integrity contract
 
