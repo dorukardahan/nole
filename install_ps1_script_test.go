@@ -379,6 +379,37 @@ func TestInstallPs1_MalformedReleaseTag_FailsClosed(t *testing.T) {
 	}
 }
 
+// A genuine non-release ref (not version-shaped, e.g. "nightly") must still
+// soft-skip a missing attestation, so an install pinned to a branch/dev ref is
+// not bricked by the malformed-tag fail-closed guard above. The pair
+// (malformed-but-shaped -> fail-closed; genuine non-release -> soft-skip) pins
+// the boundary; without this case a regression treating dev refs as fail-closed
+// would go uncaught.
+func TestInstallPs1_NonReleaseRef_SoftSkip(t *testing.T) {
+	skipUnlessPwsh(t)
+	body := []byte("nightly-ref-binary\n")
+	srv, _ := validSumServerPs1(t, "nightly", body) // not version-shaped
+	defer srv.Close()
+
+	installDir := t.TempDir()
+	out, err := runPs1InstallerEnv(t, srv.URL, "testowner/testrepo", installDir,
+		withFakeGh(t),
+		"NOLE_INSTALL_VERIFY=auto",
+		"NOLE_FAKE_GH_VERSION=2.93.0",
+		"NOLE_FAKE_GH_VERIFY_EXIT=1",
+		"NOLE_FAKE_GH_VERIFY_OUTPUT=no attestation found for subject digest sha256:xyz",
+	)
+	if err != nil {
+		t.Fatalf("a non-release ref with no attestation must soft-skip: %v\n%s", err, out)
+	}
+	if _, statErr := os.Stat(filepath.Join(installDir, "nole.exe")); statErr != nil {
+		t.Fatalf("binary should have installed via SHA256 alone:\n%s", out)
+	}
+	if !strings.Contains(out, "pre-signing release") {
+		t.Fatalf("expected a soft-skip for a non-release ref:\n%s", out)
+	}
+}
+
 func TestInstallPs1_InvalidVerifyMode_Fails(t *testing.T) {
 	skipUnlessPwsh(t)
 	body := []byte("invalid-verify-mode-binary\n")

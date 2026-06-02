@@ -16,7 +16,7 @@ No product surface change.
 ### Added
 
 - **`install_ps1_script_test.go`** — a real functional test for
-  `scripts/install.ps1`, mirroring the `install.sh` suite case-for-case (14
+  `scripts/install.ps1`, mirroring the `install.sh` suite case-for-case (15
   tests): SHA256 verify + mismatch fail-closed, the full three-way attestation
   taxonomy (unusable→soft-skip, signed+reachable mismatch / signed-but-missing /
   malformed-tag → fail-closed, pre-signing / unreachable → soft-skip), and the
