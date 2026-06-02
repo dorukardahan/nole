@@ -167,7 +167,7 @@ func Apply(ctx context.Context, opts Options) (ApplyResult, error) {
 	target := strings.TrimSpace(opts.Target)
 	res := ApplyResult{From: opts.Current}
 	if target == "" {
-		chk := checkLatest(ctx, opts.Current, opts.apiBaseURL, opts.HTTPClient)
+		chk := checkLatest(ctx, opts.Current, opts.apiBaseURL, opts.repo, opts.HTTPClient)
 		if !chk.Checked {
 			return res, fmt.Errorf("could not determine the latest release (offline or GitHub unavailable)")
 		}

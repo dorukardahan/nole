@@ -13,10 +13,11 @@ import (
 	"testing"
 )
 
-// testRepo matches the repo hardcoded in checkLatest's releasePath so the fake
-// server's /repos/<repo>/releases/latest handler is hit on the unpinned path.
-// The server is fake; this is just a path string.
-const testRepo = "dorukardahan/nole"
+// testRepo is intentionally NOT the canonical repo: the unpinned apply tests
+// (Target=="") only resolve "latest" correctly if checkLatest honours the
+// overridden repo, so using a non-canonical repo here is the regression guard
+// for that (an unpinned self-update on a fork must resolve the fork's latest).
+const testRepo = "testowner/testrepo"
 
 // releaseServer serves the latest-tag JSON, the asset bytes, and a SHA256SUMS
 // whose hash is sumHex (caller controls it to force match/mismatch). It fails the

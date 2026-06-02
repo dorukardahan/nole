@@ -27,10 +27,21 @@ import (
 
 const (
 	defaultBaseURL = "https://api.github.com"
-	releasePath    = "/repos/dorukardahan/nole/releases/latest"
 	requestTimeout = 3 * time.Second
 	maxBodyBytes   = 1 << 20
 )
+
+// envRepo resolves the owner/repo for release queries, honouring
+// NOLE_INSTALL_REPO (so a fork install resolves "latest" from the SAME repo it
+// downloads from — otherwise an unpinned self-update on a fork would resolve the
+// canonical repo's tag and then fetch that tag from the fork). Default:
+// dorukardahan/nole.
+func envRepo() string {
+	if r := strings.TrimSpace(os.Getenv("NOLE_INSTALL_REPO")); r != "" {
+		return r
+	}
+	return defaultRepo
+}
 
 // Result is the outcome of a staleness check. Checked is false whenever the
 // check could not complete — callers MUST stay silent in that case. Stale and
@@ -53,12 +64,14 @@ func CheckLatest(ctx context.Context, current string) Result {
 	if base == "" {
 		base = defaultBaseURL
 	}
-	return checkLatest(ctx, current, base, &http.Client{Timeout: requestTimeout})
+	return checkLatest(ctx, current, base, envRepo(), &http.Client{Timeout: requestTimeout})
 }
 
 // checkLatest is the injectable core: tests pass an httptest base URL + client so
-// they never touch the network.
-func checkLatest(ctx context.Context, current, baseURL string, client *http.Client) Result {
+// they never touch the network. repo is the owner/repo whose releases/latest is
+// queried (so Apply can resolve "latest" from an overridden NOLE_INSTALL_REPO,
+// consistent with where it downloads from).
+func checkLatest(ctx context.Context, current, baseURL, repo string, client *http.Client) Result {
 	res := Result{Current: current}
 	if client == nil {
 		client = &http.Client{Timeout: requestTimeout}
@@ -67,7 +80,7 @@ func checkLatest(ctx context.Context, current, baseURL string, client *http.Clie
 	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	url := strings.TrimRight(baseURL, "/") + releasePath
+	url := strings.TrimRight(baseURL, "/") + "/repos/" + repo + "/releases/latest"
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return res // Checked stays false → caller is silent.
