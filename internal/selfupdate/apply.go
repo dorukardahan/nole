@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -228,7 +229,7 @@ func Apply(ctx context.Context, opts Options) (ApplyResult, error) {
 	}
 
 	// 4. ADDITIVE attestation gate (best-effort; SHA256 already passed).
-	skip, err := verifyAttestation(ctx, stagedTmp, opts.repo, target, opts.Mode)
+	skip, err := verifyAttestation(ctx, stagedTmp, opts.repo, target, opts.Mode, opts.apiBaseURL)
 	if err != nil {
 		return res, err
 	}
@@ -305,7 +306,7 @@ func verifyChecksum(asset, sums []byte, name string) error {
 // verifyAttestation is the Go port of install.sh's attest_verify three-way
 // taxonomy. It returns ("", nil) when the attestation verified, (reason, nil)
 // when it soft-skipped, and (_, err) when it fails closed.
-func verifyAttestation(ctx context.Context, file, repo, version string, mode VerifyMode) (skip string, err error) {
+func verifyAttestation(ctx context.Context, file, repo, version string, mode VerifyMode, apiBase string) (skip string, err error) {
 	if mode == VerifyOff {
 		return "attestation check disabled (--verify off)", nil
 	}
@@ -330,9 +331,17 @@ func verifyAttestation(ctx context.Context, file, repo, version string, mode Ver
 	// token; gh uses whatever auth the host carries. An anonymous host hits the
 	// public-repo auth limit (cli/cli #11803) and lands in the unreachable
 	// soft-skip branch below.
-	out, code := runGh(ctx, "attestation", "verify", file,
+	args := []string{"attestation", "verify", file,
 		"--repo", repo,
-		"--signer-workflow", repo+"/.github/workflows/release.yml")
+		"--signer-workflow", repo + "/.github/workflows/release.yml"}
+	// For a GHE/mirror install (NOLE_INSTALL_API_URL pointing off github.com), the
+	// attestations live on that host — tell gh to look there instead of the public
+	// default. A plain github.com install (or a download-only mirror whose API base
+	// is still github.com) passes no --hostname and uses gh's default.
+	if host := ghHostFromAPIBase(apiBase); host != "" {
+		args = append(args, "--hostname", host)
+	}
+	out, code := runGh(ctx, args...)
 	if code == 0 {
 		return "", nil
 	}
@@ -398,6 +407,28 @@ func looksLikeReleaseTag(v string) bool {
 	v = strings.TrimSpace(v)
 	v = strings.TrimPrefix(v, "v")
 	return v != "" && v[0] >= '0' && v[0] <= '9'
+}
+
+// ghHostFromAPIBase derives the GitHub hostname to pass to `gh attestation
+// verify --hostname` from a releases API base URL. It returns "" for the public
+// default (api.github.com / github.com) and for an unparseable/empty base, so the
+// common path uses gh's default host; for a GHE/mirror base like
+// "https://ghe.corp/api/v3" it returns "ghe.corp".
+func ghHostFromAPIBase(apiBase string) string {
+	s := strings.TrimSpace(apiBase)
+	if s == "" {
+		return ""
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	switch u.Host {
+	case "api.github.com", "github.com":
+		return "" // gh's default host
+	default:
+		return u.Host
+	}
 }
 
 // releaseAtLeast reports whether release-shaped a >= release-shaped b.

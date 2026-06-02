@@ -409,6 +409,23 @@ func TestVerifyChecksumTable(t *testing.T) {
 	}
 }
 
+func TestGhHostFromAPIBase(t *testing.T) {
+	cases := map[string]string{
+		"":                                    "",
+		"https://api.github.com":              "",
+		"https://api.github.com/":             "",
+		"https://github.com":                  "",
+		"https://ghe.corp/api/v3":             "ghe.corp",
+		"https://git.example.com:8443/api/v3": "git.example.com:8443",
+		"https://api.github.com.evil.com":     "api.github.com.evil.com",
+	}
+	for in, want := range cases {
+		if got := ghHostFromAPIBase(in); got != want {
+			t.Errorf("ghHostFromAPIBase(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestClassifierHelpers(t *testing.T) {
 	if !isCleanRelease("v0.11.0") || isCleanRelease("v0.11") || isCleanRelease("dev") {
 		t.Errorf("isCleanRelease misclassified")
