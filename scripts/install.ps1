@@ -101,7 +101,9 @@ function Stop-WithError {
 function Get-VersionCore {
     param([string]$V)
     $core = $V
-    if ($core.StartsWith('v') -or $core.StartsWith('V')) { $core = $core.Substring(1) }
+    # Strip a LOWERCASE 'v' only — bash `${core#v}` does not strip 'V', so "V0.10.0"
+    # is treated as a non-release ref (soft-skip), and PS must match that.
+    if ($core.StartsWith('v')) { $core = $core.Substring(1) }
     $core = ($core -split '\+', 2)[0]   # drop +build
     $core = ($core -split '-', 2)[0]    # drop -prerelease
     return $core
@@ -135,10 +137,12 @@ function Test-IsCleanRelease {
     return $true
 }
 
-# Test-LooksLikeReleaseTag -> $true if SHAPED like a release tag (optional v then a digit).
+# Test-LooksLikeReleaseTag -> $true if SHAPED like a release tag (optional lowercase
+# v then a digit). -cmatch (case-SENSITIVE) mirrors bash `case $v in v[0-9]*|[0-9]*)`:
+# "V0.10" is NOT a release tag in bash, so PS must not treat it as one either.
 function Test-LooksLikeReleaseTag {
     param([string]$V)
-    return ($V -match '^v?[0-9]')
+    return ($V -cmatch '^v?[0-9]')
 }
 
 # Test-VersionIsSigned -> $true if the resolved release is at/after the signing cutover.
@@ -178,7 +182,7 @@ function Get-GhHostFromApi {
 function Invoke-AttestVerify {
     param([string]$File, [string]$Asset, [string]$Version)
 
-    if ($VerifyMode -eq 'off') {
+    if ($VerifyMode -ceq 'off') {
         Write-Log "attestation check disabled (NOLE_INSTALL_VERIFY=off) — SHA256 already verified"
         return
     }
@@ -197,7 +201,7 @@ function Invoke-AttestVerify {
         }
     }
     if ($reason) {
-        if ($VerifyMode -eq 'require') {
+        if ($VerifyMode -ceq 'require') {
             Stop-WithError "NOLE_INSTALL_VERIFY=require but no usable attestation verifier: $reason. Install GitHub CLI gh >= $($GhMin), or unset NOLE_INSTALL_VERIFY."
         }
         Write-Log "signature verifier unavailable ($reason) — skipping attestation check (SHA256 already verified)"
@@ -236,8 +240,8 @@ function Invoke-AttestVerify {
         'dial tcp', 'lookup ', 'network is unreachable', 'no route to host', 'TLS handshake', 'server misbehaving'
     )
     foreach ($needle in $unreachable) {
-        if ($out -like "*$needle*") {
-            if ($VerifyMode -eq 'require') {
+        if ($out -clike "*$needle*") {
+            if ($VerifyMode -ceq 'require') {
                 Stop-WithError "NOLE_INSTALL_VERIFY=require: could not reach or authenticate to the attestation API to verify $Asset (run 'gh attestation verify' manually for details)"
             }
             Write-Log "attestation API unreachable/unauthenticated — skipping attestation check (SHA256 already verified)"
@@ -257,7 +261,7 @@ function Invoke-AttestVerify {
         Stop-WithError "attestation verification FAILED for $Asset: malformed release tag '$Version' could not be confirmed pre-signing — refusing to install (set NOLE_INSTALL_VERIFY=off to override)"
     }
     # Pre-signing clean release, or a non-release ref (dev/branch) -> soft-skip.
-    if ($VerifyMode -eq 'require') {
+    if ($VerifyMode -ceq 'require') {
         Stop-WithError "NOLE_INSTALL_VERIFY=require but $Asset ($Version) has no verifiable attestation (predates signing or is not a release tag)"
     }
     Write-Log "no verifiable attestation for $Version (pre-signing release) — skipping attestation check (SHA256 already verified)"
@@ -285,7 +289,13 @@ function Resolve-Version {
     } catch {
         Stop-WithError "could not query the latest release (are you online? rate-limited?)"
     }
-    $tag = $rel.tag_name
+    # Read tag_name defensively: under Set-StrictMode -Version Latest, accessing a
+    # NON-EXISTENT property (a malformed/hostile API base returning e.g.
+    # {"message":"Not Found"}) throws a raw exception OUTSIDE the try/catch above,
+    # which would bypass this clean diagnostic and abort with a .NET stack trace.
+    # Guarding the read restores parity with install.sh's clean "could not parse" die.
+    $tag = $null
+    if ($rel -and ($rel.PSObject.Properties.Name -contains 'tag_name')) { $tag = $rel.tag_name }
     if (-not $tag) { Stop-WithError "could not parse a release tag from the API response" }
     return $tag
 }
@@ -295,7 +305,7 @@ function Invoke-Main {
     # Reject an unknown NOLE_INSTALL_VERIFY early. Without this a typo like 'required'
     # or 'REQUIRE' would fall through to `auto` semantics and silently weaken the very
     # policy the user was trying to strengthen — fail loud instead.
-    if ($VerifyMode -notin @('auto', 'require', 'off')) {
+    if ($VerifyMode -cnotin @('auto', 'require', 'off')) {
         Stop-WithError "invalid NOLE_INSTALL_VERIFY='$VerifyMode' (expected one of: auto, require, off)"
     }
 
@@ -357,8 +367,17 @@ function Invoke-Main {
         # Windows (the .exe extension makes it executable).
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
         $exe    = Join-Path $InstallDir 'nole.exe'
-        $staged = Join-Path $InstallDir ".nole.install.$PID.exe"
-        try { Copy-Item -LiteralPath $assetPath -Destination $staged -Force }
+        # Random staging name + CreateNew (the O_EXCL analog: throws if the path
+        # already exists) so a pre-planted file/symlink in a writable install dir
+        # cannot redirect or hijack the staged write — mirrors the Go self-replace
+        # (os.CreateTemp). Staging INSIDE $InstallDir keeps the final Move-Item a
+        # same-volume (atomic) rename. chmod +x is N/A on Windows (the .exe wins).
+        $staged = Join-Path $InstallDir (".nole.install." + [guid]::NewGuid().ToString() + ".exe")
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($assetPath)
+            $fs = [System.IO.File]::Open($staged, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
+            try { $fs.Write($bytes, 0, $bytes.Length) } finally { $fs.Dispose() }
+        }
         catch { Stop-WithError "could not stage the new binary in $InstallDir (existing install left untouched)" }
         try { Move-Item -LiteralPath $staged -Destination $exe -Force }
         catch {
