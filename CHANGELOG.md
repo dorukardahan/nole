@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-02
+
+Theme: **Homebrew** — `brew install` for macOS and Linux.
+
+### Added
+
+- **Homebrew tap** `dorukardahan/homebrew-nole`: `brew install dorukardahan/nole/nole`
+  installs the prebuilt release binary per platform (macOS/Linux × amd64/arm64) and
+  pins each asset's `sha256` (Homebrew's integrity check, sourced from the release's
+  `SHA256SUMS`). The formula's source of truth is `packaging/homebrew/nole.rb.tmpl`
+  in this repo; build-provenance verification is surfaced in the formula `caveats`.
+- **`Update Homebrew tap`** step in `release.yml` auto-rolls the tap on each stable
+  release — renders the template with the version + the four published checksums and
+  pushes `Formula/nole.rb`. It is gated on a `HOMEBREW_TAP_TOKEN` secret (a PAT with
+  `contents: write` on the tap repo) and **skips cleanly when that secret is absent**
+  (the formula is then bumped manually), so a release never fails for lack of it.
+
+### Notes
+
+- Prebuilt-binary formula by design (not build-from-source): the release binary
+  already carries the version/commit/date ldflags stamp, so `nole version` and
+  `doctor --check-updates` report correctly. README + `docs/PACKAGING.md` updated.
+
 ## [0.12.0] - 2026-06-02
 
 Theme: **Windows install** — a first-class PowerShell installer with the same

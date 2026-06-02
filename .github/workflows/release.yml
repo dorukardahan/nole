@@ -157,3 +157,51 @@ jobs:
           fi
 
           gh release create "${args[@]}"
+
+      # Auto-roll the Homebrew tap (dorukardahan/homebrew-nole) to this release by
+      # rendering packaging/homebrew/nole.rb.tmpl with the version + the four
+      # published SHA256SUMS and pushing Formula/nole.rb. This is DORMANT until a
+      # HOMEBREW_TAP_TOKEN secret (a PAT with contents:write on the tap repo — the
+      # default GITHUB_TOKEN cannot write to another repo) is configured; without
+      # it the step SKIPS cleanly (the formula is then bumped manually). Prereleases
+      # are skipped so the stable tap only tracks stable releases.
+      - name: Update Homebrew tap
+        if: steps.release.outputs.prerelease != 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set — skipping Homebrew tap sync (formula bumped manually)."
+            exit 0
+          fi
+          version="${TAG#v}"
+          sha() { awk -v n="  $1" 'index($0, n) {print $1; exit}' dist/SHA256SUMS; }
+          da="$(sha nole-darwin-arm64)"; dx="$(sha nole-darwin-amd64)"
+          la="$(sha nole-linux-arm64)"; lx="$(sha nole-linux-amd64)"
+          for v in "$da" "$dx" "$la" "$lx"; do
+            [ -n "$v" ] || { echo "missing a SHA256SUMS entry for the formula" >&2; exit 1; }
+          done
+          rendered="$(sed \
+            -e "s/__VERSION__/${version}/g" \
+            -e "s/__SHA_DARWIN_ARM64__/${da}/g" \
+            -e "s/__SHA_DARWIN_AMD64__/${dx}/g" \
+            -e "s/__SHA_LINUX_ARM64__/${la}/g" \
+            -e "s/__SHA_LINUX_AMD64__/${lx}/g" \
+            packaging/homebrew/nole.rb.tmpl)"
+          tapdir="$(mktemp -d)"
+          git clone --depth 1 "https://github.com/dorukardahan/homebrew-nole.git" "$tapdir"
+          # Token via extraheader (not in the remote URL) so it does not leak into
+          # git output/config history of the throwaway clone.
+          git -C "$tapdir" config "http.https://github.com/.extraheader" "AUTHORIZATION: bearer ${HOMEBREW_TAP_TOKEN}"
+          mkdir -p "$tapdir/Formula"
+          printf '%s\n' "$rendered" > "$tapdir/Formula/nole.rb"
+          git -C "$tapdir" add Formula/nole.rb
+          if git -C "$tapdir" diff --cached --quiet; then
+            echo "tap formula already at ${TAG}; nothing to push."
+            exit 0
+          fi
+          git -C "$tapdir" -c user.name="nole-release" -c user.email="release@users.noreply.github.com" \
+            commit -m "nole ${TAG}"
+          git -C "$tapdir" push origin HEAD:main
