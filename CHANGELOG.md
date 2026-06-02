@@ -23,7 +23,11 @@ verification contract as `scripts/install.sh`. The natural continuation of
   verify` — the SAME three-way taxonomy and `gh >= 2.93.0` (CVE-2026-48501) gate
   as the installer. Flags: `--check-only` (report only), `--version <tag>`,
   `--verify auto|require|off`. The outbound check is anonymous (no auth header),
-  and the command never auto-runs — the user invokes it explicitly.
+  and the command never auto-runs — the user invokes it explicitly. For
+  consistency with `install.sh`, it honors the same env vars
+  (`NOLE_INSTALL_REPO` / `_API_URL` / `_DOWNLOAD_URL` / `_VERIFY` / `_VERSION`)
+  when the matching flag is unset; `NOLE_INSTALL_DIR` does not apply (it replaces
+  the running binary in place).
 
 ### Notes
 

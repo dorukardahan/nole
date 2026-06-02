@@ -31,6 +31,35 @@ func TestSelfUpdateRejectsInvalidVerifyMode(t *testing.T) {
 	}
 }
 
+// self-update honors NOLE_INSTALL_VERIFY (the installer's env var) when --verify
+// is not explicitly passed — so a bogus env value is rejected just like a bogus
+// flag. (Codex PR #45.)
+func TestSelfUpdateHonorsVerifyEnv(t *testing.T) {
+	t.Setenv("NOLE_INSTALL_VERIFY", "bogus")
+	out, err := runSelfUpdate(t) // no --verify; the env supplies the (invalid) mode
+	if err == nil || !strings.Contains(err.Error(), "invalid verify mode") {
+		t.Fatalf("expected env-derived invalid mode rejection, got err=%v out=%s", err, out)
+	}
+}
+
+// An explicit --verify overrides the env (precedence: flag > env > default).
+func TestSelfUpdateFlagOverridesVerifyEnv(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"tag_name":"v0.10.0"}`)
+	}))
+	defer srv.Close()
+	t.Setenv("NOLE_RELEASES_API", srv.URL)
+	t.Setenv("NOLE_INSTALL_VERIFY", "bogus") // would error if it leaked through
+	origV := version.Version
+	version.Version = "0.10.0" // == latest -> up-to-date, returns before any download
+	defer func() { version.Version = origV }()
+
+	out, err := runSelfUpdate(t, "--verify", "off")
+	if err != nil {
+		t.Fatalf("explicit --verify must override the bogus env: %v\n%s", err, out)
+	}
+}
+
 // --check-only reports a newer release and downloads/installs nothing.
 func TestSelfUpdateCheckOnlyReportsNewer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

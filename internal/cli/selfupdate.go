@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"os"
+	"strings"
+
 	"github.com/dorukardahan/nole/internal/selfupdate"
 	"github.com/dorukardahan/nole/internal/version"
 	"github.com/spf13/cobra"
@@ -33,13 +36,30 @@ func newSelfUpdateCommand() *cobra.Command {
 			"runs unless you invoke it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mode, err := selfupdate.ParseVerifyMode(verifyFlag)
+			// Honor the installer's documented env vars when the matching flag was
+			// not explicitly set, so `nole self-update` is consistent with how the
+			// user configured scripts/install.sh. Precedence: explicit flag > env >
+			// default. NOLE_INSTALL_DIR is intentionally NOT consulted — self-update
+			// replaces the RUNNING binary in place, wherever it already lives.
+			verify := verifyFlag
+			if !cmd.Flags().Changed("verify") {
+				if env := strings.TrimSpace(os.Getenv("NOLE_INSTALL_VERIFY")); env != "" {
+					verify = env
+				}
+			}
+			target := targetVersion
+			if !cmd.Flags().Changed("version") {
+				if env := strings.TrimSpace(os.Getenv("NOLE_INSTALL_VERSION")); env != "" {
+					target = env
+				}
+			}
+			mode, err := selfupdate.ParseVerifyMode(verify)
 			if err != nil {
 				return err
 			}
 			_, err = selfupdate.Apply(cmd.Context(), selfupdate.Options{
 				Current:   version.Version,
-				Target:    targetVersion,
+				Target:    target,
 				Mode:      mode,
 				CheckOnly: checkOnly,
 				Out:       cmd.OutOrStdout(),
@@ -48,7 +68,7 @@ func newSelfUpdateCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&checkOnly, "check-only", false, "report whether a newer release exists; download and install nothing")
-	cmd.Flags().StringVar(&targetVersion, "version", "", "install a specific release tag (e.g. v0.11.0) instead of the latest; may install an OLDER release (a downgrade) — the named tag's integrity/attestation is still verified")
-	cmd.Flags().StringVar(&verifyFlag, "verify", "auto", "attestation verification policy: auto|require|off")
+	cmd.Flags().StringVar(&targetVersion, "version", "", "install a specific release tag (e.g. v0.11.0) instead of the latest (defaults to $NOLE_INSTALL_VERSION if set); may install an OLDER release (a downgrade) — the named tag's integrity/attestation is still verified")
+	cmd.Flags().StringVar(&verifyFlag, "verify", "auto", "attestation verification policy: auto|require|off (defaults to $NOLE_INSTALL_VERIFY if set)")
 	return cmd
 }
