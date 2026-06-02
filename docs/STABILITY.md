@@ -48,17 +48,27 @@ a convention.
 
 ### Configuration (environment variables)
 
-The documented env vars are stable (a stable variable keeps its name + meaning;
-the set may grow). They include: `NOLE_COST_POLICY`, `NOLE_HARD_CAP_CENTS`,
-`NOLE_<PROVIDER>_PAID`, `NOLE_QUOTA_LEDGER_PATH`, `NOLE_CACHE_TTL` /
-`NOLE_CACHE_TTL_SECONDS` / `NOLE_CACHE_MAX_ENTRIES`, `NOLE_LOG`, `NOLE_RELEASES_API`,
-`NOLE_SCRAPLING_PYTHON` (written by `nole setup --local-extract`),
-`NOLE_DISABLE_ENV_FILE`, and the installer family `NOLE_INSTALL_VERSION` / `_DIR` /
-`_REPO` / `_API_URL` / `_DOWNLOAD_URL` / `_VERIFY`. Provider keys (`BRAVE_API_KEY` /
-`BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` / `FIRECRAWL_API_KEY`) are stable. This list is the authoritative
-stable env surface; `nole config dump` echoes the subset that are *runtime* config
-(it omits install-time vars like the `NOLE_INSTALL_*` family and `NOLE_RELEASES_API`,
-and shows provider keys as set/unset only).
+The committed (stable) env knobs — a stable variable keeps its name + meaning; the
+set may grow in 1.x — are:
+
+- **Cost/policy:** `NOLE_COST_POLICY`, `NOLE_HARD_CAP_CENTS`, `NOLE_<PROVIDER>_PAID`,
+  `NOLE_<PROVIDER>_ESTIMATED_COST_CENTS`.
+- **Cache/ledger:** `NOLE_CACHE_TTL` / `NOLE_CACHE_TTL_SECONDS` /
+  `NOLE_CACHE_MAX_ENTRIES`, `NOLE_QUOTA_LEDGER_PATH`.
+- **Diagnostics/loading:** `NOLE_LOG`, `NOLE_DISABLE_ENV_FILE`,
+  `NOLE_SCRAPLING_PYTHON` (written by `nole setup --local-extract`).
+- **Update/install:** `NOLE_RELEASES_API`, and the installer family
+  `NOLE_INSTALL_VERSION` / `_DIR` / `_REPO` / `_API_URL` / `_DOWNLOAD_URL` /
+  `_VERIFY`.
+- **Provider keys:** `BRAVE_API_KEY` / `BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` /
+  `FIRECRAWL_API_KEY`.
+
+This is the authoritative list of the committed env surface. `nole config dump`
+echoes the subset that are *runtime* config (it omits install-time vars like the
+`NOLE_INSTALL_*` family and `NOLE_RELEASES_API`, and shows provider keys as
+set/unset only); the standard `XDG_STATE_HOME` and the test-only
+`NOLE_MCP_SMOKE_BINARY` are recognized but are NOT part of the committed product
+surface.
 
 ### Install + integrity contract
 
