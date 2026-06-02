@@ -75,6 +75,38 @@ else
   echo "brew not found; skipping Homebrew formula style check (local-dev gate — run it on a host with brew)"
 fi
 
+# The Scoop manifest template is the source of truth the release workflow renders
+# and pushes to the bucket. Render it with a dummy version + dummy hashes, assert no
+# placeholders survive, then validate JSON shape with jq (no Windows host needed — the
+# .exe is never executed; we only check the manifest is well-formed + schema-shaped).
+if command -v jq >/dev/null 2>&1; then
+  sc_dir="$(mktemp -d)"
+  sc_dummy="$(printf '0%.0s' $(seq 1 64))"
+  sed -e "s/__VERSION__/0.0.0/g" \
+      -e "s/__SHA_WIN_AMD64__/${sc_dummy}/g" \
+      -e "s/__SHA_WIN_ARM64__/${sc_dummy}/g" \
+      packaging/scoop/nole.json.tmpl > "$sc_dir/nole.json"
+  if grep -q '__' "$sc_dir/nole.json"; then
+    echo "rendered Scoop manifest still contains __ placeholders" >&2
+    rm -rf "$sc_dir"
+    exit 1
+  fi
+  # (1) well-formed JSON  (2) required top-level fields (schema 'required' =
+  # version, homepage, license)  (3) both arch keys present  (4) every top-level
+  # arch hash is a bare 64-hex sha256 (no prefix) so it matches SHA256SUMS  (5) the
+  # arch URLs point at the windows .exe assets.
+  run jq -e '
+    (.version and .homepage and .license)
+    and (.architecture["64bit"] and .architecture["arm64"])
+    and ([.architecture[].hash] | all(test("^[a-f0-9]{64}$")))
+    and ([.architecture[].url]  | all(test("nole-windows-(amd64|arm64)\\.exe$")))
+  ' "$sc_dir/nole.json" >/dev/null
+  rm -rf "$sc_dir"
+  echo "Scoop manifest render + shape OK"
+else
+  echo "jq not found; skipping Scoop manifest shape check"
+fi
+
 run ./scripts/check-docs-framing.sh
 run ./scripts/check-benchmark-claims.sh
 run ./scripts/check-integration-evidence.sh
