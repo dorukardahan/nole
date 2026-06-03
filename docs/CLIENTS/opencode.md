@@ -100,4 +100,4 @@ Mark this client `verified` only after:
 - Use absolute binary paths if PATH is not inherited.
 - `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and restart OpenCode.
 - Check provider key visibility with `nole doctor`.
-- Keep HTTP/REST disabled unless explicitly testing experimental REST behavior.
+- Use the stdio MCP path above; the HTTP/REST surface (`nole serve`) is for shared/remote setups (one keyed Nólë serving several machines), not needed for a local OpenCode. If you do expose it on a non-loopback bind, set `NOLE_SERVE_TOKEN`.

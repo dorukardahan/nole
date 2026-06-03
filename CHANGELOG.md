@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-06-04
+
+Theme: **REST (`nole serve`) is now a stable, authenticated surface.** It graduates
+from experimental to a frozen 1.x contract: bearer-token auth, a surface-lock, and
+an honest 402 mapping. Additive — no CLI/MCP/env removal or rename.
+
+### Added
+
+- **Bearer-token auth for `nole serve` (`NOLE_SERVE_TOKEN`).** When set, every
+  endpoint except `/health` requires `Authorization: Bearer <token>`
+  (constant-time compared, never logged); `/health` stays open for readiness
+  probes. The token is read from the process env (never argv/config).
+- **`TestStableRESTSurface`** pins the REST contract: the route set
+  (`/health`, `/mcp`, `/api/{search,extract,search_and_extract,research,providers,budget}`),
+  the error-envelope field shape, and the status-code mapping. `docs/STABILITY.md`
+  moves REST from experimental to **stable**.
+
+### Changed
+
+- **REST exhausted-free-tier now returns HTTP 402** (`NoFreeQuotaError` →
+  `402 Payment Required`) instead of `500` — an honest "this would require paid
+  usage you have not authorized". Landed together with the surface-lock so it is
+  part of the frozen contract.
+- **SECURITY (fail closed): a non-loopback `nole serve` bind now REQUIRES
+  `NOLE_SERVE_TOKEN`.** Previously a non-loopback bind printed a warning and started
+  anyway (serving your BYOK keys + quota to the network unauthenticated — explicitly
+  experimental + warned-against). Now `serve` **refuses to start** on a non-loopback
+  bind without a token, with a clear message telling you to set `NOLE_SERVE_TOKEN`
+  or bind to loopback. The loopback default (`127.0.0.1`) is unchanged (no token
+  needed). If you currently run `--listen 0.0.0.0` without a token, set
+  `NOLE_SERVE_TOKEN` on upgrade.
+
+### Docs
+
+- `nole serve --help`, `docs/STABILITY.md` (REST stable section + `NOLE_SERVE_TOKEN`
+  env entry + the new surface-lock in the enforcement list), README, PACKAGING,
+  PUBLIC-RELEASE-CHECKLIST, and the OpenCode client doc updated to reflect the
+  authenticated, stable REST surface (no longer "experimental / unauthenticated").
+
 ## [1.3.1] - 2026-06-03
 
 Theme: **onboarding messages catch up with always-on keyless extract.** Follow-up

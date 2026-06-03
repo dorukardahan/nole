@@ -65,6 +65,8 @@ set may grow in 1.x — are:
   `NOLE_BREAKER_COOLDOWN_MS`.
 - **Diagnostics/loading:** `NOLE_LOG`, `NOLE_DISABLE_ENV_FILE`,
   `NOLE_SCRAPLING_PYTHON` (written by `nole setup --local-extract`).
+- **HTTP serve auth:** `NOLE_SERVE_TOKEN` (bearer token for `nole serve`; required
+  for a non-loopback bind, optional for the loopback default).
 - **Update/install:** `NOLE_RELEASES_API`, and the installer family
   `NOLE_INSTALL_VERSION` / `_DIR` / `_REPO` / `_API_URL` / `_DOWNLOAD_URL` /
   `_VERIFY`.
@@ -88,6 +90,32 @@ build-provenance attestation is an additive, best-effort gate, and the
 matrix (`nole-<os>-<arch>` for darwin/linux × amd64/arm64 plus
 `nole-windows-<arch>.exe`, with `SHA256SUMS`) is stable.
 
+### HTTP/REST (`nole serve`)
+
+**Stable since v1.4.0.** The `serve` command, its `--listen` / `--mcp` flags, and
+the HTTP surface are a frozen 1.x contract:
+
+- **Route set** (locked by `TestStableRESTSurface`): `/health`, `/mcp`,
+  `/api/search`, `/api/extract`, `/api/search_and_extract`, `/api/research`,
+  `/api/providers`, `/api/budget`. Removing/renaming a route is breaking.
+- **Error envelope shape** (frozen) — for `/api/*` request-decode (400), auth
+  (401), and service errors (402/500): a JSON `{operation, error}` body, plus the
+  additive `route` / `routing_insight` / `route_trace` on routed service errors
+  (the same `core` + `safeerr` envelope as CLI/MCP, no divergent REST path).
+  Method-not-allowed (405) and unknown-route (404) are standard HTTP **plain-text**
+  rejections, NOT the JSON envelope; `/health` returns its own `{status, …}` shape;
+  `/mcp` speaks JSON-RPC. Parse the JSON envelope on the `/api/*` 400/401/402/500
+  paths; treat 404/405 as HTTP-level.
+- **Status-code contract:** `200` success, `400` request-decode error, `401`
+  missing/invalid bearer token, `402` `NoFreeQuotaError` (free tier exhausted /
+  paid blocked), `404` unknown route (plain text), `405` wrong method (plain text),
+  `500` other service errors, `503` `/health` not-ready.
+- **Auth:** `NOLE_SERVE_TOKEN` sets a bearer token required on every endpoint
+  except `/health` (constant-time compared; never logged). A **non-loopback bind
+  requires it** — `serve` refuses to start on a non-loopback bind without a token
+  (fail closed; it never serves your keys to a network unauthenticated). The
+  loopback default (`127.0.0.1`) needs no token.
+
 ### Safety invariants (never weakened in 1.x)
 
 - MCP `stdout` is JSON-RPC only; diagnostics go to stderr.
@@ -100,17 +128,6 @@ matrix (`nole-<os>-<arch>` for darwin/linux × amd64/arm64 plus
 These are intentionally **not** frozen — integrate against them only with that in
 mind:
 
-- **HTTP/REST (`nole serve`)** — the `serve` command and its `--listen` / `--mcp`
-  flags persist (they are in the stable command set; removing them would be
-  breaking). The REST error envelope, `route_trace` / `routing_insight`, task
-  normalization, secret redaction, and cost fail-closed behaviour are **at parity
-  with CLI/MCP** — they are produced by the shared `core` + `safeerr` code paths,
-  not a divergent REST path. What is **still experimental and not frozen**: the
-  HTTP route *set* and request/response JSON field shapes are not pinned by a
-  surface-lock and may change, and the endpoints remain **unauthenticated** (they
-  expose your BYOK keys + quota to anyone who can reach the bind). Do not build
-  production integrations against REST yet — depend on CLI or MCP stdio for
-  stability.
 - **Provider routing order / route matrix** — may change with benchmark or
   real-usage evidence (it does not change the *result contract*, only which
   provider serves a request).
@@ -135,6 +152,8 @@ this doc update) rather than silent drift:
   the advertised MCP tool set (incl. the extract-gated split).
 - `TestStableMCPToolParams` / `TestStableTaskEnum` (`internal/mcpserver`) — each
   MCP tool's parameter names and the `task` enum values.
+- `TestStableRESTSurface` (`internal/cli`) — the `nole serve` REST route set, the
+  error-envelope field shape, and the status-code contract (incl. the 402 mapping).
 
 CLI flags and `--json` / MCP result field names are not pinned by a snapshot lock;
 their additive-only stability is a maintainer commitment enforced by the broader

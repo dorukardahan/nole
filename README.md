@@ -305,9 +305,9 @@ Higher-level/aggregate:
 - `nole version` prints the binary's version, commit, and build date (stamped into release builds via `ldflags`; a development build reports `dev` for the version and `unknown` for the unstamped commit/date fields).
 - `nole self-update` downloads, verifies (mandatory SHA256 + additive `gh attestation verify`), and atomically replaces the running binary with the latest release. `--check-only` reports without installing; `--version <tag>` pins a target; `--verify auto|require|off` controls the attestation gate. Anonymous and explicit-invocation only — it never auto-updates.
 
-Experimental:
+HTTP/REST server (advanced, stable since v1.4.0):
 
-- HTTP/REST via `nole serve`. Keep REST claims conservative until it has the same hardening and compatibility coverage as CLI/MCP.
+- `nole serve --mcp` exposes the MCP endpoint (`/mcp`) and the REST API (`/api/*`) over HTTP — for shared/remote setups (one keyed Nólë serving several machines). MCP stdio (`nole mcp`) remains the primary local-agent path. A non-loopback bind **requires** `NOLE_SERVE_TOKEN` (bearer token); the loopback default needs none. See `nole serve --help` and [`docs/STABILITY.md`](docs/STABILITY.md).
 
 ## Safety rules
 
@@ -326,10 +326,11 @@ surface: CLI commands + primary flags + `--json` fields, the MCP tools + their
 params/result shapes, the documented `NOLE_*` env vars, and the install/integrity
 contract are stable for 1.x (additive changes are minor; removals/renames are
 major). The MCP-stdout-is-JSON-RPC-only and never-print-secrets invariants, and the
-cost-fail-closed default, are never weakened. HTTP/REST (`nole serve`), provider
-route ordering, log/trace formats, and `internal/...` packages are explicitly not
-frozen. Full details — and the surface-lock tests that enforce it — in
-[`docs/STABILITY.md`](docs/STABILITY.md).
+cost-fail-closed default, are never weakened. HTTP/REST (`nole serve`) is stable as
+of **v1.4.0** (route set + error envelope + status codes + bearer-token auth).
+Provider route ordering, log/trace formats, and `internal/...` packages are
+explicitly not frozen. Full details — and the surface-lock tests that enforce it —
+in [`docs/STABILITY.md`](docs/STABILITY.md).
 
 ## Release and packaging
 
