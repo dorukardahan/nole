@@ -468,10 +468,18 @@ func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 		driftByProvider[sig.Provider] = sig
 	}
 
+	// extractAvailable: does URL extraction work AT ALL right now? True when any
+	// available registered provider advertises extract — including the always-on
+	// keyless httpfetch backstop. Drives whether a missing keyed extract provider is
+	// pitched as a disabled-feature unlock (false) or a fidelity upgrade (true).
+	extractAvailable := false
 	for _, provider := range providers {
 		status := provider.Status(ctx) // called once per provider
 		if byokNames[provider.Name()] {
 			configured[provider.Name()] = status.Available
+		}
+		if status.Available && HasCapability(status.Capabilities, CapabilityExtract) {
+			extractAvailable = true
 		}
 		merged := mergeProviderCostStatus(status, s.ledger.Decide(provider.Name()))
 		if sig, ok := driftByProvider[provider.Name()]; ok {
@@ -479,7 +487,7 @@ func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 		}
 		statuses = append(statuses, merged)
 	}
-	suggestions := BuildSetupSuggestions(configured)
+	suggestions := BuildSetupSuggestions(configured, extractAvailable)
 	return ProviderStatusResponse{
 		Providers:        statuses,
 		SetupSuggestions: suggestions,
