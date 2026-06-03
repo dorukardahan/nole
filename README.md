@@ -77,7 +77,7 @@ See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 
 Prerequisites:
 
-- Go 1.25+ for building from source (matches the `go 1.25.10` directive in `go.mod`).
+- Go 1.25+ for building from source (matches the `go 1.25.11` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily and Firecrawl.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
 - No provider key is required for the deterministic benchmark, the DDGS or Wikipedia keyless searches, or a configured local Scrapling fallback.
