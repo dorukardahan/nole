@@ -431,7 +431,7 @@ main() {
     *) log "note: ${INSTALL_DIR} is not on your PATH — add: export PATH=\"${INSTALL_DIR}:\$PATH\"" ;;
   esac
 
-  log "Nólë works with ZERO keys: keyless DDGS web search out of the box (run 'nole setup --local-extract' to add keyless local URL extraction). Provider keys are optional and only unlock higher-quality/extract routes."
+  log "Nólë works with ZERO keys: keyless DDGS web search out of the box. Provider keys and 'nole setup --local-extract' are optional upgrades. Run 'nole doctor' to see the search/extract capabilities your installed version supports."
   log "next: run 'nole doctor' to verify the install."
 }
 

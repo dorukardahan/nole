@@ -184,7 +184,7 @@ func newSetupCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(out, "\n%d agent(s) configured.\n", configured)
-			fmt.Fprintln(out, "Nólë works with ZERO keys: DDGS gives keyless web search out of the box, and `nole setup --local-extract` adds keyless local URL extraction (Scrapling).")
+			fmt.Fprintln(out, "Nólë works with ZERO keys: DDGS gives keyless web search and the built-in httpfetch backstop gives keyless URL extraction out of the box (best-effort, no JavaScript). `nole setup --local-extract` adds JS-capable local extraction via Scrapling.")
 			fmt.Fprintln(out, "Provider keys are OPTIONAL — they only unlock higher-quality search and URL-extraction routes:")
 			fmt.Fprintln(out, "  export FIRECRAWL_API_KEY=...")
 			fmt.Fprintln(out, "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
