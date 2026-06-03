@@ -32,7 +32,7 @@ A working client should show these tools:
 - `search`
 - `provider_status`
 - `budget_status`
-- `extract` when Tavily, Firecrawl or local Scrapling is configured
+- `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity)
 
 ## Install and verify Nólë
 

@@ -72,7 +72,7 @@ Mark this client `verified` only after, on a host with Grok CLI installed:
 
 - `nole doctor` passes with key presence only;
 - `nole doctor --mcp` passes;
-- Grok's `/mcps` view shows `nole` connected with `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured;
+- Grok's `/mcps` view shows `nole` connected with `search`, `provider_status`, `budget_status`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity, not its availability);
 - one low-limit docs search works through Grok;
 - no key/auth/header/raw-payload/private-path leakage appears in config, logs or chat.
 
@@ -82,6 +82,6 @@ Record the evidence in `docs/CLIENTS/LIVE-VERIFICATION.md` before changing the s
 
 - If `nole` tools do not appear, run `nole doctor --mcp` directly to confirm Nólë's MCP stdio is healthy, then restart the Grok session so it re-reads `~/.grok/user-settings.json`.
 - If an existing `nole` entry is present but disabled, the writer preserves your `enabled` flag — set `enabled: true` in `~/.grok/user-settings.json` (or via `/mcps`) to turn it on.
-- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and restart Grok.
+- `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and restart Grok.
 - If provider keys are missing inside Grok but present in your interactive shell, prefer the wrapper form (`--mcp-wrapper`) so keys are sourced at launch.
 - If stdout pollution appears in Grok's MCP logs, file a bug; `nole mcp` stdout must remain JSON-RPC protocol only.

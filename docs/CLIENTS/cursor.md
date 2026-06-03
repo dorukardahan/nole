@@ -46,7 +46,7 @@ To verify Cursor on a new host (or to re-verify after a Cursor upgrade), record:
 
 - Cursor version and config path (`~/.cursor/mcp.json`);
 - the Nólë MCP entry shape after setup (wrapper-direct: `command_basename=nole-mcp`, 0 args, 0 env keys);
-- that the Nólë tools `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured, are visible in Cursor's MCP panel or dispatchable by name through its chat agent (`provider_status` is a no-network sanity check; one `limit=1` `free-first` DDGS `search` is the live smoke);
+- that the Nólë tools `search`, `provider_status`, `budget_status`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity, not its availability), are visible in Cursor's MCP panel or dispatchable by name through its chat agent (`provider_status` is a no-network sanity check; one `limit=1` `free-first` DDGS `search` is the live smoke);
 - that any unrelated MCP servers already present in the user's Cursor config are preserved unchanged by the writer;
 - that no secrets, bearer tokens, auth headers, raw provider payloads or local user paths appear in Cursor's MCP entry, in chat output, or in any committed artifact;
 - that provider keys are visible to the Cursor-launched process only via the `~/.local/bin/nole-mcp` wrapper sourcing `~/.config/nole/.env` at launch.

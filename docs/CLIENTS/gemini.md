@@ -77,7 +77,7 @@ Mark this client `verified` only after, on a host with Gemini CLI installed:
 
 - `nole doctor` passes with key presence only;
 - `nole doctor --mcp` passes;
-- Gemini's `/mcp` (or `gemini mcp list`) shows `nole` connected with `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured;
+- Gemini's `/mcp` (or `gemini mcp list`) shows `nole` connected with `search`, `provider_status`, `budget_status`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity, not its availability);
 - one low-limit docs search works through Gemini;
 - no key/auth/header/raw-payload/private-path leakage appears in config, logs or chat.
 
@@ -86,6 +86,6 @@ Record the evidence in `docs/CLIENTS/LIVE-VERIFICATION.md` before changing the s
 ## Troubleshooting
 
 - If `nole` tools do not appear, run `nole doctor --mcp` directly to confirm Nólë's MCP stdio is healthy and key presence is detected, then restart the Gemini session.
-- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and restart Gemini.
+- `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and restart Gemini.
 - If provider keys are missing inside Gemini but present in your interactive shell, prefer the wrapper form (`--mcp-wrapper`) so keys are sourced at launch.
 - If stdout pollution appears in Gemini's MCP logs, file a bug; `nole mcp` stdout must remain JSON-RPC protocol only.

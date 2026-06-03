@@ -25,25 +25,30 @@ import (
 // pins those invariants.
 var (
 	reComment = regexp.MustCompile(`(?s)<!--.*?-->`)
-	reTitle   = regexp.MustCompile(`(?is)<title\b[^>]*>(.*?)</title\s*>`)
+	// Title capture tolerates an UNCLOSED <title> (match to end-of-input): per the
+	// HTML spec <title> is RCDATA that ends only at </title> or EOF — a later
+	// <body> start tag does NOT close it. The non-capturing (?:...|$) keeps group 1
+	// = the title content.
+	reTitle = regexp.MustCompile(`(?is)<title\b[^>]*>(.*?)(?:</title\s*>|$)`)
 
-	// Elements whose ENTIRE body is non-visible noise. script/style/noscript/
-	// template/svg tolerate an UNCLOSED tag (match to end-of-input) so a
-	// truncated or hostile page cannot leak e.g. raw JavaScript as "text".
+	// Elements whose ENTIRE body is non-visible (or, for <title>, separately
+	// captured) content. All tolerate an UNCLOSED tag (match to end-of-input) so a
+	// truncated or hostile page cannot leak e.g. raw JavaScript — or, for <title>,
+	// RCDATA title text — into the body output. <title> is a leaf element, so the
+	// end-of-input fallback is browser-faithful and cannot swallow a real body the
+	// way an unclosed <head> could.
 	reSkipUnclosed = []*regexp.Regexp{
 		regexp.MustCompile(`(?is)<script\b[^>]*>.*?(</script\s*>|$)`),
 		regexp.MustCompile(`(?is)<style\b[^>]*>.*?(</style\s*>|$)`),
 		regexp.MustCompile(`(?is)<noscript\b[^>]*>.*?(</noscript\s*>|$)`),
 		regexp.MustCompile(`(?is)<template\b[^>]*>.*?(</template\s*>|$)`),
 		regexp.MustCompile(`(?is)<svg\b[^>]*>.*?(</svg\s*>|$)`),
+		regexp.MustCompile(`(?is)<title\b[^>]*>.*?(</title\s*>|$)`),
 	}
-	// head/title are matched CLOSED-ONLY: an unclosed <head> must not swallow the
-	// whole document body (browsers auto-close head at <body>). The title text is
-	// already captured by reTitle before this runs; removing the title element
-	// here keeps it from also bleeding into the body text.
+	// <head> is matched CLOSED-ONLY: an unclosed <head> must not swallow the whole
+	// document body (browsers auto-close head at <body>).
 	reSkipClosed = []*regexp.Regexp{
 		regexp.MustCompile(`(?is)<head\b[^>]*>.*?</head\s*>`),
-		regexp.MustCompile(`(?is)<title\b[^>]*>.*?</title\s*>`),
 	}
 
 	// Block-level tags (open or close) become a newline so adjacent blocks stay

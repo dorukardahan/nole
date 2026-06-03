@@ -296,7 +296,7 @@ See `docs/BENCHMARKS.md`.
 Stable/core:
 
 - CLI: `nole search`, `nole extract`, `nole classify`, `nole route-plan`, `nole providers`, `nole doctor`, `nole bench`, `nole version`.
-- MCP stdio: `nole mcp` for agent tools `search`, `research`, `provider_status`, `budget_status` (always advertised), plus `extract` and `search_and_extract` when an extract-capable provider is configured.
+- MCP stdio: `nole mcp` for agent tools `search`, `research`, `provider_status`, `budget_status`, `extract`, and `search_and_extract` — all advertised out of the box via the keyless httpfetch backstop (zero keys, zero setup); a keyed or local-Scrapling provider upgrades extract fidelity but is not required for the tools to appear.
 - Routing insight: `routing_insight` is a compact user-facing explanation; `route_trace` remains the structured debugging surface. Agents should cite the compact insight in normal answers and reserve full traces for troubleshooting.
 
 Higher-level/aggregate:

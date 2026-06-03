@@ -59,6 +59,17 @@ func TestHTMLToTextRemovesUnclosedScript(t *testing.T) {
 	}
 }
 
+func TestHTMLToTextRemovesUnclosedTitle(t *testing.T) {
+	// Per the HTML spec, <title> is RCDATA: an unclosed <title> runs to EOF and a
+	// later <body> start tag does NOT close it. So a truncated/malformed page must
+	// not leak the title's RCDATA content into the extracted body text.
+	in := []byte(`<title>UNCLOSED_TITLE_LEAK<body>visible-but-actually-title-rcdata`)
+	text, _ := htmlToText(in)
+	if strings.Contains(text, "UNCLOSED_TITLE_LEAK") {
+		t.Errorf("unclosed title RCDATA leaked into body: %q", text)
+	}
+}
+
 func TestHTMLToTextCollapsesWhitespace(t *testing.T) {
 	in := []byte("<p>a   \t  b</p>\n\n\n\n<p>c</p>")
 	text, _ := htmlToText(in)

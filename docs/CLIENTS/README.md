@@ -99,7 +99,7 @@ Before calling a client verified, record:
 4. Exact Nólë MCP entry or setup command used.
 5. `nole doctor` result summarized without key values.
 6. `nole doctor --mcp` result.
-7. Tool visibility for `search`, `provider_status`, `budget_status`, and `extract` when Tavily, Firecrawl or local Scrapling is configured.
+7. Tool visibility for `search`, `provider_status`, `budget_status`, and `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity).
 8. One low-limit docs search with compact `routing_insight` and result URLs.
 9. Confirmation that logs/config/chat contain no provider key values, bearer tokens, auth headers, raw provider payloads, private paths or private URLs.
 10. Troubleshooting notes for PATH/env inheritance.

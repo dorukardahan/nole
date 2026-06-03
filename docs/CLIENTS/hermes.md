@@ -41,7 +41,7 @@ mcp_servers:
 
 Hermes v0.15 filters stdio MCP subprocess environments by default: only safe baseline variables plus values explicitly placed in the MCP server config are passed through. For Nólë, the safer pattern is still the wrapper/env-file path, not putting provider key values in Hermes config. The wrapper sources `~/.config/nole/.env` and execs `nole mcp`; Nólë also loads that env file on startup. Do not put key values in Hermes config.
 
-The `tools.resources=false` and `tools.prompts=false` policy keeps Hermes from adding MCP resource/prompt utility wrappers for Nólë. Nólë's intended Hermes tool surface is its native MCP tools: `search`, `extract` when an extract provider is configured, `provider_status` and `budget_status`.
+The `tools.resources=false` and `tools.prompts=false` policy keeps Hermes from adding MCP resource/prompt utility wrappers for Nólë. Nólë's intended Hermes tool surface is its native MCP tools: `search`, `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop), `provider_status` and `budget_status`.
 
 ## Hermes v0.15 source review
 
@@ -100,6 +100,6 @@ Use Nólë to search for Go net/http Client Timeout documentation. Include one c
 - Use absolute paths if the Hermes process cannot find `nole`.
 - Use a dedicated Hermes profile for verification or experiments so active gateway profiles are not disturbed.
 - Start a new Hermes session after MCP config changes; tool schemas are loaded at session start.
-- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and start a new Hermes session.
+- `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and start a new Hermes session.
 - If keys are missing, check the environment/profile of the process that launches MCP tools, not just the interactive shell.
 - Do not enable hosted/proxy behavior unless the user explicitly requests it.

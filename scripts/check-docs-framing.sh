@@ -135,10 +135,10 @@ grep -Fq "| Hermes Agent | verified (Hermes Agent MCP profile path) |" docs/CLIE
   || fail "client support matrix must align Hermes Agent live verification status"
 grep -Fq "Status: verified (Hermes Agent MCP profile path + chat-agent tool dispatch)." docs/CLIENTS/hermes.md \
   || fail "Hermes Agent client doc must use the recorded verified status"
-grep -Fq 'Codex CLI lists or can call Nólë MCP tools `search`, `provider_status`, `budget_status`, and `extract` when Tavily, Firecrawl or local Scrapling is configured' docs/CLIENTS/codex.md \
-  || fail "Codex verification checklist must name the always-on tools and conditional extract tool"
-grep -Fq 'Nólë tools `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured, are visible in Cursor' docs/CLIENTS/cursor.md \
-  || fail "Cursor verification checklist must name the always-on tools and conditional extract tool"
+grep -Fq 'Codex CLI lists or can call Nólë MCP tools `search`, `provider_status`, `budget_status`, `extract`, and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop' docs/CLIENTS/codex.md \
+  || fail "Codex verification checklist must name the tool surface incl. the always-on keyless extract"
+grep -Fq 'Nólë tools `search`, `provider_status`, `budget_status`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop' docs/CLIENTS/cursor.md \
+  || fail "Cursor verification checklist must name the tool surface incl. the always-on keyless extract"
 
 for path_doc in docs/CLIENTS/claude-code.md docs/CLIENTS/codex.md docs/CLIENTS/opencode.md docs/CLIENTS/cursor.md; do
   grep -Fq 'export PATH="$HOME/.local/bin:$PATH"' "$path_doc" \

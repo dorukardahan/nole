@@ -10,7 +10,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Cl
 - The MCP entry is registered via the official `claude mcp add` CLI at user scope, pointing at `/absolute/path/to/nole-mcp`.
 - `claude mcp list` reports `nole` connected.
 - `claude mcp get nole` reports `Scope: User config`, `Type: stdio`, `Status: Connected`.
-- Tools observable through the same wrapper command path: `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured.
+- Tools observable through the same wrapper command path: `search`, `provider_status`, `budget_status`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity, not its availability).
 - One low-limit docs smoke search succeeded under `free-first` policy via the keyless DDGS fallback.
 - No key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths were printed during verification.
 
@@ -77,7 +77,7 @@ Mark this client `verified` only after:
 
 - `nole doctor` passes with key presence only;
 - `nole doctor --mcp` passes;
-- Claude Code shows MCP tools `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured;
+- Claude Code shows MCP tools `search`, `provider_status`, `budget_status`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity, not its availability);
 - a small docs search works;
 - no credentials appear in logs or chat.
 
@@ -90,7 +90,7 @@ Use Nólë to search for Go net/http Client Timeout documentation. Include one c
 ## Troubleshooting
 
 - If tools are missing, restart Claude Code after config changes.
-- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and restart Claude Code.
+- `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and restart Claude Code.
 - If provider keys are missing, check launch environment.
 - If MCP fails immediately, run `nole doctor --mcp` outside Claude Code.
 - If stdout pollution appears, file a bug; `nole mcp` stdout must remain protocol-only.
