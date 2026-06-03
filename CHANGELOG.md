@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-06-03
+
+Theme: **security — bump the Go toolchain to 1.25.11 for two standard-library
+CVE fixes.** No code or surface change; a toolchain/build-input bump.
+
+### Security
+
+- **Go 1.25.10 → 1.25.11** (`go.mod` directive + `go-version` pins in `ci.yml`
+  and `release.yml`, now pinned to the exact patch rather than the floating
+  `1.25.x`). The release `govulncheck` gate (pinned `@v1.3.0`, which fetches the
+  live vuln DB at scan time) began failing on **GO-2026-5039** (`net/textproto`)
+  and **GO-2026-5037** (`crypto/x509`), both *Found in go1.25.10, Fixed in
+  go1.25.11*. Verified locally under go1.25.11: `govulncheck ./...` reports **no
+  vulnerabilities**, and the full suite builds/tests clean. This unblocks the
+  release pipeline (the v1.2.2 docs release run was halted by this gate before
+  publishing; its content ships here in v1.2.3). The `1.25.x` pins are tightened
+  to `1.25.11` so the build/scan toolchain is deterministic, not whatever the
+  runner's setup-go manifest happens to resolve.
+
 ## [1.2.2] - 2026-06-03
 
 Theme: **docs — surface the live Scoop channel.** Documentation only; no code,

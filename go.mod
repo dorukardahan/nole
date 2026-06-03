@@ -1,6 +1,6 @@
 module github.com/dorukardahan/nole
 
-go 1.25.10
+go 1.25.11
 
 require (
 	github.com/mark3labs/mcp-go v0.43.1

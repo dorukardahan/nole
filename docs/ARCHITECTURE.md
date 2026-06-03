@@ -403,7 +403,7 @@ Optional `--local-extract` (`setupLocalExtract` `setup_local_extract.go:26`) pro
 | `github.com/wk8/go-ordered-map/v2` | v2.1.8 (indirect) | Transitive (jsonschema ordered maps). |
 | `github.com/yosida95/uritemplate/v3` | v3.0.2 (indirect) | Transitive (mcp-go URI templates). |
 
-Build toolchain: `go 1.25.10`. CI also invokes `golang.org/x/vuln/cmd/govulncheck` (pinned in `ci.yml`/`release.yml`), the `gh` CLI, and `python3` (for `secret-scan.sh` and the orphaned `cmd/bench/main.py`).
+Build toolchain: `go 1.25.11`. CI also invokes `golang.org/x/vuln/cmd/govulncheck` (pinned in `ci.yml`/`release.yml`), the `gh` CLI, and `python3` (for `secret-scan.sh` and the orphaned `cmd/bench/main.py`).
 
 ---
 

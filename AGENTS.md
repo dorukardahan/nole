@@ -24,7 +24,7 @@ go build -o nole .
 ./nole doctor --mcp
 ```
 
-If `go` is missing, install Go 1.25+ (matches the `go 1.25.10` directive in `go.mod`) using the user's normal package manager or a user-local toolchain. Do not commit downloaded toolchains or build artifacts.
+If `go` is missing, install Go 1.25+ (matches the `go 1.25.11` directive in `go.mod`) using the user's normal package manager or a user-local toolchain. Do not commit downloaded toolchains or build artifacts.
 
 ## Install binary
 
