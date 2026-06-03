@@ -12,6 +12,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/brave"
 	"github.com/dorukardahan/nole/internal/providers/ddgs"
 	"github.com/dorukardahan/nole/internal/providers/firecrawl"
+	"github.com/dorukardahan/nole/internal/providers/httpfetch"
 	"github.com/dorukardahan/nole/internal/providers/scrapling"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
 	"github.com/dorukardahan/nole/internal/providers/wikipedia"
@@ -132,6 +133,7 @@ func comprehensiveBenchProviders() map[string]core.Provider {
 		"scrapling": scrapling.New(),
 		"tavily":    tavily.New(),
 		"wikipedia": wikipedia.New(),
+		"httpfetch": httpfetch.New(),
 	}
 }
 

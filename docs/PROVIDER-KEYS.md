@@ -14,6 +14,7 @@ Default policy is `free-first` and each supported BYOK provider is classified as
 | DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
 | Wikipedia/MediaWiki | none | Keyless encyclopedic search, no counter | n/a | Reinforces `factcheck`/`people`/`academic` routing only (not a general fallback). Uses the official MediaWiki Action API with a descriptive `User-Agent` per Wikimedia policy. Keyless does not mean guaranteed availability or unlimited use. |
 | Scrapling | `NOLE_SCRAPLING_PYTHON` | Local keyless extraction fallback, no counter | n/a | Prefer `nole setup --local-extract`, which creates an isolated venv and writes this variable locally. Nólë validates public URLs before calling it, but website terms and robots.txt remain the user's responsibility. |
+| httpfetch | none | Keyless pure-Go extraction backstop, no counter | n/a | Always available, no setup. Last-resort `extract` fallback (after Scrapling and the keyed remotes). Pure stdlib HTTP fetch + HTML-to-text; runs **no JavaScript**, so it is weaker than Scrapling/Firecrawl on SPA/JS-rendered pages. SSRF-preflighted on every redirect hop. Keyless does not mean guaranteed availability or unlimited use. |
 
 The free-tier numbers above are conservative anchors verified 2026-06 against each provider's published pricing. Tavily and Firecrawl meter in variable credits while the ledger debits 1 per call, so each floor is credits ÷ the priciest call Nólë can issue: Tavily 1000 ÷ 2 (advanced search/extract) = 500; Firecrawl 1000 ÷ 4 (a 20-result search at 2 credits per 10 results) = 250. This avoids over-reading remaining headroom; undercounting is the safe direction and the drift signal catches the rest. They are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
 
@@ -291,6 +292,28 @@ Notes:
 - The service validates public URLs before calling providers. Scrapling still performs a real HTTP request from the local machine, so respect site terms, robots.txt and rate limits.
 - Do not point `NOLE_SCRAPLING_PYTHON` at a shell snippet. It must be an executable Python path; wrappers should exec Python directly and keep secrets out of command lines.
 
+## httpfetch
+
+Use for: keyless, zero-setup URL extraction — the last-resort `extract` backstop.
+
+- **No key, no runtime, no setup.** `httpfetch` is a pure-Go provider built on the
+  standard library (`net/http` + a regexp/`html.UnescapeString` HTML-to-text pass).
+  It is always registered, so `extract` / `search_and_extract` work out of the box.
+- **Routing:** it is the LAST entry on the `extract` route
+  (`scrapling -> firecrawl -> tavily -> httpfetch`), reached only when a configured
+  local Scrapling and the keyed remotes are unavailable/blocked/exhausted. It is the
+  extract-side analogue of DDGS on the search routes.
+- **Honest limits:** it runs **no JavaScript**, so it is weaker than Scrapling and
+  Firecrawl on SPA / client-rendered pages — it returns whatever static HTML the
+  server sends, stripped to readable text. Configure Scrapling, Tavily, or Firecrawl
+  for higher-fidelity / JS-rendered extraction.
+- **Safety:** every redirect hop is re-validated by the local SSRF preflight (a
+  public URL that 30x-redirects to a private / cloud-metadata host is rejected before
+  it is fetched); the response body is size-capped; non-text content types are
+  refused; errors carry only HTTP status + byte-size metadata, never the body.
+- Keyless does not mean guaranteed availability or unlimited use; respect site terms,
+  robots.txt and rate limits.
+
 ## Checking status safely
 
 ```bash
@@ -323,7 +346,7 @@ Nólë exposes cost policy/status in `nole providers --json`, `nole doctor`, MCP
 
 Cost classes:
 
-- `keyless-free`: no provider key required; DDGS search fallback and optional local Scrapling extraction fallback are current examples.
+- `keyless-free`: no provider key required; the DDGS search fallback, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback are current examples.
 - `free-tier-BYOK`: a user-keyed provider with a known local free quota tracked in the ledger. Default for keyed Brave / Tavily / Firecrawl.
 - `premium-capable`: a keyed provider that may incur paid usage depending on the user's account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost`: cost cannot be safely classified; fail closed except under explicit `quality-first`.
@@ -344,14 +367,19 @@ Important: this is a conservative local policy model, not a live provider billin
 
 ## Partial-key behavior
 
-Nólë is designed as a strict enhancement of whatever AI tool consumes it. The MCP surface adapts to which keys are configured:
+Nólë is designed as a strict enhancement of whatever AI tool consumes it. Since
+v1.3.0 the keyless `httpfetch` backstop is always registered, so `mcp__nole__extract`
+and `mcp__nole__search_and_extract` are advertised **out of the box** (zero keys,
+zero setup). Configuring a higher-fidelity provider upgrades the extract QUALITY
+(JS rendering, cleaner content) but is no longer required for the tools to exist.
+The MCP surface adapts to which keys/runtimes are configured:
 
-- **No keys and no local Scrapling runtime:** `mcp__nole__search` is registered and routes via DDGS (keyless). `mcp__nole__extract` is **not** registered — the AI tool uses its own built-in HTTP fetch instead. `mcp__nole__provider_status` and `mcp__nole__budget_status` are always available.
-- **No keys plus `nole setup --local-extract`:** Search routes via DDGS, and extract is registered through the local Scrapling runtime.
-- **Only `BRAVE_API_KEY`:** Search routes Brave-first with DDGS fallback. Extract is registered only if local Scrapling is configured; otherwise the AI tool's built-in fetch handles URL content.
-- **Only `TAVILY_API_KEY` or only `FIRECRAWL_API_KEY`:** Both `mcp__nole__search` and `mcp__nole__extract` are registered.
+- **No keys and no local Scrapling runtime:** `mcp__nole__search` is registered and routes via DDGS (keyless). `mcp__nole__extract` / `mcp__nole__search_and_extract` are registered too, backed by the keyless `httpfetch` backstop — a best-effort, no-JavaScript HTML-to-text fetch (weaker than Scrapling/Firecrawl on SPA pages). `mcp__nole__provider_status` and `mcp__nole__budget_status` are always available.
+- **No keys plus `nole setup --local-extract`:** Search routes via DDGS; extract prefers the local Scrapling runtime (JS-capable), with `httpfetch` as the final keyless fallback.
+- **Only `BRAVE_API_KEY`:** Search routes Brave-first with DDGS fallback. Extract is backed by Scrapling if configured, otherwise the keyless `httpfetch` backstop.
+- **Only `TAVILY_API_KEY` or only `FIRECRAWL_API_KEY`:** Extract prefers the keyed remote (Scrapling first if also configured), with `httpfetch` as the final fallback.
 - **Any two or all three:** Full feature set with redundancy on the overlapping capability.
 
-If you add a key or run `nole setup --local-extract` mid-session, restart your AI tool (or its MCP connection) so the new tool surface is picked up.
+If you add a key or run `nole setup --local-extract` mid-session, restart your AI tool (or its MCP connection) so the upgraded extract route is picked up.
 
 `provider_status` returns a `setup_suggestions` array listing every missing key, what configuring it would unlock, where to sign up, and an `impact` rating (`high` / `medium` / `low`) so AI tools can decide what to surface. The first `search` response of an MCP session also carries a compact `setup_tip` summarizing the same information; subsequent searches in the same session omit it to avoid nagging.

@@ -132,7 +132,7 @@ latency for this approved local run.
 | social | 3 | firecrawl -> tavily -> brave -> ddgs | Firecrawl: 3/3, avg score 92.2; Tavily: 3/3, avg score 91.3; Brave: 3/3, avg score 84.6; DDGS: 0/3 rate_limited |
 | semantic | 3 | tavily -> brave -> firecrawl -> ddgs | Tavily: 3/3, avg score 94.5; Brave: 3/3, avg score 92.1; Firecrawl: 3/3, avg score 88.7; DDGS: 0/3 rate_limited |
 | research | 3 | firecrawl -> tavily -> brave -> ddgs | Firecrawl: 3/3, avg score 95.1; Tavily: 3/3, avg score 84.4; Brave: 3/3, avg score 80.0; DDGS: 0/3 rate_limited |
-| extract | 6 | scrapling -> firecrawl -> tavily | Scrapling: 6/6, avg score 90.2; Firecrawl: 6/6, avg score 85.8; Tavily: 5/6 with one empty_content, avg score 95.0 on successes |
+| extract | 6 | scrapling -> firecrawl -> tavily -> httpfetch | Scrapling: 6/6, avg score 90.2; Firecrawl: 6/6, avg score 85.8; Tavily: 5/6 with one empty_content, avg score 95.0 on successes. httpfetch (added v1.3.0): keyless pure-Go last-resort backstop appended AFTER the above — NOT part of this benchmark run; it runs no JavaScript and exists to make extract work with zero keys/setup, reached only when the better providers are unavailable. |
 
 ### Route Matrix Result
 

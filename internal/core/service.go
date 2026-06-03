@@ -486,6 +486,30 @@ func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 	}
 }
 
+// HasExtractCapableProvider reports whether the registry contains a provider
+// that advertises CapabilityExtract AND is currently Available. The MCP server
+// uses it to decide whether to advertise the extract / search_and_extract tools.
+//
+// It checks Availability, not just the advertised capability, so a provider that
+// advertises extract but is not usable (e.g. an unconfigured local Scrapling, or
+// an unkeyed remote registered as a placeholder) does not flip the gate on its
+// own. With the keyless httpfetch backstop registered by the default service,
+// this is always true in production — extract works out of the box. It returns on
+// the FIRST available extract provider, and httpfetch reports Available with no
+// I/O, so a provider with a costly Status() (Scrapling's Python probe) is not
+// pinged when a cheaper extract provider is present.
+func (s *Service) HasExtractCapableProvider(ctx context.Context) bool {
+	for _, p := range s.registry.List() {
+		if !HasCapability(p.Capabilities(), CapabilityExtract) {
+			continue
+		}
+		if p.Status(ctx).Available {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) BudgetStatus() BudgetStatus {
 	return s.ledger.BudgetStatus()
 }

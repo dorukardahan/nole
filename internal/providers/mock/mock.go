@@ -10,15 +10,27 @@ import (
 type Provider struct {
 	ProviderName string
 	available    bool
+	caps         []core.Capability
+}
+
+func defaultCaps() []core.Capability {
+	return []core.Capability{core.CapabilitySearch, core.CapabilityExtract, core.CapabilityStatus}
 }
 
 func New(name string) Provider {
-	return Provider{ProviderName: name, available: true}
+	return Provider{ProviderName: name, available: true, caps: defaultCaps()}
 }
 
 // NewUnavailable creates a mock provider that reports as unavailable (used as placeholder).
 func NewUnavailable(name string) Provider {
-	return Provider{ProviderName: name, available: false}
+	return Provider{ProviderName: name, available: false, caps: defaultCaps()}
+}
+
+// NewSearchOnly creates an available mock that advertises SEARCH (and status) but
+// NOT extract — for tests that need a registry with no extract-capable provider,
+// e.g. the MCP extract-gate negative path.
+func NewSearchOnly(name string) Provider {
+	return Provider{ProviderName: name, available: true, caps: []core.Capability{core.CapabilitySearch, core.CapabilityStatus}}
 }
 
 func (p Provider) Name() string {
@@ -29,7 +41,10 @@ func (p Provider) Name() string {
 }
 
 func (p Provider) Capabilities() []core.Capability {
-	return []core.Capability{core.CapabilitySearch, core.CapabilityExtract, core.CapabilityStatus}
+	if p.caps == nil {
+		return defaultCaps()
+	}
+	return p.caps
 }
 
 func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.SearchResponse, error) {

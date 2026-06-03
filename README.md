@@ -68,6 +68,7 @@ Nólë currently supports these provider adapters:
 - DDGS: keyless search fallback (the last-resort general fallback on every search route).
 - Wikipedia/MediaWiki: keyless encyclopedic search via the official MediaWiki Action API. Reinforces the `factcheck`, `people`, and `academic` routes only (tried before the DDGS backstop); it is deliberately not a general fallback. No key, no setup.
 - Scrapling: optional local Python URL extraction fallback. `nole setup --local-extract` creates an isolated venv, installs `scrapling[fetchers]` there and writes `NOLE_SCRAPLING_PYTHON` locally. Nólë does not vendor or redistribute Scrapling.
+- httpfetch: keyless pure-Go URL extraction backstop — the last-resort `extract` fallback (the extract-side analogue of DDGS), always available with no key and no setup. Pure stdlib HTTP fetch + HTML-to-text; runs no JavaScript, so it is weaker than Scrapling/Firecrawl on SPA pages. It makes `extract` / `search_and_extract` work out of the box.
 
 Nólë reads provider credentials from environment variables. It should only report whether a key is present; it must never print key values, auth headers or raw provider payloads.
 
@@ -80,7 +81,7 @@ Prerequisites:
 - Go 1.25+ for building from source (matches the `go 1.25.11` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily and Firecrawl.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
-- No provider key is required for the deterministic benchmark, the DDGS or Wikipedia keyless searches, or a configured local Scrapling fallback.
+- No provider key is required for the deterministic benchmark, the DDGS or Wikipedia keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback.
 
 Build and run locally:
 
@@ -192,13 +193,13 @@ For unverified or generic clients, use the MCP command template:
 
 ## Provider keys and cost control
 
-Default stance: `free-first`. Nólë treats each supported BYOK provider as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, 500 for Tavily, and 250 for Firecrawl, reset at the start of each UTC calendar month — the lower floors reflect those providers' variable per-credit metering, where the ledger debits 1 per call but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4). DDGS, Wikipedia, and a configured local Scrapling runtime are keyless-free. No hidden paid usage is created without an explicit opt-in.
+Default stance: `free-first`. Nólë treats each supported BYOK provider as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, 500 for Tavily, and 250 for Firecrawl, reset at the start of each UTC calendar month — the lower floors reflect those providers' variable per-credit metering, where the ledger debits 1 per call but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4). DDGS, Wikipedia, the keyless httpfetch extraction backstop, and a configured local Scrapling runtime are keyless-free. No hidden paid usage is created without an explicit opt-in.
 
 A key by itself is enough to start using a provider under the default policy; you only have to flip `NOLE_<PROVIDER>_PAID=1` when you want Nólë to treat that provider as premium-capable (e.g. you are on a paid plan and the cost-capped or quality-first policy should apply). See `docs/PROVIDER-KEYS.md` for per-provider free-tier sourcing and the Brave subscription/CC caveat.
 
 Cost status classes exposed in `provider_status`, `budget_status`, `route_trace` and JSON CLI/MCP surfaces are:
 
-- `keyless-free` — no key required, currently used for the DDGS search fallback, the Wikipedia/MediaWiki search provider, and the optional local Scrapling extraction fallback.
+- `keyless-free` — no key required, currently used for the DDGS search fallback, the Wikipedia/MediaWiki search provider, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback.
 - `free-tier-BYOK` — user-keyed provider running against the local free-tier quota. Default for keyed Brave / Tavily / Firecrawl.
 - `premium-capable` — keyed provider that may incur paid usage depending on account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost` — fail-closed unless an explicit quality-first policy is selected.

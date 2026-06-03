@@ -95,17 +95,16 @@ func TestMCPResearchToolReturnsEvidenceNoSummary(t *testing.T) {
 }
 
 func TestMCPSearchAndExtractGatedAndTraceOptIn(t *testing.T) {
-	// Absent without an extract-capable configuration.
-	srvNo := newTestMCPServerWithProviders(t, mock.New("mock"))
+	// Absent when the registry has no available extract provider (search-only).
+	srvNo := newTestMCPServerWithProviders(t, mock.NewSearchOnly("mock"))
 	if callToolsList(t, srvNo)["search_and_extract"] {
-		t.Fatalf("search_and_extract must be absent when no extract provider is configured")
+		t.Fatalf("search_and_extract must be absent when no available extract provider is registered")
 	}
 
-	// Present once an extract provider key is configured.
-	t.Setenv("TAVILY_API_KEY", "test-key")
+	// Present once an available extract-capable provider is in the registry.
 	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
 	if !callToolsList(t, srv)["search_and_extract"] {
-		t.Fatalf("search_and_extract must be advertised when an extract provider is configured")
+		t.Fatalf("search_and_extract must be advertised when an extract provider is registered")
 	}
 
 	txt := callToolText(t, srv, context.Background(), "search_and_extract",

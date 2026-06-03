@@ -16,6 +16,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/brave"
 	"github.com/dorukardahan/nole/internal/providers/ddgs"
 	"github.com/dorukardahan/nole/internal/providers/firecrawl"
+	"github.com/dorukardahan/nole/internal/providers/httpfetch"
 	"github.com/dorukardahan/nole/internal/providers/mock"
 	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 	"github.com/dorukardahan/nole/internal/providers/scrapling"
@@ -80,6 +81,12 @@ func defaultService() *core.Service {
 	// Scrapling — local Python extractor, keyless/free when installed
 	_ = registry.Register(scrapling.New())
 
+	// httpfetch — keyless pure-Go HTTP-fetch + HTML-to-text extractor. Last-resort
+	// extract backstop (the extract-side analogue of DDGS): unbreakered like the
+	// other free fallbacks so the keyless extract path is never short-circuited. It
+	// makes extract / search_and_extract work with zero keys and zero setup.
+	_ = registry.Register(httpfetch.New())
+
 	entries := defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey)
 	ledger := defaultQuotaLedger(defaultQuotaPolicyFromEnv(), entries)
 
@@ -103,6 +110,7 @@ func defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey string) []core.QuotaE
 		{Provider: "ddgs", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 		{Provider: "wikipedia", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 		{Provider: "scrapling", CostClass: core.CostClassKeylessFree, KeylessFree: true},
+		{Provider: "httpfetch", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 	}
 }
 

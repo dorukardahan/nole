@@ -90,8 +90,31 @@ func TestRouterExtractPrefersConfiguredLocalScrapling(t *testing.T) {
 	if provider.Name() != "scrapling" {
 		t.Fatalf("expected evidence-backed scrapling first, got %q with route %#v", provider.Name(), route)
 	}
-	if len(route) != 3 || route[0] != "scrapling" || route[1] != "firecrawl" || route[2] != "tavily" {
-		t.Fatalf("extract route should prefer local Scrapling then remote fallbacks, got %#v", route)
+	if len(route) != 4 || route[0] != "scrapling" || route[1] != "firecrawl" || route[2] != "tavily" || route[3] != "httpfetch" {
+		t.Fatalf("extract route should prefer local Scrapling, then remote fallbacks, then the keyless httpfetch backstop, got %#v", route)
+	}
+}
+
+func TestRouterExtractFallsBackToKeylessHTTPFetch(t *testing.T) {
+	// With no local Scrapling and no keyed remote extractors registered, extract
+	// must still resolve — to the keyless httpfetch last-resort backstop. This is
+	// the gateway's "extract works out of the box" guarantee.
+	registry := NewRegistry()
+	_ = registry.Register(fakeProvider{name: "httpfetch"})
+	ledger := NewMemoryQuotaLedger()
+	ledger.Set(QuotaEntry{Provider: "httpfetch", CostClass: CostClassKeylessFree, KeylessFree: true})
+	router := NewRouter(registry, ledger, DefaultRouteMatrix())
+
+	provider, route, err := router.Select(TaskExtract, CapabilityExtract)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	if provider.Name() != "httpfetch" {
+		t.Fatalf("expected the keyless httpfetch backstop, got %q with route %#v", provider.Name(), route)
+	}
+	// httpfetch is last in the route — reached only after the better providers.
+	if route[len(route)-1] != "httpfetch" {
+		t.Fatalf("httpfetch must be the LAST-resort extract provider, got route %#v", route)
 	}
 }
 
@@ -130,7 +153,7 @@ func TestDefaultRouteMatrixMatchesLatestTaskBenchmarkEvidence(t *testing.T) {
 		TaskPeople:    {"firecrawl", "brave", "tavily", "wikipedia", "ddgs"},
 		TaskPricing:   {"firecrawl", "brave", "tavily", "ddgs"},
 		TaskResearch:  {"firecrawl", "tavily", "brave", "ddgs"},
-		TaskExtract:   {"scrapling", "firecrawl", "tavily"},
+		TaskExtract:   {"scrapling", "firecrawl", "tavily", "httpfetch"},
 	}
 	for task, route := range want {
 		got := matrix[task]

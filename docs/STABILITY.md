@@ -34,8 +34,13 @@ release review rather than a dedicated field-snapshot lock.
 The MCP tool surface is stable:
 
 - Always advertised: `search`, `research`, `provider_status`, `budget_status`.
-- Advertised when an extract-capable provider (Tavily/Firecrawl key, or local
-  Scrapling) is configured: `extract`, `search_and_extract`.
+- Advertised when the registry has an available extract-capable provider:
+  `extract`, `search_and_extract`. **Since v1.3.0 the keyless `httpfetch` backstop
+  is always registered, so these are advertised out of the box** (zero keys, zero
+  setup) — a backward-compatible surface expansion (the tools are only ever ADDED
+  to the keyless configuration, never removed). A higher-fidelity / JS-capable
+  extract provider (Tavily/Firecrawl key, or local Scrapling) is still preferred
+  when configured; `httpfetch` is the last-resort, no-JavaScript fallback.
 
 Tool names AND each tool's parameter set, plus the `task` enum values, are frozen
 for 1.x and **locked by tests** (the `internal/mcpserver` surface lock pins the
