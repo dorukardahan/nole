@@ -20,9 +20,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -90,7 +92,13 @@ func WithMaxBodyBytes(n int64) Option {
 
 func New(opts ...Option) Provider {
 	p := Provider{
-		httpClient: &http.Client{Timeout: 20 * time.Second},
+		// The default client installs an SSRF dial guard (validateDialedAddr via the
+		// dialer Control hook) so the IP net/http ACTUALLY connects to is validated
+		// immediately before dialing — closing the DNS-rebinding / split-horizon
+		// TOCTOU window between the preflight check and the real dial (a malicious
+		// resolver returning a public IP at preflight then a private/metadata IP at
+		// dial). A test seam (WithHTTPClient) can replace this for loopback httptest.
+		httpClient: &http.Client{Timeout: 20 * time.Second, Transport: safeTransport()},
 		timeout:    30 * time.Second,
 		maxBytes:   providerhttp.MaxExtractResponseBytes,
 	}
@@ -156,9 +164,14 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 		resp, err := providerhttp.DoWithRetry(ctx, client, httpReq, providerhttp.DefaultRetryOptions())
 		if err != nil {
 			if cerr := ctx.Err(); cerr != nil {
-				return core.ExtractResponse{}, fmt.Errorf("httpfetch: request cancelled: %w", cerr)
+				return core.ExtractResponse{}, fmt.Errorf("httpfetch: request aborted: %w", cerr)
 			}
-			return core.ExtractResponse{}, fmt.Errorf("httpfetch: request failed: %w", err)
+			// REDACTION: a raw net/http transport error is a *url.Error that carries
+			// the full request URL (path + query, e.g. ?token=...). The non-JSON CLI
+			// path prints the provider error verbatim, so we must not preserve
+			// url.Error.URL. Surface only the underlying transport cause (which holds
+			// the dialed host:port + reason, never the URL/query).
+			return core.ExtractResponse{}, fmt.Errorf("httpfetch: request failed: %s", redactTransportErr(err))
 		}
 
 		// Redirect: read the Location, drain+close, re-validate on the next hop.
@@ -234,6 +247,70 @@ func (p Provider) noFollowClient() *http.Client {
 	c := *p.httpClient
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &c
+}
+
+// safeTransport returns an http.Transport whose dialer re-validates the resolved
+// remote IP immediately before connecting. net/http performs its OWN DNS lookup
+// at dial time (separate from the safenet preflight), so a DNS-rebinding or
+// split-horizon resolver could pass the preflight with a public IP and then dial
+// a private/metadata IP. The Control hook runs once per candidate address with
+// the resolved IP:port and aborts the dial if it is not a safe public target.
+// Defaults mirror http.DefaultTransport so behaviour (proxy env, HTTP/2, idle
+// pooling, transparent gzip) is unchanged apart from the dial guard.
+func safeTransport() *http.Transport {
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+		Control:   validateDialedAddr,
+	}
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+}
+
+// validateDialedAddr is the dialer Control hook: address is the resolved IP:port
+// net/http is about to connect to. Returning an error aborts that dial. This is
+// the dial-time half of the SSRF defense (the preflight is the resolve-time half).
+func validateDialedAddr(network, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("httpfetch: cannot parse dial address: %w", err)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("httpfetch: dial address %q is not a literal IP", host)
+	}
+	if err := safenet.ValidateIP(ip); err != nil {
+		return fmt.Errorf("httpfetch: blocked dial address: %w", err)
+	}
+	return nil
+}
+
+// redactTransportErr renders a transport error WITHOUT any request URL. A
+// net/http failure is a *url.Error whose URL field carries the path+query (which
+// may include secrets); the underlying cause (a net.OpError) holds only the
+// dialed host:port + reason. We peel EVERY nested *url.Error layer (client.Do can
+// wrap a transport error that is itself a url.Error) down to that cause so no URL
+// survives at any depth.
+func redactTransportErr(err error) string {
+	for {
+		var ue *url.Error
+		if errors.As(err, &ue) && ue.Err != nil {
+			err = ue.Err
+			continue
+		}
+		break
+	}
+	if err == nil {
+		return "transport error (details redacted)"
+	}
+	return err.Error()
 }
 
 // resolveRedirect resolves a (possibly relative) Location against the current URL.

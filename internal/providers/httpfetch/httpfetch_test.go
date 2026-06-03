@@ -7,12 +7,19 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/safeerr"
 )
+
+// errTransport is a RoundTripper that always fails with a fixed error — used to
+// exercise the transport-error redaction path deterministically and offline.
+type errTransport struct{ err error }
+
+func (t errTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, t.err }
 
 const htmlFixture = `<!DOCTYPE html><html><head><title>Fixture Title</title>
 <script>var s = "SCRIPT_LEAK";</script><style>.c{}</style></head>
@@ -38,10 +45,63 @@ func (t publicRedirectTransport) RoundTrip(req *http.Request) (*http.Response, e
 	return http.DefaultTransport.RoundTrip(clone)
 }
 
+// testProvider returns a Provider whose HTTP client uses the DEFAULT transport
+// (no SSRF dial Control), so it can reach loopback httptest servers. Production
+// New() installs validateDialedAddr, which rejects loopback/private dials — the
+// dial-time SSRF guard exercised separately in the unit tests below.
+func testProvider(opts ...Option) Provider {
+	return New(append([]Option{WithHTTPClient(&http.Client{})}, opts...)...)
+}
+
 func TestNewHasDefaults(t *testing.T) {
 	p := New()
 	if p.httpClient == nil || p.httpClient.Timeout <= 0 {
 		t.Fatalf("expected a default HTTP client with a timeout, got %#v", p.httpClient)
+	}
+	// The default client must install the SSRF dial guard (a non-default Transport).
+	if p.httpClient.Transport == nil {
+		t.Fatalf("default client must carry the SSRF-guarding transport, got nil")
+	}
+}
+
+func TestValidateDialedAddrBlocksPrivateAndAllowsPublic(t *testing.T) {
+	// The dial-time SSRF guard must reject loopback/private/metadata/CGNAT IPs (the
+	// DNS-rebinding target) and accept a public IP — the half that closes the TOCTOU
+	// gap net/http's own dial-time resolution would otherwise open.
+	blocked := []string{
+		"127.0.0.1:80", "10.0.0.5:443", "192.168.1.1:80", "169.254.169.254:80",
+		"[::1]:80", "100.64.0.1:80", "0.0.0.0:80",
+	}
+	for _, a := range blocked {
+		if err := validateDialedAddr("tcp", a, nil); err == nil {
+			t.Errorf("validateDialedAddr(%q) = nil, want a blocked-address error", a)
+		}
+	}
+	allowed := []string{"93.184.216.34:443", "8.8.8.8:53", "1.1.1.1:80"}
+	for _, a := range allowed {
+		if err := validateDialedAddr("tcp", a, nil); err != nil {
+			t.Errorf("validateDialedAddr(%q) = %v, want nil (public IP)", a, err)
+		}
+	}
+}
+
+func TestExtractRedactsTransportErrorURL(t *testing.T) {
+	// A net/http transport error is a *url.Error carrying the full request URL
+	// (path + query, e.g. ?token=...). The returned provider error must NOT leak
+	// it (the non-JSON CLI path prints the error verbatim).
+	const queryMarker = "QUERY_VALUE_MUST_NOT_LEAK"
+	failing := &http.Client{Transport: errTransport{
+		err: &url.Error{Op: "Get", URL: "http://93.184.216.34/path?q=" + queryMarker, Err: errors.New("connect: connection refused")},
+	}}
+	_, err := New(WithHTTPClient(failing)).Extract(context.Background(), core.ExtractRequest{URL: "http://example.com/path?q=" + queryMarker})
+	if err == nil {
+		t.Fatal("expected a transport error")
+	}
+	if strings.Contains(err.Error(), queryMarker) || strings.Contains(err.Error(), "/path") {
+		t.Fatalf("transport error leaked the request URL/query: %v", err)
+	}
+	if !strings.Contains(err.Error(), "connection refused") {
+		t.Errorf("error should still surface the redaction-safe transport cause: %v", err)
 	}
 }
 
@@ -52,7 +112,7 @@ func TestExtractParsesHTMLWithoutNetwork(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := New().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
+	resp, err := testProvider().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)
 	}
@@ -93,7 +153,7 @@ func TestExtractRequestShape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := New().Extract(context.Background(), core.ExtractRequest{URL: srv.URL}); err != nil {
+	if _, err := testProvider().Extract(context.Background(), core.ExtractRequest{URL: srv.URL}); err != nil {
 		t.Fatalf("extract failed: %v", err)
 	}
 	if gotMethod != http.MethodGet {
@@ -118,7 +178,7 @@ func TestExtractRequestShape(t *testing.T) {
 }
 
 func TestExtractRequiresURL(t *testing.T) {
-	if _, err := New().Extract(context.Background(), core.ExtractRequest{URL: "  "}); err == nil {
+	if _, err := testProvider().Extract(context.Background(), core.ExtractRequest{URL: "  "}); err == nil {
 		t.Fatal("expected an error for a blank URL")
 	}
 }
@@ -135,7 +195,7 @@ func TestExtractBlocksRedirectToMetadataIP(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := New().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
+	_, err := testProvider().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
 	if err == nil {
 		t.Fatal("expected the redirect to the metadata IP to be blocked")
 	}
@@ -199,7 +259,7 @@ func TestExtractBodyCapIsFatal(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := New(WithMaxBodyBytes(64))
+	p := testProvider(WithMaxBodyBytes(64))
 	_, err := p.Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
 	if err == nil {
 		t.Fatal("expected a fatal error when the body exceeds the cap")
@@ -220,7 +280,7 @@ func TestExtractHTTPErrorNoBodyLeak(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := New().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
+	_, err := testProvider().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
 	if err == nil {
 		t.Fatal("expected an HTTP error for 429")
 	}
@@ -240,7 +300,7 @@ func TestExtractUnsupportedContentType(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := New().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
+	_, err := testProvider().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
 	if err == nil {
 		t.Fatal("expected an unsupported-content-type error for a binary response")
 	}
@@ -256,7 +316,7 @@ func TestExtractEmptyContentIsNotError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := New().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
+	resp, err := testProvider().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
 	if err != nil {
 		t.Fatalf("an empty (script-only) page must NOT be an error, got: %v", err)
 	}
@@ -277,7 +337,7 @@ func TestExtractDecodesGzipResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := New().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
+	resp, err := testProvider().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
 	if err != nil {
 		t.Fatalf("extract failed on a gzip response: %v", err)
 	}
@@ -295,7 +355,7 @@ func TestExtractContextCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // pre-cancelled
-	_, err := New().Extract(ctx, core.ExtractRequest{URL: srv.URL})
+	_, err := testProvider().Extract(ctx, core.ExtractRequest{URL: srv.URL})
 	if err == nil {
 		t.Fatal("expected an error for a cancelled context")
 	}
