@@ -325,6 +325,29 @@ func TestExtractEmptyContentIsNotError(t *testing.T) {
 	}
 }
 
+func TestExtractPreservesPlainText(t *testing.T) {
+	// A server that EXPLICITLY declares text/plain must have its body returned
+	// verbatim — the HTML tag-stripper would corrupt angle-bracketed content like
+	// a C source file's #include.
+	const body = "#include <stdio.h>\nint main() { return 0 < 1; }\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	resp, err := testProvider().Extract(context.Background(), core.ExtractRequest{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("extract failed: %v", err)
+	}
+	if !strings.Contains(resp.Content, "<stdio.h>") {
+		t.Errorf("text/plain angle-bracketed content was stripped: %q", resp.Content)
+	}
+	if !strings.Contains(resp.Content, "0 < 1") {
+		t.Errorf("text/plain content corrupted: %q", resp.Content)
+	}
+}
+
 func TestExtractDecodesGzipResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var buf bytes.Buffer

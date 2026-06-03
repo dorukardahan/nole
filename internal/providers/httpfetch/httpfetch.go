@@ -199,7 +199,8 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 		// Only extract textual responses; tokenizing a binary body as HTML would
 		// emit mojibake. The media type (a standard header, not a secret) is safe
 		// to surface, truncated defensively.
-		if ct := mediaType(resp.Header.Get("Content-Type")); ct != "" && !isTextual(ct) {
+		ct := mediaType(resp.Header.Get("Content-Type"))
+		if ct != "" && !isTextual(ct) {
 			_ = resp.Body.Close()
 			return core.ExtractResponse{}, fmt.Errorf("httpfetch: unsupported content type %q (only HTML/text is extracted; no JS rendering)", core.TruncateRunes(ct, 100))
 		}
@@ -212,7 +213,16 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 			return core.ExtractResponse{}, fmt.Errorf("httpfetch: read response: %w", err)
 		}
 
-		text, title := htmlToText(bodyBytes)
+		var text, title string
+		if isHTMLLike(ct) {
+			text, title = htmlToText(bodyBytes)
+		} else {
+			// The server EXPLICITLY declared a non-HTML text type (e.g. text/plain):
+			// return it verbatim. Running the HTML tag-stripper would corrupt
+			// angle-bracketed content — a source file's `#include <stdio.h>`, prose
+			// with `<`/`>`, etc. — that the server said was plain text.
+			text = string(bodyBytes)
+		}
 		md := map[string]string{"mode": "http-fetch"}
 		if title != "" {
 			md["title"] = title
@@ -344,6 +354,24 @@ func isTextual(ct string) bool {
 	case strings.HasPrefix(ct, "text/"):
 		return true
 	case ct == "application/xhtml+xml", ct == "application/xml":
+		return true
+	case strings.HasSuffix(ct, "+xml"):
+		return true
+	default:
+		return false
+	}
+}
+
+// isHTMLLike reports whether a media type should be run through the HTML-to-text
+// tag stripper. An empty type (server omitted Content-Type) defaults to HTML —
+// the common case for web pages and what browsers assume. A type the server
+// EXPLICITLY declared as non-HTML text (text/plain, text/csv, …) is NOT HTML-like,
+// so it is returned verbatim rather than having its angle-bracketed content stripped.
+func isHTMLLike(ct string) bool {
+	switch {
+	case ct == "":
+		return true
+	case ct == "text/html", ct == "application/xhtml+xml", ct == "application/xml":
 		return true
 	case strings.HasSuffix(ct, "+xml"):
 		return true
