@@ -309,8 +309,12 @@ Use for: keyless, zero-setup URL extraction — the last-resort `extract` backst
   for higher-fidelity / JS-rendered extraction.
 - **Safety:** every redirect hop is re-validated by the local SSRF preflight (a
   public URL that 30x-redirects to a private / cloud-metadata host is rejected before
-  it is fetched); the response body is size-capped; non-text content types are
-  refused; errors carry only HTTP status + byte-size metadata, never the body.
+  it is fetched); the resolved IP is re-validated again at DIAL time (closing the
+  DNS-rebinding window between preflight and connect); the response body is
+  size-capped; non-text content types are refused; errors carry only HTTP status +
+  byte-size metadata, never the URL/body. Because the dial-time guard must see the
+  real target IP, httpfetch connects **directly and ignores `HTTP(S)_PROXY`** — use
+  a keyed provider or local Scrapling if your outbound traffic must traverse a proxy.
 - Keyless does not mean guaranteed availability or unlimited use; respect site terms,
   robots.txt and rate limits.
 

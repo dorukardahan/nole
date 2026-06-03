@@ -64,6 +64,15 @@ func TestNewHasDefaults(t *testing.T) {
 	}
 }
 
+func TestSafeTransportDisablesProxy(t *testing.T) {
+	// The SSRF dial guard is only effective on a DIRECT connection: a proxy would
+	// resolve+fetch the target on its own network where the guard is blind. So the
+	// safe transport must NOT use a proxy.
+	if safeTransport().Proxy != nil {
+		t.Fatal("safeTransport must disable Proxy so the SSRF dial guard validates the real target, not a proxy")
+	}
+}
+
 func TestValidateDialedAddrBlocksPrivateAndAllowsPublic(t *testing.T) {
 	// The dial-time SSRF guard must reject loopback/private/metadata/CGNAT IPs (the
 	// DNS-rebinding target) and accept a public IP — the half that closes the TOCTOU

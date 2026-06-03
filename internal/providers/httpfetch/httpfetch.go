@@ -265,8 +265,14 @@ func (p Provider) noFollowClient() *http.Client {
 // split-horizon resolver could pass the preflight with a public IP and then dial
 // a private/metadata IP. The Control hook runs once per candidate address with
 // the resolved IP:port and aborts the dial if it is not a safe public target.
-// Defaults mirror http.DefaultTransport so behaviour (proxy env, HTTP/2, idle
-// pooling, transparent gzip) is unchanged apart from the dial guard.
+//
+// Proxy is DELIBERATELY disabled (no ProxyFromEnvironment). If httpfetch dialed a
+// proxy, validateDialedAddr would only validate the PROXY's address while the
+// proxy resolves and fetches the requested host on its own network — defeating the
+// SSRF guard for an always-on keyless fetcher pointed at arbitrary agent-supplied
+// URLs. httpfetch therefore connects directly so the guard always sees the real
+// target IP; HTTP(S)_PROXY is ignored by design (use a keyed provider or Scrapling
+// if outbound must traverse a proxy). Other fields mirror http.DefaultTransport.
 func safeTransport() *http.Transport {
 	dialer := &net.Dialer{
 		Timeout:   10 * time.Second,
@@ -274,7 +280,7 @@ func safeTransport() *http.Transport {
 		Control:   validateDialedAddr,
 	}
 	return &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
+		Proxy:                 nil, // SSRF: dial the target directly so the guard sees its real IP
 		DialContext:           dialer.DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
