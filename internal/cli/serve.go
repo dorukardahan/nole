@@ -39,23 +39,28 @@ your keys. The default loopback bind needs no token (only local processes reach 
 				return fmt.Errorf("specify --mcp to start the HTTP server (serves the MCP endpoint at /mcp and the REST API at /api/*; see docs/CLIENTS/README.md)")
 			}
 
-			// The bearer token (NOLE_SERVE_TOKEN) is read from the process env; the
-			// local env file is loaded by defaultService() below, but the token must
-			// gate startup BEFORE that, so we read it directly here.
+			// Load ~/.config/nole/.env FIRST so a NOLE_SERVE_TOKEN set ONLY there (not
+			// in the process env) is honored by the security preflight and the auth
+			// middleware below. The env-file loader does not override an existing
+			// process-env value (process env wins) and is idempotent, so the second
+			// load inside defaultService() is a no-op for already-set vars. Reading the
+			// token before this load (the previous behaviour) would miss an env-file
+			// token: it would wrongly refuse a non-loopback bind and leave auth off.
+			loadDefaultNoleEnvFile()
 			token := strings.TrimSpace(os.Getenv("NOLE_SERVE_TOKEN"))
 
 			// SECURITY (fail closed): a non-loopback bind exposes the key-bearing
 			// endpoints beyond this host, so it MUST require a bearer token. Refuse to
 			// start otherwise rather than serve your provider keys + quota to the
-			// network. Loopback binds and token-protected binds are allowed.
+			// network. Loopback binds and token-protected binds are allowed. Done
+			// before the heavier defaultService() build so it fails fast.
 			if err := serveSecurityPreflight(listen, token); err != nil {
 				return err
 			}
 
-			// Build the service first: defaultService() loads the local env file
-			// (~/.config/nole/.env), so NOLE_LOG set only there is honored by the
-			// handler's diagnostic logger (encode failures + server lifecycle), not
-			// just a process-env NOLE_LOG. Always os.Stderr — stdout stays MCP/REST.
+			// defaultService() loads the local env file again (idempotent), so
+			// NOLE_LOG / provider keys set only there are honored. Always os.Stderr —
+			// stdout stays MCP/REST.
 			svc := defaultService()
 			logger := nolelog.FromEnv(os.Stderr)
 

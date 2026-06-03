@@ -41,15 +41,15 @@ func TestAuthRequiredWhenTokenConfigured(t *testing.T) {
 
 	// No Authorization header -> 401 on a key-bearing endpoint.
 	if w := h.testServe(http.MethodGet, "/api/providers", "", ""); w.Code != http.StatusUnauthorized {
-		t.Errorf("no token: /api/providers = %d, want 401", w.Code)
+		t.Errorf("no token, on /api/providers = %d, want 401", w.Code)
 	}
 	// Wrong token -> 401.
 	if w := h.testServe(http.MethodGet, "/api/providers", "Bearer wrong", ""); w.Code != http.StatusUnauthorized {
-		t.Errorf("wrong token: /api/providers = %d, want 401", w.Code)
+		t.Errorf("wrong token, on /api/providers = %d, want 401", w.Code)
 	}
 	// Correct token -> 200.
 	if w := h.testServe(http.MethodGet, "/api/providers", "Bearer s3cr3t-token", ""); w.Code != http.StatusOK {
-		t.Errorf("correct token: /api/providers = %d, want 200", w.Code)
+		t.Errorf("correct token, on /api/providers = %d, want 200", w.Code)
 	}
 	// 401 body is a sanitized envelope and must NOT echo the configured token.
 	w := h.testServe(http.MethodPost, "/api/search", "", `{"query":"x"}`)
