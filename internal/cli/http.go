@@ -2,12 +2,14 @@ package cli
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -22,11 +24,16 @@ type httpHandler struct {
 	svc    *core.Service
 	mcp    *server.MCPServer
 	server *http.Server
-	// log carries the server's diagnostic events (encode failures, lifecycle,
-	// the non-loopback warning) to stderr in the NOLE_LOG format. A nil log is a
-	// safe no-op, so the http_test.go / v070_test.go struct-literal handlers stay
-	// silent without wiring one.
+	// log carries the server's diagnostic events (encode failures, lifecycle) to
+	// stderr in the NOLE_LOG format. A nil log is a safe no-op, so the
+	// http_test.go / v070_test.go struct-literal handlers stay silent without
+	// wiring one.
 	log *nolelog.Logger
+	// token is the optional bearer token from NOLE_SERVE_TOKEN. When non-empty,
+	// withAuth requires "Authorization: Bearer <token>" on every endpoint except
+	// /health. Empty (the loopback-default case, and the struct-literal test
+	// handlers) means no auth. Never logged.
+	token string
 }
 
 // healthResponse is the body of GET/HEAD /health. Status is "ready" (HTTP 200)
@@ -39,15 +46,67 @@ type healthResponse struct {
 	AvailableProviders []string `json:"available_providers"`
 }
 
-func newHTTPHandler(svc *core.Service, log *nolelog.Logger) (*httpHandler, error) {
+func newHTTPHandler(svc *core.Service, log *nolelog.Logger, token string) (*httpHandler, error) {
 	// Use the existing MCP server builder from mcpserver package
 	// We import it indirectly via a constructor
 	mcpSrv := buildMCPServer(svc)
+	cleaned := strings.TrimSpace(token)
 	return &httpHandler{
-		svc: svc,
-		mcp: mcpSrv,
-		log: log,
+		svc:   svc,
+		mcp:   mcpSrv,
+		log:   log,
+		token: cleaned,
 	}, nil
+}
+
+// withAuth wraps the mux with bearer-token authentication. When no token is
+// configured (h.token == ""), every request passes through unchanged — the
+// loopback-default convenience path (the startup preflight guarantees this only
+// happens on a loopback bind). When a token IS configured, every endpoint EXCEPT
+// /health requires "Authorization: Bearer <token>" (constant-time compared);
+// /health stays open so readiness probes work and because it exposes no secrets.
+func (h *httpHandler) withAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h.token == "" || r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !h.validBearer(r) {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			// Sanitized envelope; never echoes the configured token or the supplied one.
+			h.writeHTTPJSONError(w, "auth", http.StatusUnauthorized, map[string]string{
+				"operation": "auth",
+				"error":     "missing or invalid bearer token (set the Authorization: Bearer header to the NOLE_SERVE_TOKEN value)",
+			})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// validBearer reports whether the request carries the configured bearer token.
+// Uses a constant-time comparison so a timing side-channel cannot reveal the
+// token byte-by-byte. A length mismatch returns false (only the token length,
+// not its content, could leak from that — acceptable).
+func (h *httpHandler) validBearer(r *http.Request) bool {
+	const prefix = "Bearer "
+	hdr := r.Header.Get("Authorization")
+	if !strings.HasPrefix(hdr, prefix) {
+		return false
+	}
+	got := strings.TrimPrefix(hdr, prefix)
+	return subtle.ConstantTimeCompare([]byte(got), []byte(h.token)) == 1
+}
+
+// httpErrorStatus maps a service error to the HTTP status for the error envelope.
+// An exhausted/blocked free-tier (NoFreeQuotaError) is 402 Payment Required — an
+// honest "this would require paid usage you have not authorized" — rather than a
+// generic 500. Everything else is 500.
+func httpErrorStatus(err error) int {
+	if core.IsNoFreeQuota(err) {
+		return http.StatusPaymentRequired
+	}
+	return http.StatusInternalServerError
 }
 
 // allowReadMethods gates a read-only endpoint to GET/HEAD, writing a 405 and
@@ -166,7 +225,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			Limit: req.Limit,
 		})
 		if err != nil {
-			h.writeHTTPJSONError(w, "search", http.StatusInternalServerError, buildCLIError("search", err, resp.Route, resp.RouteTrace))
+			h.writeHTTPJSONError(w, "search", httpErrorStatus(err), buildCLIError("search", err, resp.Route, resp.RouteTrace))
 			return
 		}
 		// route_trace is opt-in on the agent surface; omit by default (the compact
@@ -199,7 +258,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			Format: req.Format,
 		})
 		if err != nil {
-			h.writeHTTPJSONError(w, "extract", http.StatusInternalServerError, buildCLIError("extract", err, resp.Route, resp.RouteTrace))
+			h.writeHTTPJSONError(w, "extract", httpErrorStatus(err), buildCLIError("extract", err, resp.Route, resp.RouteTrace))
 			return
 		}
 		if !req.IncludeTrace {
@@ -234,7 +293,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			ExtractTop: req.ExtractTop,
 		})
 		if err != nil {
-			h.writeHTTPJSONError(w, "search_and_extract", http.StatusInternalServerError, buildCLIError("search_and_extract", err, resp.Search.Route, resp.Search.RouteTrace))
+			h.writeHTTPJSONError(w, "search_and_extract", httpErrorStatus(err), buildCLIError("search_and_extract", err, resp.Search.Route, resp.Search.RouteTrace))
 			return
 		}
 		if !req.IncludeTrace {
@@ -270,7 +329,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			// ResearchReport has no route/trace, so buildCLIError (which needs them)
 			// does not apply; return a minimal sanitized envelope (operation+error —
 			// the documented research-shape divergence, locked by a test).
-			h.writeHTTPJSONError(w, "research", http.StatusInternalServerError, map[string]string{"operation": "research", "error": safeerr.Message(err)})
+			h.writeHTTPJSONError(w, "research", httpErrorStatus(err), map[string]string{"operation": "research", "error": safeerr.Message(err)})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -296,7 +355,7 @@ func httpServerTimeouts() (readHeader, read, write, idle time.Duration) {
 func (h *httpHandler) start(ctx context.Context, addr string) error {
 	readHeader, read, write, idle := httpServerTimeouts()
 	h.server = &http.Server{
-		Handler:           h.buildMux(),
+		Handler:           h.withAuth(h.buildMux()),
 		ReadHeaderTimeout: readHeader,
 		ReadTimeout:       read,
 		WriteTimeout:      write,

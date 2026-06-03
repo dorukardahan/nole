@@ -261,7 +261,8 @@ Docker is optional and should not imply Nólë is a hosted SaaS.
 Safe prep before publication:
 
 - keep default bind addresses local;
-- document that HTTP/REST is experimental;
+- for any non-loopback bind, set `NOLE_SERVE_TOKEN` (a non-loopback `nole serve`
+  refuses to start without it — it would otherwise expose your keys);
 - avoid baking provider keys into images;
 - use runtime environment variables or secrets managers only.
 

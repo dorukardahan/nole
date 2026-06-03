@@ -154,7 +154,7 @@ Do not run `nole bench --live` as part of this checklist unless live/keyed provi
 - Deterministic benchmark results do not measure live web quality.
 - Optional live summaries are low-limit observations, not statistically significant provider rankings.
 - Generic MCP clients remain generic/unverified until a named runtime is tested.
-- HTTP/REST is experimental compared with CLI and MCP stdio.
+- HTTP/REST (`nole serve`) is stable as of v1.4.0 (bearer-token auth via `NOLE_SERVE_TOKEN`, required for a non-loopback bind; route/envelope/status surface-locked). MCP stdio remains the primary agent path; REST is for shared/remote setups.
 
 ## Rollback and cleanup notes
 

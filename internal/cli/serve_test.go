@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"bytes"
 	"context"
-	"strings"
 	"testing"
 	"time"
 )
@@ -26,45 +24,6 @@ func TestBindIsLoopback(t *testing.T) {
 		if got := bindIsLoopback(c.addr); got != c.want {
 			t.Errorf("bindIsLoopback(%q) = %v, want %v", c.addr, got, c.want)
 		}
-	}
-}
-
-func TestNonLoopbackWarningPrints(t *testing.T) {
-	// Non-loopback binds MUST print the unauthenticated-exposure warning;
-	// loopback binds must print nothing.
-	cases := []struct {
-		addr      string
-		wantWarns bool
-	}{
-		{"127.0.0.1:8765", false},
-		{"localhost:8765", false},
-		{"0.0.0.0:8765", true},
-		{":8765", true},
-		{"192.168.1.10:8765", true},
-	}
-	for _, c := range cases {
-		var buf bytes.Buffer
-		nonLoopbackWarning(&buf, c.addr)
-		got := buf.String()
-		if c.wantWarns {
-			if !strings.Contains(got, "UNAUTHENTICATED") || !strings.Contains(got, c.addr) {
-				t.Errorf("nonLoopbackWarning(%q) = %q, want a warning naming the addr", c.addr, got)
-			}
-		} else if got != "" {
-			t.Errorf("nonLoopbackWarning(%q) = %q, want empty for a loopback bind", c.addr, got)
-		}
-	}
-}
-
-func TestNonLoopbackWarningNotSilencedByNoleLogOff(t *testing.T) {
-	// The exposure warning is a SAFETY message: it must NOT route through nolelog,
-	// so NOLE_LOG=off can never silence it. (It takes an io.Writer and never
-	// touches the logger; this guards that contract.)
-	t.Setenv("NOLE_LOG", "off")
-	var buf bytes.Buffer
-	nonLoopbackWarning(&buf, "0.0.0.0:8765")
-	if !strings.Contains(buf.String(), "UNAUTHENTICATED") {
-		t.Fatalf("non-loopback warning was silenced under NOLE_LOG=off: %q", buf.String())
 	}
 }
 

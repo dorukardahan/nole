@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strings"
@@ -19,26 +18,39 @@ func newServeCommand() *cobra.Command {
 		Use:   "serve",
 		Short: "Start HTTP server (Streamable HTTP MCP endpoint + REST API)",
 		Long: `Start a persistent HTTP server that exposes, on the same bind address:
-  /mcp          Streamable HTTP MCP endpoint (when --mcp is passed)
-  /api/search   /api/extract   /api/providers   /api/budget   /health (REST)
+  /mcp          Streamable HTTP MCP endpoint
+  /api/search   /api/extract   /api/search_and_extract   /api/research
+  /api/providers   /api/budget   /health (REST)
 
   --mcp    enable the server (also serves the /api/* REST endpoints)
   --listen bind address (default: 127.0.0.1:8765)
 
-This is an advanced surface for team/shared/remote usage. The endpoints have
-NO built-in authentication and expose your BYOK keys and quota to anyone who
-can reach the bind address — keep the default loopback bind, or front a
-non-loopback bind with a reverse proxy / network ACL. For local agent usage,
-prefer 'nole mcp' (stdio).`,
+This is an advanced surface for team/shared/remote usage (e.g. one keyed Nólë
+serving several machines). For local single-user agent usage, 'nole mcp' (stdio)
+is simpler.
+
+AUTH: set NOLE_SERVE_TOKEN to require "Authorization: Bearer <token>" on every
+endpoint except /health. The endpoints serve your BYOK keys + quota, so a
+NON-loopback bind (e.g. 0.0.0.0) REQUIRES a token: without NOLE_SERVE_TOKEN set,
+'serve' refuses to start on a non-loopback bind (fail closed) rather than exposing
+your keys. The default loopback bind needs no token (only local processes reach it).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !mcp {
 				return fmt.Errorf("specify --mcp to start the HTTP server (serves the MCP endpoint at /mcp and the REST API at /api/*; see docs/CLIENTS/README.md)")
 			}
 
-			// SECURITY notice: a non-loopback bind exposes the unauthenticated
-			// endpoints (provider keys + quota) beyond this host. Always os.Stderr,
-			// unconditional, NOT via nolelog — see nonLoopbackWarning.
-			nonLoopbackWarning(os.Stderr, listen)
+			// The bearer token (NOLE_SERVE_TOKEN) is read from the process env; the
+			// local env file is loaded by defaultService() below, but the token must
+			// gate startup BEFORE that, so we read it directly here.
+			token := strings.TrimSpace(os.Getenv("NOLE_SERVE_TOKEN"))
+
+			// SECURITY (fail closed): a non-loopback bind exposes the key-bearing
+			// endpoints beyond this host, so it MUST require a bearer token. Refuse to
+			// start otherwise rather than serve your provider keys + quota to the
+			// network. Loopback binds and token-protected binds are allowed.
+			if err := serveSecurityPreflight(listen, token); err != nil {
+				return err
+			}
 
 			// Build the service first: defaultService() loads the local env file
 			// (~/.config/nole/.env), so NOLE_LOG set only there is honored by the
@@ -47,15 +59,20 @@ prefer 'nole mcp' (stdio).`,
 			svc := defaultService()
 			logger := nolelog.FromEnv(os.Stderr)
 
-			handler, err := newHTTPHandler(svc, logger)
+			handler, err := newHTTPHandler(svc, logger, token)
 			if err != nil {
 				return err
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "nole serve: listening on %s\n", listen)
 			fmt.Fprintf(cmd.OutOrStdout(), "  MCP endpoint: http://%s/mcp\n", listen)
-			fmt.Fprintf(cmd.OutOrStdout(), "  REST API:     http://%s/api/{search,extract,providers,budget}\n", listen)
+			fmt.Fprintf(cmd.OutOrStdout(), "  REST API:     http://%s/api/{search,extract,search_and_extract,research,providers,budget}\n", listen)
 			fmt.Fprintf(cmd.OutOrStdout(), "  Health:       http://%s/health\n", listen)
+			if token != "" {
+				fmt.Fprintln(cmd.OutOrStdout(), "  Auth:         bearer token REQUIRED on all endpoints except /health (send the NOLE_SERVE_TOKEN value as a Bearer credential)")
+			} else {
+				fmt.Fprintln(cmd.OutOrStdout(), "  Auth:         none — loopback bind only. Set NOLE_SERVE_TOKEN to require a bearer token (and to allow a non-loopback bind).")
+			}
 			// cmd.Context() is the root signal-aware context: main installs
 			// signal.NotifyContext (SIGINT/SIGTERM) and restores default signal
 			// handling on the first interrupt, so a second Ctrl-C force-exits a slow
@@ -71,24 +88,26 @@ prefer 'nole mcp' (stdio).`,
 	return cmd
 }
 
-// nonLoopbackWarning writes the unauthenticated-exposure warning to w when addr
-// is not a loopback bind, and nothing otherwise. It is the ONLY runtime warning
-// of that exposure, so RunE calls it with os.Stderr and it is printed
-// UNCONDITIONALLY — it deliberately does NOT route through nolelog, because a
-// verbosity knob like NOLE_LOG=off must never silence a safety message (Codex
-// review on PR #41; same rationale as main.go's raw fatal print). Split out from
-// RunE purely so it is unit-testable with a buffer.
-func nonLoopbackWarning(w io.Writer, addr string) {
-	if bindIsLoopback(addr) {
-		return
+// serveSecurityPreflight enforces the fail-closed rule for the HTTP surface: a
+// NON-loopback bind exposes the host's BYOK keys + quota to anyone who can reach
+// it, so it MUST require a bearer token (NOLE_SERVE_TOKEN). It returns an error
+// (refuse to start) when addr is non-loopback and no token is configured;
+// loopback binds and token-protected binds are allowed. This is the resolve-time
+// guard; httpHandler.withAuth enforces the token per request. Returning an error
+// instead of warning-and-serving is deliberate: serving provider keys to a
+// network without auth is exactly the failure this prevents.
+func serveSecurityPreflight(addr, token string) error {
+	if bindIsLoopback(addr) || strings.TrimSpace(token) != "" {
+		return nil
 	}
-	fmt.Fprintf(w, "warning: binding %s is not loopback; these endpoints are UNAUTHENTICATED and expose your provider keys and quota. Front it with a reverse proxy / network ACL.\n", addr)
+	return fmt.Errorf("refusing to start: %s is not a loopback bind and NOLE_SERVE_TOKEN is not set — these endpoints expose your provider keys and quota to anyone who can reach the bind. Set NOLE_SERVE_TOKEN to require a bearer token, or bind to loopback (e.g. 127.0.0.1:8765)", addr)
 }
 
 // bindIsLoopback reports whether addr binds only to a loopback interface. A
-// non-loopback bind exposes the unauthenticated endpoints beyond the host, so
-// the caller warns. An unparseable/hostname bind is treated as non-loopback
-// (fail safe toward warning).
+// non-loopback bind exposes the key-bearing endpoints beyond the host, so
+// serveSecurityPreflight requires a bearer token for it (refusing to start
+// otherwise). An unparseable/hostname bind is treated as non-loopback (fail safe
+// toward requiring the token).
 func bindIsLoopback(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
