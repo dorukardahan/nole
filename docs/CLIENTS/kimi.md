@@ -9,7 +9,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Ki
 - Real Kimi CLI release was exercised on macOS (M11 live verification).
 - The MCP entry is registered via the official `kimi mcp add` CLI, pointing at `/absolute/path/to/nole-mcp`.
 - `kimi mcp list` reports `nole (stdio)`.
-- `kimi mcp test nole` reports `Connected` and the tools Nólë advertises: `budget_status`, `provider_status`, `search`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured.
+- `kimi mcp test nole` reports `Connected` and the tools Nólë advertises: `budget_status`, `provider_status`, `search`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity, not its availability).
 - One low-limit docs smoke search succeeded under `free-first` policy via the keyless DDGS fallback (shared smoke; recorded in `docs/CLIENTS/LIVE-VERIFICATION.md`).
 - No key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths were printed during verification; the wrapper sources `~/.config/nole/.env` only at launch.
 
@@ -73,7 +73,7 @@ Mark this client `verified` only after:
 
 - `nole doctor` passes with key presence only;
 - `nole doctor --mcp` passes;
-- `kimi mcp test nole` reports `Connected` and shows `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured;
+- `kimi mcp test nole` reports `Connected` and shows `search`, `provider_status`, `budget_status`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity, not its availability);
 - a small docs search works;
 - no credentials appear in config, logs or chat.
 
@@ -85,6 +85,6 @@ Mark this client `verified` only after:
 ## Troubleshooting
 
 - If `kimi mcp test nole` cannot connect, run `nole doctor --mcp` directly to confirm Nólë's MCP stdio is healthy and that key presence is detected.
-- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and restart the Kimi session.
+- `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and restart the Kimi session.
 - If provider keys are missing inside Kimi but present in your interactive shell, confirm the wrapper exists and points to a built `nole` binary (`NOLE_BIN`, `command -v nole` or `~/.local/bin/nole` in order of preference).
 - If stdout pollution appears in Kimi's MCP logs, file a bug; `nole mcp` stdout must remain protocol-only.

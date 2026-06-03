@@ -7,16 +7,24 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/providers/httpfetch"
 	"github.com/dorukardahan/nole/internal/providers/mock"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 // stableMCPToolsAlways is the v1.0.0-frozen set of MCP tools advertised on EVERY
-// configuration. stableMCPToolsExtract are advertised ONLY when an extract-capable
-// provider (Tavily/Firecrawl key, or local Scrapling) is configured. Under the
-// stability commitment (docs/STABILITY.md), the tool names + their parameters are
-// frozen for 1.x; these locks fail on any silent drift so adding/removing a tool or
-// parameter is a conscious, documented decision.
+// configuration. stableMCPToolsExtract are advertised ONLY when the service
+// registry holds an AVAILABLE extract-capable provider (Service.HasExtractCapableProvider).
+// Since v1.3.0 the keyless httpfetch backstop is always registered by the default
+// service, so in production this is always true — extract / search_and_extract are
+// advertised out of the box (a behaviour-additive surface expansion; the tools are
+// only ever ADDED to the keyless configuration, never removed). A service built
+// with no extract-capable provider at all still correctly hides them.
+//
+// Under the stability commitment (docs/STABILITY.md), the tool names + their
+// parameters are frozen for 1.x; these locks fail on any silent drift so
+// adding/removing a tool or parameter is a conscious, documented decision.
 var (
 	stableMCPToolsAlways  = map[string]bool{"search": true, "research": true, "provider_status": true, "budget_status": true}
 	stableMCPToolsExtract = map[string]bool{"extract": true, "search_and_extract": true}
@@ -38,14 +46,11 @@ var (
 )
 
 func TestStableMCPToolSurfaceWithoutExtract(t *testing.T) {
-	// Only a non-extract-capable key (brave) -> extract tools hidden.
-	t.Setenv("BRAVE_API_KEY", "fake-brave-key")
-	t.Setenv("BRAVE_SEARCH_API_KEY", "")
-	t.Setenv("TAVILY_API_KEY", "")
-	t.Setenv("FIRECRAWL_API_KEY", "")
-	t.Setenv("NOLE_SCRAPLING_PYTHON", "")
-
-	tools := callToolsList(t, newTestMCPServerWithProviders(t, mock.New("mock"), mock.New("brave")))
+	// The negative gate path: a registry with only SEARCH-capable providers (no
+	// available extract provider) hides the extract tools. This is no longer the
+	// default production state (httpfetch always provides extract), but it pins the
+	// gate's behaviour so a future change that drops the extract gate is conscious.
+	tools := callToolsList(t, newTestMCPServerWithProviders(t, mock.NewSearchOnly("mock"), mock.NewSearchOnly("brave")))
 	for n := range stableMCPToolsAlways {
 		if !tools[n] {
 			t.Errorf("frozen MCP tool %q is MISSING — removing a v1.0.0 tool is BREAKING; update docs/STABILITY.md + this lock", n)
@@ -53,7 +58,7 @@ func TestStableMCPToolSurfaceWithoutExtract(t *testing.T) {
 	}
 	for n := range stableMCPToolsExtract {
 		if tools[n] {
-			t.Errorf("extract-gated tool %q must be hidden when no extract-capable provider is configured", n)
+			t.Errorf("extract-gated tool %q must be hidden when no available extract-capable provider is registered", n)
 		}
 	}
 	for n := range tools {
@@ -63,9 +68,11 @@ func TestStableMCPToolSurfaceWithoutExtract(t *testing.T) {
 	}
 }
 
-// TestStableMCPToolSurfaceWithExtract locks the full 6-tool surface for EVERY way
-// an extract-capable provider can be configured (Tavily key, Firecrawl key, or
-// local Scrapling), so the extract-gating itself is pinned, not just one path.
+// TestStableMCPToolSurfaceWithExtract locks the full 6-tool surface for the ways
+// an available extract-capable provider appears in the registry: the real keyless
+// httpfetch backstop (the always-on production path), and an extract-advertising
+// provider standing in for a keyed remote / local Scrapling. The extract gating
+// itself is pinned, not just one path.
 func TestStableMCPToolSurfaceWithExtract(t *testing.T) {
 	want := map[string]bool{}
 	for n := range stableMCPToolsAlways {
@@ -76,28 +83,22 @@ func TestStableMCPToolSurfaceWithExtract(t *testing.T) {
 	}
 
 	cases := []struct {
-		name string
-		env  map[string]string
+		name      string
+		providers []core.Provider
 	}{
-		{"tavily-key", map[string]string{"TAVILY_API_KEY": "fake-tavily-key"}},
-		{"firecrawl-key", map[string]string{"FIRECRAWL_API_KEY": "fake-firecrawl-key"}},
-		{"local-scrapling", map[string]string{"NOLE_SCRAPLING_PYTHON": "/usr/bin/python3"}},
+		// The authentic production path: the real keyless httpfetch provider makes
+		// extract available with zero keys and zero setup.
+		{"keyless-httpfetch", []core.Provider{mock.NewSearchOnly("search"), httpfetch.New()}},
+		// An available extract-advertising provider (stands in for a keyed remote
+		// extractor or local Scrapling).
+		{"extract-capable-provider", []core.Provider{mock.New("mock")}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			// Clear all extract-capable signals, then set this case's.
-			t.Setenv("BRAVE_API_KEY", "")
-			t.Setenv("BRAVE_SEARCH_API_KEY", "")
-			t.Setenv("TAVILY_API_KEY", "")
-			t.Setenv("FIRECRAWL_API_KEY", "")
-			t.Setenv("NOLE_SCRAPLING_PYTHON", "")
-			for k, v := range c.env {
-				t.Setenv(k, v)
-			}
-			tools := callToolsList(t, newTestMCPServerWithProviders(t, mock.New("mock")))
+			tools := callToolsList(t, newTestMCPServerWithProviders(t, c.providers...))
 			for n := range want {
 				if !tools[n] {
-					t.Errorf("[%s] frozen MCP tool %q is MISSING with an extract-capable provider — update docs/STABILITY.md + this lock", c.name, n)
+					t.Errorf("[%s] frozen MCP tool %q is MISSING with an available extract-capable provider — update docs/STABILITY.md + this lock", c.name, n)
 				}
 			}
 			for n := range tools {

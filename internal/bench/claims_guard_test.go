@@ -171,8 +171,12 @@ func TestSetupHintStringsAreSanitized(t *testing.T) {
 	for _, p := range core.BYOKProviders() {
 		check(p.Name+".FreeTierNote", p.FreeTierNote)
 	}
-	for _, s := range core.BuildSetupSuggestions(map[string]bool{}) {
-		check(s.MissingKey+".CurrentWorkaround", s.CurrentWorkaround)
-		check(s.MissingKey+".FreeTier", s.FreeTier)
+	// Both extract-availability modes so the keyless-backstop workaround string and
+	// the no-extract workaround string are each guarded against marketing claims.
+	for _, extractAvailable := range []bool{true, false} {
+		for _, s := range core.BuildSetupSuggestions(map[string]bool{}, extractAvailable) {
+			check(s.MissingKey+".CurrentWorkaround", s.CurrentWorkaround)
+			check(s.MissingKey+".FreeTier", s.FreeTier)
+		}
 	}
 }

@@ -103,6 +103,18 @@ func ValidateURLContext(ctx context.Context, rawURL string) error {
 	return nil
 }
 
+// ValidateIP reports whether ip is a safe public target, applying the same rules
+// as the hostname-resolution path of ValidateURLContext (loopback, private,
+// link-local, multicast, unspecified, cloud-metadata, CGNAT/reserved ranges, and
+// IPv6-embedded-IPv4 forms). It is exposed so a caller that dials AFTER its own
+// DNS resolution — e.g. an http.Transport dialer Control hook — can re-validate
+// the ACTUAL resolved address immediately before connecting, closing the
+// DNS-rebinding / split-horizon TOCTOU window between the preflight check and the
+// real dial. Returns nil for a safe public IP.
+func ValidateIP(ip net.IP) error {
+	return validateIP(ip)
+}
+
 func validateIP(ip net.IP) error {
 	if ip.IsLoopback() {
 		return fmt.Errorf("loopback address %s is not allowed", ip)

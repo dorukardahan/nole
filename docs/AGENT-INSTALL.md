@@ -27,7 +27,7 @@ When an AI agent receives only the GitHub link and a user request to install Nó
 5. Configure provider key variable names only if the user already owns the matching provider accounts; never ask the user to paste real values into chat.
 6. Keep default `NOLE_COST_POLICY=free-first` unless the user explicitly accepts premium-capable provider risk.
 7. Configure the selected client with the setup writer and include `--local-extract` when possible, for example `nole setup --codex --local-extract` or `nole setup --hermes --local-extract`.
-8. Verify the client sees `search`, `provider_status`, `budget_status` and `extract` when Tavily, Firecrawl or local Scrapling is configured.
+8. Verify the client sees `search`, `provider_status`, `budget_status`, `extract` and `search_and_extract` — advertised out of the box via the keyless httpfetch backstop (zero keys); a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity rather than being required.
 9. Run one low-limit docs search and include only the compact `routing_insight` plus result URLs in the user-facing answer.
 10. Record unresolved client/env limitations truthfully; do not upgrade a client status label without real-client evidence.
 11. Scan changed configs/log snippets for key values, bearer tokens, auth headers, raw provider payloads, private paths and private URLs before sharing.
@@ -322,7 +322,7 @@ The agent should see MCP tools similar to:
 - `search`
 - `provider_status`
 - `budget_status`
-- `extract` when Tavily, Firecrawl or local Scrapling is configured
+- `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity)
 
 ## Troubleshooting
 

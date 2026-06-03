@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-03
+
+Theme: **keyless extract out of the box.** A new pure-Go HTTP-fetch extract
+provider closes the gateway's biggest zero-setup gap: with no keys and no Python,
+`search` worked but `extract` / `search_and_extract` / research's extract phase
+hard-failed (Scrapling was the only keyless extract path, and it needs a venv).
+Now extract works with zero keys and zero setup. Additive and keyless — no
+breaking change to any committed CLI/MCP/env surface.
+
+### Added
+
+- **`httpfetch` — keyless, pure-Go, dependency-free extract provider**
+  (`internal/providers/httpfetch`). GETs a public URL and strips the HTML to
+  readable text using only the standard library (`net/http` + `regexp` +
+  `html.UnescapeString`); **no new module dependency** (consistent with the
+  existing `ddgs`/`wikipedia` HTML helpers). It is the LAST-RESORT keyless backstop
+  on the extract route (`scrapling -> firecrawl -> tavily -> httpfetch`) — the
+  extract-side analogue of DDGS on the search routes. It runs **no JavaScript**, so
+  it is honestly weaker than Scrapling/Firecrawl on SPA/JS-rendered pages, and that
+  is an accepted limit for a zero-setup fallback. Registered unbreakered (like the
+  other free fallbacks) and seeded `keyless-free` in the quota ledger.
+  - SSRF-safe on TWO layers: every redirect hop is re-validated by
+    `safenet.ValidateURLContext` before it is fetched (a public URL that
+    30x-redirects to a private/metadata host is blocked at the redirecting hop, via
+    a manual no-follow redirect walk), AND the resolved IP is re-validated again at
+    DIAL time by a transport `Control` hook (new exported `safenet.ValidateIP`),
+    closing the DNS-rebinding / split-horizon window between preflight and connect.
+    The transport disables proxies so the dial guard always sees the real target IP.
+  - Hardened: response body is size-capped (over-cap is fatal, never extracts a
+    truncated body); non-text content types are refused, and an EXPLICIT `text/plain`
+    response is returned verbatim (not HTML-stripped, so `#include <stdio.h>` and
+    other angle-bracketed content survive); transport errors are redacted to drop the
+    request URL/query (no token leak on the non-JSON CLI path); errors otherwise carry
+    only HTTP status + byte-size metadata. Descriptive `User-Agent` with a contact URL
+    (no browser-spoof). Fuzz-tested (`FuzzHTMLToText`: never panics, deterministic,
+    preserves UTF-8 validity).
+
+### Changed
+
+- **MCP `extract` / `search_and_extract` are now advertised out of the box.** Tool
+  gating moved from an env-key/Scrapling check to a registry-capability check
+  (`core.Service.HasExtractCapableProvider`): the tools are advertised whenever the
+  registry has an available extract-capable provider. Because the keyless
+  `httpfetch` backstop is always registered, that is always true in the default
+  service — so agents get `extract`/`search_and_extract` with zero keys and zero
+  setup. **This is a backward-compatible surface expansion** (the tools are only
+  ever ADDED to the keyless configuration, never removed); the surface-lock tests
+  and `docs/STABILITY.md` are updated to record it. A higher-fidelity / JS-capable
+  provider (Tavily/Firecrawl key, or local Scrapling) is still preferred when
+  configured.
+- `nole bench --live --comprehensive` includes httpfetch. (The search route-planner
+  `--providers` allowlist intentionally does NOT accept `httpfetch` — like Scrapling
+  it is extract-only, and route-plan plans search routes, so `--providers httpfetch`
+  correctly errors rather than emitting an unusable search plan.)
+
+### Docs
+
+- `docs/STABILITY.md`, `docs/PROVIDER-KEYS.md` (provider table, cost-class
+  examples, the partial-key behaviour section, a dedicated `## httpfetch` section),
+  `docs/ROUTE-EVIDENCE.md` (extract route), and `README.md` (provider list, keyless
+  enumerations) updated to document the always-on keyless extract backstop and its
+  honest no-JavaScript limit.
+
 ## [1.2.3] - 2026-06-03
 
 Theme: **security — bump the Go toolchain to 1.25.11 for two standard-library
@@ -25,6 +88,7 @@ CVE fixes.** No code or surface change; a toolchain/build-input bump.
   publishing; its content ships here in v1.2.3). The `1.25.x` pins are tightened
   to `1.25.11` so the build/scan toolchain is deterministic, not whatever the
   runner's setup-go manifest happens to resolve.
+
 
 ## [1.2.2] - 2026-06-03
 

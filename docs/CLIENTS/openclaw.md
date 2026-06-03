@@ -75,6 +75,6 @@ The 2026-05-20 OpenClaw run verified:
 
 - Use an absolute path to `nole-mcp`.
 - If OpenClaw cannot see Nólë after `openclaw mcp set`, start a fresh agent session so the runtime reloads MCP definitions.
-- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and start a fresh agent session.
+- `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and start a fresh agent session.
 - Run `nole doctor --mcp` directly to separate Nólë stdio issues from OpenClaw runtime issues.
 - Inspect OpenClaw logs only after redacting provider keys, auth headers, raw provider payloads, private URLs and local paths.

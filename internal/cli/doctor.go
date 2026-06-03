@@ -482,21 +482,20 @@ func checkMCPProtocolSmoke(parent context.Context, binary string) mcpProtocolSmo
 		return finish(fmt.Sprintf("parse tools/list: %v", err))
 	}
 	result.Tools = tools
-	// "extract" is conditionally registered only when an extract-capable
-	// provider key (TAVILY_API_KEY, FIRECRAWL_API_KEY) or local Scrapling
-	// runtime is configured, so it is not checked here. budget_status,
-	// provider_status, and search are always registered regardless of key
-	// configuration.
-	if missing := missingTools(tools, []string{"budget_status", "provider_status", "search"}); len(missing) > 0 {
+	// budget_status, provider_status, and search are always registered. Since the
+	// keyless httpfetch backstop is always in the registry, extract is too — so it
+	// is checked unconditionally here (the MCP surface advertises it out of the box).
+	if missing := missingTools(tools, []string{"budget_status", "provider_status", "search", "extract"}); len(missing) > 0 {
 		return finish(fmt.Sprintf("missing tools: %v", missing))
 	}
-	// If an extract-capable provider is configured in the running environment,
-	// the subprocess inherited the same env (cmd.Env = os.Environ()) and MUST
-	// register extract. Catching the inconsistency here prevents a regression
-	// where extract is silently absent for users who have extract configured.
+	// Additional keyed-path guard: when a KEYED or local-Scrapling (JS-capable)
+	// extract provider is configured, the subprocess inherited the same env
+	// (cmd.Env = os.Environ()) and MUST still advertise search_and_extract.
+	// Catching the inconsistency here prevents a regression where the keyed extract
+	// path is silently dropped for users who have a higher-fidelity provider set up.
 	if mcpserver.HasExtractCapableConfigured() {
-		if missing := missingTools(tools, []string{"extract"}); len(missing) > 0 {
-			return finish(fmt.Sprintf("extract-capable provider is configured but extract tool is missing from MCP surface: %v", missing))
+		if missing := missingTools(tools, []string{"search_and_extract"}); len(missing) > 0 {
+			return finish(fmt.Sprintf("a keyed/Scrapling extract provider is configured but search_and_extract is missing from the MCP surface: %v", missing))
 		}
 	}
 	if result.NonJSONStdoutLines != 0 {

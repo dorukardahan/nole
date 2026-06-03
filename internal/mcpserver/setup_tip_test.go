@@ -282,11 +282,14 @@ func TestMCPExtractToolHiddenWhenNoExtractCapableKey(t *testing.T) {
 		t.Fatal("with only BRAVE_API_KEY set, HasExtractCapableConfigured must be false")
 	}
 
-	// Also verify at the server level: the extract tool must not appear.
-	srv := newTestMCPServerWithProviders(t, mock.New("mock"), mock.New("brave"))
+	// Server level: the extract tool is gated on the REGISTRY (Service.HasExtractCapableProvider),
+	// so a registry of only search-capable providers (no available extract provider)
+	// hides it. (In production the keyless httpfetch backstop is always registered,
+	// so this hidden state does not occur — but the gate's behaviour stays pinned.)
+	srv := newTestMCPServerWithProviders(t, mock.NewSearchOnly("mock"), mock.NewSearchOnly("brave"))
 	tools := callToolsList(t, srv)
 	if tools["extract"] {
-		t.Error("extract tool should not be advertised when no extract-capable key is configured")
+		t.Error("extract tool should not be advertised when no available extract-capable provider is registered")
 	}
 	if !tools["search"] {
 		t.Error("search tool should always be advertised")
@@ -367,10 +370,12 @@ func TestMCPExtractToolHiddenWithWhitespaceOnlyScrapling(t *testing.T) {
 		t.Fatal("with whitespace-only NOLE_SCRAPLING_PYTHON, HasExtractCapableConfigured must be false")
 	}
 
-	srv := newTestMCPServerWithProviders(t, mock.New("mock"), mock.New("scrapling"))
+	// Server level uses the registry gate (see above): only search-capable providers
+	// registered -> extract hidden.
+	srv := newTestMCPServerWithProviders(t, mock.NewSearchOnly("mock"), mock.NewSearchOnly("scrapling"))
 	tools := callToolsList(t, srv)
 	if tools["extract"] {
-		t.Error("extract tool should not be advertised for whitespace-only Scrapling runtime")
+		t.Error("extract tool should not be advertised when no available extract-capable provider is registered")
 	}
 }
 

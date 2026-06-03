@@ -8,7 +8,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Op
 
 - Real OpenCode release was exercised on macOS (M11 live verification).
 - A `nole` MCP entry written directly into `~/.config/opencode/opencode.json` with the OpenCode-native schema is read by `opencode mcp list` and reports `nole connected`.
-- Tools observable through the same wrapper command path: `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured.
+- Tools observable through the same wrapper command path: `search`, `provider_status`, `budget_status`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity, not its availability).
 - One low-limit docs smoke search succeeded under `free-first` policy via the keyless DDGS fallback.
 - No key values, bearer tokens, auth headers, raw provider payloads, private URLs or local user paths appear in the OpenCode entry; provider keys are loaded only by the wrapper at launch.
 
@@ -90,7 +90,7 @@ Prefer process environment or a local wrapper script. Do not put raw key values 
 Mark this client `verified` only after:
 
 - `nole doctor --mcp` passes;
-- OpenCode sees `search`, `provider_status`, `budget_status`, plus `extract` when Tavily, Firecrawl or local Scrapling is configured;
+- OpenCode sees `search`, `provider_status`, `budget_status`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity, not its availability);
 - a small docs search works;
 - no secret values are present in config or logs.
 
@@ -98,6 +98,6 @@ Mark this client `verified` only after:
 
 - Restart OpenCode after config changes.
 - Use absolute binary paths if PATH is not inherited.
-- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and restart OpenCode.
+- `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and restart OpenCode.
 - Check provider key visibility with `nole doctor`.
 - Keep HTTP/REST disabled unless explicitly testing experimental REST behavior.

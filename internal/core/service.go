@@ -468,10 +468,18 @@ func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 		driftByProvider[sig.Provider] = sig
 	}
 
+	// extractAvailable: does URL extraction work AT ALL right now? True when any
+	// available registered provider advertises extract — including the always-on
+	// keyless httpfetch backstop. Drives whether a missing keyed extract provider is
+	// pitched as a disabled-feature unlock (false) or a fidelity upgrade (true).
+	extractAvailable := false
 	for _, provider := range providers {
 		status := provider.Status(ctx) // called once per provider
 		if byokNames[provider.Name()] {
 			configured[provider.Name()] = status.Available
+		}
+		if status.Available && HasCapability(status.Capabilities, CapabilityExtract) {
+			extractAvailable = true
 		}
 		merged := mergeProviderCostStatus(status, s.ledger.Decide(provider.Name()))
 		if sig, ok := driftByProvider[provider.Name()]; ok {
@@ -479,11 +487,34 @@ func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 		}
 		statuses = append(statuses, merged)
 	}
-	suggestions := BuildSetupSuggestions(configured)
+	suggestions := BuildSetupSuggestions(configured, extractAvailable)
 	return ProviderStatusResponse{
 		Providers:        statuses,
 		SetupSuggestions: suggestions,
 	}
+}
+
+// HasExtractCapableProvider reports whether the registry contains a provider that
+// advertises CapabilityExtract. The MCP server uses it to decide whether to
+// advertise the extract / search_and_extract tools.
+//
+// It is intentionally a CAPABILITY check, NOT a live-health check: it never calls
+// Status(). Tool advertisement is a registration-time surface decision and must
+// not (a) execute a provider's Status() — e.g. Scrapling launches a Python
+// subprocess — on every `nole mcp` startup, nor (b) make the advertised tool set
+// flap with transient provider health (a breaker-open keyed extractor must not
+// un-advertise extract when the keyless httpfetch backstop still serves it). With
+// httpfetch unconditionally registered by the default service, an extract-capable
+// provider is always present, so extract is advertised out of the box; the live
+// route walk (with its own per-provider status/quota checks) decides which
+// provider actually serves each call.
+func (s *Service) HasExtractCapableProvider() bool {
+	for _, p := range s.registry.List() {
+		if HasCapability(p.Capabilities(), CapabilityExtract) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) BudgetStatus() BudgetStatus {

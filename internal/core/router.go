@@ -28,7 +28,12 @@ func DefaultRouteMatrix() RouteMatrix {
 		// intentionally excluded even if URL-query benchmark scores are high.
 		// Scrapling is local and keyless when configured. Service-level status
 		// checks skip it automatically when the local runtime is unavailable.
-		TaskExtract: {"scrapling", "firecrawl", "tavily"},
+		// "httpfetch" is the keyless pure-Go LAST-RESORT backstop (the extract-side
+		// analogue of DDGS on the search routes): placed last so it is reached only
+		// when Scrapling is unavailable AND the keyed remotes (firecrawl/tavily) are
+		// unregistered/blocked/exhausted. It runs no JavaScript, so it is weaker on
+		// SPA pages — but it makes extract work with zero keys and zero setup.
+		TaskExtract: {"scrapling", "firecrawl", "tavily", "httpfetch"},
 	}
 }
 

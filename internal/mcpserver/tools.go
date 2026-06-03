@@ -44,12 +44,16 @@ func hashSessionID(sessionID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// HasExtractCapableConfigured reports whether any extract provider is locally
-// configured. Used at MCP tool-registration time to decide whether the extract
-// tool should be advertised at all. For remote BYOK providers this checks keys;
-// for local providers such as Scrapling this checks the configured local runtime.
-// Exported so the doctor command can mirror the MCP server's registration
-// decision for its conditional smoke assertion.
+// HasExtractCapableConfigured reports whether a KEYED or local-Scrapling extract
+// provider is configured in the environment — i.e. a JS-capable / higher-fidelity
+// extract path. It is NOT the MCP tool-gate anymore: since the keyless httpfetch
+// backstop is always registered, the extract tools are advertised whenever the
+// service registry has an available extract provider (Service.HasExtractCapableProvider),
+// which is always true in the default service. This predicate remains useful to
+// distinguish "a JS-capable extract provider is configured" from "only the keyless
+// best-effort backstop is available" (e.g. for doctor's keyed-path regression guard
+// and setup hints). For remote BYOK providers it checks keys; for Scrapling it
+// checks the configured local runtime.
 func HasExtractCapableConfigured() bool {
 	if strings.TrimSpace(os.Getenv("NOLE_SCRAPLING_PYTHON")) != "" {
 		return true
@@ -196,7 +200,14 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		return mcp.NewToolResultText(string(b)), nil
 	})
 
-	if HasExtractCapableConfigured() {
+	// Advertise extract / search_and_extract whenever the registry has an
+	// extract-capable provider (capability check only — no Status probe, so MCP
+	// startup never launches Scrapling's Python and the tool set never flaps with
+	// transient provider health). With the keyless httpfetch backstop always
+	// registered by the default service, this is always true — extract works out of
+	// the box with zero keys and zero setup. (A service built with no extract
+	// provider at all — e.g. a custom embedding — still correctly hides them.)
+	if svc.HasExtractCapableProvider() {
 		extractTool := mcp.NewTool(
 			"extract",
 			mcp.WithDescription(extractToolDescription),
@@ -224,9 +235,9 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 			return mcp.NewToolResultText(string(b)), nil
 		})
 
-		// search_and_extract is gated alongside extract: its extract leg is a
-		// no-op without a configured extract provider, so advertising it would
-		// mislead.
+		// search_and_extract is gated alongside extract (same registry check): its
+		// extract leg needs an available extract provider, which the keyless
+		// httpfetch backstop guarantees in the default service.
 		saeTool := mcp.NewTool(
 			"search_and_extract",
 			mcp.WithDescription(searchAndExtractToolDescription),

@@ -12,12 +12,19 @@ import (
 //
 // `configured` is keyed by provider name (e.g. "brave"). DDGS is keyless and
 // is never in this map.
-func BuildSetupSuggestions(configured map[string]bool) []SetupSuggestion {
+//
+// `extractAvailable` reports whether URL extraction works AT ALL in the running
+// service — true whenever any available extract provider is registered, including
+// the always-on keyless httpfetch backstop. When true, a missing keyed extract
+// provider is a FIDELITY upgrade (JS rendering, markdown, paywall handling), not a
+// disabled-feature unlock: it is never classified "high", and its workaround names
+// Nólë's own keyless backstop rather than the AI tool's built-in fetch.
+func BuildSetupSuggestions(configured map[string]bool, extractAvailable bool) []SetupSuggestion {
 	providers := BYOKProviders()
-	hasExtractCapable := false
+	hasKeyedExtract := false
 	for _, p := range providers {
 		if p.SupportsExtract && configured[p.Name] {
-			hasExtractCapable = true
+			hasKeyedExtract = true
 			break
 		}
 	}
@@ -27,12 +34,12 @@ func BuildSetupSuggestions(configured map[string]bool) []SetupSuggestion {
 		if configured[p.Name] {
 			continue
 		}
-		impact := classifyImpact(p, hasExtractCapable)
+		impact := classifyImpact(p, hasKeyedExtract, extractAvailable)
 		out = append(out, SetupSuggestion{
 			MissingKey:        p.EnvVars[0], // primary env var name
 			Impact:            impact,
 			Unlocks:           append([]string(nil), p.Unlocks...),
-			CurrentWorkaround: currentWorkaroundFor(p, hasExtractCapable),
+			CurrentWorkaround: currentWorkaroundFor(p, hasKeyedExtract, extractAvailable),
 			FreeTier:          p.FreeTierNote,
 			SignupURL:         p.SignupURL,
 			EnvExample:        p.EnvExample,
@@ -48,21 +55,27 @@ func BuildSetupSuggestions(configured map[string]bool) []SetupSuggestion {
 	return out
 }
 
-func classifyImpact(p BYOKProvider, hasExtractCapable bool) string {
-	// HIGH: the provider unlocks a capability that no currently-configured
-	// provider can deliver. The only such case today is url_extraction when
-	// no extract-capable provider has a key.
-	if p.SupportsExtract && !hasExtractCapable {
+func classifyImpact(p BYOKProvider, hasKeyedExtract, extractAvailable bool) string {
+	// HIGH: the provider unlocks a capability NOTHING currently delivers. The only
+	// such case is url_extraction when extract is unavailable entirely — which does
+	// not happen in the default service (the keyless httpfetch backstop makes
+	// extractAvailable true), only in a build with no extract provider at all.
+	if p.SupportsExtract && !extractAvailable {
 		return "high"
 	}
-	// MEDIUM: the provider materially improves a feature that already works
-	// — Brave gives faster search than DDGS, Tavily adds semantic-quality
-	// even when extract is already covered by Firecrawl.
+	// MEDIUM: the provider materially improves a feature that already works. A keyed
+	// extract provider, when extract currently runs only on the keyless backstop
+	// (no other keyed extract), is a FIDELITY upgrade (JS rendering, markdown,
+	// paywall handling) — meaningful, not a disabled-feature unlock. Brave gives
+	// faster search than DDGS; Tavily adds semantic/people quality on top of an
+	// already-keyed extract provider.
+	if p.SupportsExtract && !hasKeyedExtract {
+		return "medium"
+	}
 	if p.Name == "brave" {
 		return "medium"
 	}
-	if p.Name == "tavily" && hasExtractCapable {
-		// Extract is covered, but Tavily still adds semantic/people quality.
+	if p.Name == "tavily" && hasKeyedExtract {
 		return "medium"
 	}
 	// LOW: the provider only adds redundancy. Today this is Firecrawl when
@@ -82,13 +95,15 @@ func impactRank(impact string) int {
 	return 3
 }
 
-func currentWorkaroundFor(p BYOKProvider, hasExtractCapable bool) string {
+func currentWorkaroundFor(p BYOKProvider, hasKeyedExtract, extractAvailable bool) string {
 	switch {
-	case p.SupportsExtract && !hasExtractCapable:
+	case p.SupportsExtract && !extractAvailable:
 		return "AI tool's built-in HTTP fetch (works, but no markdown conversion or paywall handling)"
+	case p.SupportsExtract && !hasKeyedExtract:
+		return "Nólë's keyless httpfetch extract backstop (works, but no JavaScript rendering, markdown conversion or paywall handling)"
 	case p.Name == "brave":
 		return "DDGS keyless fallback (slower, weaker on multilingual queries)"
-	case p.Name == "tavily" && hasExtractCapable:
+	case p.Name == "tavily" && hasKeyedExtract:
 		return "Existing extract provider handles URLs; DDGS handles semantic queries (lower quality)"
 	default:
 		return "Existing providers cover the capability; this entry is redundancy only"

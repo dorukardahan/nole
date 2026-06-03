@@ -69,7 +69,7 @@ Mark this client `verified` only after:
 
 - `nole doctor` passes;
 - `nole doctor --mcp` passes;
-- Codex CLI lists or can call Nólë MCP tools `search`, `provider_status`, `budget_status`, and `extract` when Tavily, Firecrawl or local Scrapling is configured;
+- Codex CLI lists or can call Nólë MCP tools `search`, `provider_status`, `budget_status`, `extract`, and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop; a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity);
 - a small docs search works;
 - no credentials appear in config, logs or chat.
 
@@ -82,7 +82,7 @@ Use Nólë to search for Go net/http Client Timeout documentation. Include one c
 ## Troubleshooting
 
 - If tools are missing, restart Codex CLI after setup.
-- If `extract` is missing and no Tavily/Firecrawl key is configured, run `nole setup --local-extract` and restart Codex CLI.
+- `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and restart Codex CLI.
 - If keys are missing, inspect `~/.config/nole/.env` permissions and syntax without printing values.
 - If existing Codex config changed unexpectedly, compare with the backup created by Nólë setup.
 - If MCP fails, run `nole doctor --mcp` directly.
