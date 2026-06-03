@@ -28,14 +28,21 @@ breaking change to any committed CLI/MCP/env surface.
   it is honestly weaker than Scrapling/Firecrawl on SPA/JS-rendered pages, and that
   is an accepted limit for a zero-setup fallback. Registered unbreakered (like the
   other free fallbacks) and seeded `keyless-free` in the quota ledger.
-  - SSRF-safe: every redirect hop is re-validated by `safenet.ValidateURLContext`
-    before it is fetched (a public URL that 30x-redirects to a private/metadata
-    host is blocked at the redirecting hop), via a manual no-follow redirect walk.
+  - SSRF-safe on TWO layers: every redirect hop is re-validated by
+    `safenet.ValidateURLContext` before it is fetched (a public URL that
+    30x-redirects to a private/metadata host is blocked at the redirecting hop, via
+    a manual no-follow redirect walk), AND the resolved IP is re-validated again at
+    DIAL time by a transport `Control` hook (new exported `safenet.ValidateIP`),
+    closing the DNS-rebinding / split-horizon window between preflight and connect.
+    The transport disables proxies so the dial guard always sees the real target IP.
   - Hardened: response body is size-capped (over-cap is fatal, never extracts a
-    truncated body), non-text content types are refused rather than tokenized,
-    errors carry only HTTP status + byte-size metadata (never the body), and the
-    descriptive `User-Agent` carries a contact URL (no browser-spoof). Fuzz-tested
-    (`FuzzHTMLToText`: never panics, deterministic, preserves UTF-8 validity).
+    truncated body); non-text content types are refused, and an EXPLICIT `text/plain`
+    response is returned verbatim (not HTML-stripped, so `#include <stdio.h>` and
+    other angle-bracketed content survive); transport errors are redacted to drop the
+    request URL/query (no token leak on the non-JSON CLI path); errors otherwise carry
+    only HTTP status + byte-size metadata. Descriptive `User-Agent` with a contact URL
+    (no browser-spoof). Fuzz-tested (`FuzzHTMLToText`: never panics, deterministic,
+    preserves UTF-8 validity).
 
 ### Changed
 
