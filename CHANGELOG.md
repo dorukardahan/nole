@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-06-03
+
+Theme: **docs — surface the live Scoop channel.** Documentation only; no code,
+no committed-surface change.
+
+### Docs
+
+- **README** now documents the **Scoop (Windows)** install channel
+  (`scoop bucket add nole https://github.com/dorukardahan/scoop-nole` then
+  `scoop install nole`), alongside the existing Homebrew block. The working
+  channel was previously invisible to Windows users in the README.
+- **`docs/PACKAGING.md`** Scoop section updated from "DORMANT" to **LIVE**: the
+  `dorukardahan/scoop-nole` repo and the `SCOOP_BUCKET_TOKEN` secret both exist,
+  so `release.yml` auto-rolls the bucket on every stable release; `nole.json` is
+  bootstrapped and tracks the latest stable tag; activation issue #54 is closed.
+  The maintainer re-setup notes (separate-token requirement, repo-before-secret
+  ordering, fail-loud-on-misconfig) are retained.
+
 ## [1.2.1] - 2026-06-02
 
 Theme: **REST (`nole serve`) hardening + parity proof** — close the test gaps and
