@@ -98,13 +98,18 @@ the HTTP surface are a frozen 1.x contract:
 - **Route set** (locked by `TestStableRESTSurface`): `/health`, `/mcp`,
   `/api/search`, `/api/extract`, `/api/search_and_extract`, `/api/research`,
   `/api/providers`, `/api/budget`. Removing/renaming a route is breaking.
-- **Error envelope shape** is frozen: `{operation, error}` always, plus the
-  additive `route` / `routing_insight` / `route_trace` on routed errors — the same
-  `core` + `safeerr` envelope as CLI/MCP (no divergent REST path).
+- **Error envelope shape** (frozen) — for `/api/*` request-decode (400), auth
+  (401), and service errors (402/500): a JSON `{operation, error}` body, plus the
+  additive `route` / `routing_insight` / `route_trace` on routed service errors
+  (the same `core` + `safeerr` envelope as CLI/MCP, no divergent REST path).
+  Method-not-allowed (405) and unknown-route (404) are standard HTTP **plain-text**
+  rejections, NOT the JSON envelope; `/health` returns its own `{status, …}` shape;
+  `/mcp` speaks JSON-RPC. Parse the JSON envelope on the `/api/*` 400/401/402/500
+  paths; treat 404/405 as HTTP-level.
 - **Status-code contract:** `200` success, `400` request-decode error, `401`
   missing/invalid bearer token, `402` `NoFreeQuotaError` (free tier exhausted /
-  paid blocked), `404` unknown route, `405` wrong method, `500` other service
-  errors, `503` `/health` not-ready.
+  paid blocked), `404` unknown route (plain text), `405` wrong method (plain text),
+  `500` other service errors, `503` `/health` not-ready.
 - **Auth:** `NOLE_SERVE_TOKEN` sets a bearer token required on every endpoint
   except `/health` (constant-time compared; never logged). A **non-loopback bind
   requires it** — `serve` refuses to start on a non-loopback bind without a token
