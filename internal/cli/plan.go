@@ -121,7 +121,11 @@ func splitProviders(raw string) []string {
 
 func validPlannerProvider(provider string) bool {
 	switch provider {
-	case "brave", "tavily", "firecrawl", "wikipedia", "ddgs", "httpfetch":
+	// SEARCH-capable providers only. The route-planner plans search routes (it
+	// rejects TaskExtract above), so extract-only providers (scrapling, httpfetch)
+	// are intentionally NOT valid here — `--providers httpfetch` correctly errors
+	// rather than emitting an unusable search plan for a provider that never searches.
+	case "brave", "tavily", "firecrawl", "wikipedia", "ddgs":
 		return true
 	default:
 		return false

@@ -50,8 +50,10 @@ breaking change to any committed CLI/MCP/env surface.
   and `docs/STABILITY.md` are updated to record it. A higher-fidelity / JS-capable
   provider (Tavily/Firecrawl key, or local Scrapling) is still preferred when
   configured.
-- `--providers httpfetch` is accepted by the route-planner allowlist; `nole bench
-  --live --comprehensive` includes httpfetch.
+- `nole bench --live --comprehensive` includes httpfetch. (The search route-planner
+  `--providers` allowlist intentionally does NOT accept `httpfetch` — like Scrapling
+  it is extract-only, and route-plan plans search routes, so `--providers httpfetch`
+  correctly errors rather than emitting an unusable search plan.)
 
 ### Docs
 
