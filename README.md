@@ -134,6 +134,15 @@ brew install dorukardahan/nole/nole
 
 The formula installs the same prebuilt release binary and pins its SHA256 (Homebrew's integrity check). See `docs/PACKAGING.md` for the tap details.
 
+**Scoop** (Windows):
+
+```powershell
+scoop bucket add nole https://github.com/dorukardahan/scoop-nole
+scoop install nole
+```
+
+The manifest installs the same prebuilt `nole-windows-<arch>.exe` release asset and pins its SHA256 (Scoop's integrity check). See `docs/PACKAGING.md` for the bucket details.
+
 Or install a locally built binary by hand:
 
 ```bash

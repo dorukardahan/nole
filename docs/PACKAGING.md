@@ -205,21 +205,22 @@ scoop bucket add nole https://github.com/dorukardahan/scoop-nole
 scoop install nole
 ```
 
-> **Setup note (one-time, maintainer):** the `Update Scoop bucket` step is DORMANT
-> until two things exist: (1) the public repo `dorukardahan/scoop-nole` (any layout;
-> this workflow writes `nole.json` at the repo root), and (2) a repo secret
-> `SCOOP_BUCKET_TOKEN` = a fine-grained PAT with `contents: write` on `scoop-nole`
-> only. Alternatively, extend the existing `HOMEBREW_TAP_TOKEN` PAT's repo access to
-> include `scoop-nole` and mirror its value into a new `SCOOP_BUCKET_TOKEN` secret
-> (the workflow reads the Scoop secret by name — do not rename it; `HOMEBREW_TAP_TOKEN`
-> is almost certainly scoped to `homebrew-nole` only and will 403 on `scoop-nole`).
-> **Create the repo BEFORE adding the secret.** In the default no-secret state the
-> step skips cleanly and a release never fails for lack of it; but if you add the
-> secret while the repo does not yet exist, the post-release sync step fails loudly
-> (by design — it surfaces a misconfigured PAT/repo rather than silently leaving the
-> bucket stale; the Release itself is already published, so nothing is lost). The
-> first stable release after setup auto-populates `nole.json`. Tracked in the
-> activation issue.
+> **Status: LIVE.** The repo `dorukardahan/scoop-nole` exists (public, `nole.json`
+> at the root) and the `SCOOP_BUCKET_TOKEN` secret (a fine-grained PAT with
+> `contents: write` on `scoop-nole` only) is configured, so the `Update Scoop
+> bucket` step in `release.yml` auto-rolls the bucket on every stable release.
+> `nole.json` is bootstrapped and tracks the latest stable tag. Activation issue
+> #54 is closed.
+>
+> **Maintainer note (re-setup / fork):** the secret is read by name — do not rename
+> `SCOOP_BUCKET_TOKEN`. `HOMEBREW_TAP_TOKEN` is scoped to `homebrew-nole` only and
+> will 403 on `scoop-nole`, so the two channels need separate tokens (or one PAT
+> whose repo access covers both, mirrored into both secret names). **Create the repo
+> BEFORE adding the secret:** in the default no-secret state the step skips cleanly
+> and a release never fails for lack of it, but adding the secret while the repo does
+> not yet exist makes the post-release sync fail loudly (by design — it surfaces a
+> misconfigured PAT/repo rather than silently leaving the bucket stale; the Release
+> itself is already published, so nothing is lost).
 
 - **Prebuilt-binary manifest**, per-architecture: the manifest points `64bit` and
   `arm64` at the matching `nole-windows-<arch>.exe` release asset and pins each
