@@ -446,7 +446,7 @@ function Invoke-Main {
             }
         }
 
-        Write-Log "Nólë works with ZERO keys: keyless DDGS web search out of the box (run 'nole setup --local-extract' to add keyless local URL extraction). Provider keys are optional and only unlock higher-quality/extract routes."
+        Write-Log "Nólë works with ZERO keys: keyless DDGS web search AND keyless URL extraction (built-in httpfetch backstop, no JavaScript) out of the box. Provider keys or 'nole setup --local-extract' are optional and only add higher-quality search / JS-capable extraction."
         Write-Log "next: run 'nole doctor' to verify the install."
     } finally {
         # Cleanup analog of install.sh's `trap cleanup EXIT`: remove the temp dir and a

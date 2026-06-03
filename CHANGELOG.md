@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-06-03
+
+Theme: **onboarding messages catch up with always-on keyless extract.** Follow-up
+to v1.3.0; message accuracy only, no behaviour change.
+
+### Docs
+
+- The post-install (`install.sh`, `install.ps1`) and post-setup (`nole setup`)
+  messages still implied keyless URL extraction required `nole setup
+  --local-extract`. Since v1.3.0 the built-in `httpfetch` backstop provides keyless
+  URL extraction **out of the box** (best-effort, no JavaScript); `--local-extract`
+  (Scrapling) and provider keys are now framed as OPTIONAL upgrades to JS-capable /
+  higher-fidelity extraction, not as the way to enable keyless extract.
+
 ## [1.3.0] - 2026-06-03
 
 Theme: **keyless extract out of the box.** A new pure-Go HTTP-fetch extract
