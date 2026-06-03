@@ -14,12 +14,18 @@ to v1.3.0; message accuracy only, no behaviour change.
 
 ### Docs
 
-- The post-install (`install.sh`, `install.ps1`) and post-setup (`nole setup`)
-  messages still implied keyless URL extraction required `nole setup
-  --local-extract`. Since v1.3.0 the built-in `httpfetch` backstop provides keyless
-  URL extraction **out of the box** (best-effort, no JavaScript); `--local-extract`
-  (Scrapling) and provider keys are now framed as OPTIONAL upgrades to JS-capable /
-  higher-fidelity extraction, not as the way to enable keyless extract.
+- The post-setup message (`nole setup`) implied keyless URL extraction required
+  `nole setup --local-extract`. Since v1.3.0 the built-in `httpfetch` backstop
+  provides keyless URL extraction **out of the box** (best-effort, no JavaScript),
+  so the message now states that, and frames `--local-extract` (Scrapling) +
+  provider keys as OPTIONAL upgrades to JS-capable / higher-fidelity extraction.
+  This message is compiled into the binary, so it always matches the installed
+  version's real capabilities.
+- The post-install messages (`install.sh`, `install.ps1`) are made version-NEUTRAL:
+  the scripts run regardless of which release `NOLE_INSTALL_VERSION` pins, so they
+  no longer claim a version-specific capability (a pinned pre-v1.3.0 install has no
+  `httpfetch`). They state the always-true keyless-DDGS-search baseline and point to
+  `nole doctor` for the installed version's actual search/extract capabilities.
 
 ## [1.3.0] - 2026-06-03
 
