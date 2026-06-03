@@ -85,17 +85,17 @@ func (h *httpHandler) withAuth(next http.Handler) http.Handler {
 }
 
 // validBearer reports whether the request carries the configured bearer token.
-// Uses a constant-time comparison so a timing side-channel cannot reveal the
-// token byte-by-byte. A length mismatch returns false (only the token length,
-// not its content, could leak from that — acceptable).
+// The auth scheme is matched case-insensitively per RFC 9110 §11.1 (so
+// "Authorization: bearer <token>" from a client/proxy is accepted, not just
+// "Bearer"). The credential is then compared with a constant-time comparison so a
+// timing side-channel cannot reveal the token byte-by-byte. A length mismatch
+// returns false (only the token length, not its content, could leak — acceptable).
 func (h *httpHandler) validBearer(r *http.Request) bool {
-	const prefix = "Bearer "
-	hdr := r.Header.Get("Authorization")
-	if !strings.HasPrefix(hdr, prefix) {
+	scheme, cred, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
 		return false
 	}
-	got := strings.TrimPrefix(hdr, prefix)
-	return subtle.ConstantTimeCompare([]byte(got), []byte(h.token)) == 1
+	return subtle.ConstantTimeCompare([]byte(cred), []byte(h.token)) == 1
 }
 
 // httpErrorStatus maps a service error to the HTTP status for the error envelope.

@@ -51,6 +51,10 @@ func TestAuthRequiredWhenTokenConfigured(t *testing.T) {
 	if w := h.testServe(http.MethodGet, "/api/providers", "Bearer s3cr3t-token", ""); w.Code != http.StatusOK {
 		t.Errorf("correct token, on /api/providers = %d, want 200", w.Code)
 	}
+	// Case-insensitive auth scheme (RFC 9110 §11.1): lowercase "bearer" -> 200.
+	if w := h.testServe(http.MethodGet, "/api/providers", "bearer s3cr3t-token", ""); w.Code != http.StatusOK {
+		t.Errorf("lowercase bearer scheme = %d, want 200 (scheme is case-insensitive)", w.Code)
+	}
 	// 401 body is a sanitized envelope and must NOT echo the configured token.
 	w := h.testServe(http.MethodPost, "/api/search", "", `{"query":"x"}`)
 	if w.Code != http.StatusUnauthorized {
