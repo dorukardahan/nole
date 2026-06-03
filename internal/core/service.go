@@ -494,24 +494,23 @@ func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 	}
 }
 
-// HasExtractCapableProvider reports whether the registry contains a provider
-// that advertises CapabilityExtract AND is currently Available. The MCP server
-// uses it to decide whether to advertise the extract / search_and_extract tools.
+// HasExtractCapableProvider reports whether the registry contains a provider that
+// advertises CapabilityExtract. The MCP server uses it to decide whether to
+// advertise the extract / search_and_extract tools.
 //
-// It checks Availability, not just the advertised capability, so a provider that
-// advertises extract but is not usable (e.g. an unconfigured local Scrapling, or
-// an unkeyed remote registered as a placeholder) does not flip the gate on its
-// own. With the keyless httpfetch backstop registered by the default service,
-// this is always true in production — extract works out of the box. It returns on
-// the FIRST available extract provider, and httpfetch reports Available with no
-// I/O, so a provider with a costly Status() (Scrapling's Python probe) is not
-// pinged when a cheaper extract provider is present.
-func (s *Service) HasExtractCapableProvider(ctx context.Context) bool {
+// It is intentionally a CAPABILITY check, NOT a live-health check: it never calls
+// Status(). Tool advertisement is a registration-time surface decision and must
+// not (a) execute a provider's Status() — e.g. Scrapling launches a Python
+// subprocess — on every `nole mcp` startup, nor (b) make the advertised tool set
+// flap with transient provider health (a breaker-open keyed extractor must not
+// un-advertise extract when the keyless httpfetch backstop still serves it). With
+// httpfetch unconditionally registered by the default service, an extract-capable
+// provider is always present, so extract is advertised out of the box; the live
+// route walk (with its own per-provider status/quota checks) decides which
+// provider actually serves each call.
+func (s *Service) HasExtractCapableProvider() bool {
 	for _, p := range s.registry.List() {
-		if !HasCapability(p.Capabilities(), CapabilityExtract) {
-			continue
-		}
-		if p.Status(ctx).Available {
+		if HasCapability(p.Capabilities(), CapabilityExtract) {
 			return true
 		}
 	}

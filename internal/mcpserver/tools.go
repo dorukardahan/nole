@@ -200,12 +200,14 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		return mcp.NewToolResultText(string(b)), nil
 	})
 
-	// Advertise extract / search_and_extract whenever the registry has an available
-	// extract-capable provider. With the keyless httpfetch backstop always
+	// Advertise extract / search_and_extract whenever the registry has an
+	// extract-capable provider (capability check only — no Status probe, so MCP
+	// startup never launches Scrapling's Python and the tool set never flaps with
+	// transient provider health). With the keyless httpfetch backstop always
 	// registered by the default service, this is always true — extract works out of
 	// the box with zero keys and zero setup. (A service built with no extract
 	// provider at all — e.g. a custom embedding — still correctly hides them.)
-	if svc.HasExtractCapableProvider(context.Background()) {
+	if svc.HasExtractCapableProvider() {
 		extractTool := mcp.NewTool(
 			"extract",
 			mcp.WithDescription(extractToolDescription),
