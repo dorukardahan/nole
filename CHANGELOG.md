@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Brave `news` / `factcheck` tasks now use Brave's dedicated News Search endpoint.**
+  The adapter keeps generic/non-recency tasks on `/res/v1/web/search`, sends recency
+  tasks to `/res/v1/news/search` with the existing conservative `freshness=pm`
+  window, and maps the News Search top-level `results` array into Nólë's neutral
+  `SearchResult` shape without fabricating scores.
+
 ## [1.6.1] - 2026-06-04
 
 Theme: **maintenance** — one HTTP redaction-consistency fix + an `docs/ARCHITECTURE.md`

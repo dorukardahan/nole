@@ -160,7 +160,7 @@ The wrapper keeps provider keys out of each per-client config file and ensures `
 
 ## Brave Search API
 
-Use for: broad search and search fallback routes; current route evidence keeps it first for `general` and near the front for docs, people, pricing and semantic discovery.
+Use for: broad search and search fallback routes; current route evidence keeps it first for `general` and near the front for docs, people, pricing and semantic discovery. For `news` and `factcheck` tasks, the Brave adapter uses the dedicated News Search endpoint while preserving the conservative `freshness=pm` window.
 
 Default classification: `free-tier-BYOK`, 1000 calls/month, refilled at the start of each UTC month.
 
@@ -177,7 +177,8 @@ Notes:
 
 - Brave's free tier rides a subscription model with credit card on file. Nólë's monthly ledger caps usage at the local free quota, but any usage outside Nólë (concurrent process, ledger desync, dashboard test calls) will bill the CC. `nole doctor` surfaces a `brave_note:` line whenever the key is set.
 - Set `NOLE_BRAVE_PAID=1` only when you intentionally want Nólë to treat Brave as premium-capable (e.g. you are on a paid plan and want cost-capped routing).
-- Route matrix changes involving Brave should be evidence-backed.
+- Brave's Search-plan calls used by Nólë are the Web Search endpoint for general/non-recency tasks and the News Search endpoint for `news`/`factcheck`. Brave News allows a higher result cap (up to 50) than Web Search's 20; Nólë clamps per endpoint. Brave Answers/chat-completions are a separate plan and are not used by Nólë's free-first Search adapter.
+- Route matrix changes involving Brave should remain evidence-backed.
 
 ## Tavily
 

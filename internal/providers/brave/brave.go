@@ -59,7 +59,8 @@ type braveSearchResponse struct {
 	Query struct {
 		Original string `json:"original"`
 	} `json:"query"`
-	Web *braveWebResults `json:"web,omitempty"`
+	Web     *braveWebResults `json:"web,omitempty"`
+	Results []braveWebResult `json:"results,omitempty"`
 }
 
 type braveWebResults struct {
@@ -82,11 +83,12 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		return core.SearchResponse{}, fmt.Errorf("brave: BRAVE_API_KEY not set")
 	}
 
-	// Brave documents a hard max of 20 for `count`; anything above yields a
-	// guaranteed non-retryable HTTP 422. Clamp to [1,20] so an over-large caller
-	// limit degrades to the cap instead of failing the whole request.
-	u := fmt.Sprintf("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d",
-		url.QueryEscape(req.Query), clampRange(req.Limit, 1, 20))
+	// Brave Search endpoints reject out-of-range `count` values. Web Search caps
+	// at 20, while News Search caps at 50. Clamp so an over-large caller limit
+	// degrades to the endpoint cap instead of failing the whole request.
+	endpoint := braveSearchEndpoint(req.Task)
+	u := fmt.Sprintf("https://api.search.brave.com%s?q=%s&count=%d",
+		endpoint, url.QueryEscape(req.Query), clampRange(req.Limit, 1, braveCountMax(req.Task)))
 	// Task-aware freshness (allowlist): recency tasks get a conservative last-month
 	// window; every other task sends an unchanged URL.
 	if f := braveFreshness(req.Task); f != "" {
@@ -117,23 +119,27 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 
 	results := make([]core.SearchResult, 0)
-	if bresp.Web != nil {
-		for _, r := range bresp.Web.Results {
-			// Pass the publication date through (page_age preferred — parseable;
-			// age is human-relative). Brave exposes no relevance score, so Score
-			// stays nil — never fabricated.
-			published := r.PageAge
-			if published == "" {
-				published = r.Age
-			}
-			results = append(results, core.SearchResult{
-				Title:       r.Title,
-				URL:         r.URL,
-				Snippet:     r.Description,
-				Provider:    "brave",
-				PublishedAt: published,
-			})
+	braveResults := []braveWebResult(nil)
+	if braveUsesNewsEndpoint(req.Task) {
+		braveResults = bresp.Results
+	} else if bresp.Web != nil {
+		braveResults = bresp.Web.Results
+	}
+	for _, r := range braveResults {
+		// Pass the publication date through (page_age preferred — parseable;
+		// age is human-relative). Brave exposes no relevance score, so Score
+		// stays nil — never fabricated.
+		published := r.PageAge
+		if published == "" {
+			published = r.Age
 		}
+		results = append(results, core.SearchResult{
+			Title:       r.Title,
+			URL:         r.URL,
+			Snippet:     r.Description,
+			Provider:    "brave",
+			PublishedAt: published,
+		})
 	}
 
 	return core.SearchResponse{
@@ -178,6 +184,32 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 	return status
 }
 
+// braveSearchEndpoint returns the Brave Search API endpoint for the task. News
+// and factcheck keep the existing recency bias (`freshness=pm`) but use Brave's
+// dedicated News Search endpoint instead of generic Web Search.
+func braveSearchEndpoint(task core.TaskType) string {
+	if braveUsesNewsEndpoint(task) {
+		return "/res/v1/news/search"
+	}
+	return "/res/v1/web/search"
+}
+
+func braveUsesNewsEndpoint(task core.TaskType) bool {
+	switch task {
+	case core.TaskNews, core.TaskFactcheck:
+		return true
+	default:
+		return false
+	}
+}
+
+func braveCountMax(task core.TaskType) int {
+	if braveUsesNewsEndpoint(task) {
+		return 50
+	}
+	return 20
+}
+
 // braveFreshness maps recency-oriented tasks to Brave's `freshness` window.
 // "pm" = past month (a conservative window that avoids emptying sparse-recency
 // queries). Returns "" for every other task so the request is unchanged.
@@ -190,9 +222,10 @@ func braveFreshness(task core.TaskType) string {
 	}
 }
 
-// clampRange constrains v to [min, max] inclusive. Brave's `count` parameter is
-// documented to accept 1..20; values outside that band produce a non-retryable
-// HTTP 422, so the request builder clamps rather than passes them through.
+// clampRange constrains v to [min, max] inclusive. Brave Search endpoint
+// `count` ranges differ (Web 1..20, News 1..50); callers pass the selected
+// endpoint cap so the request builder clamps rather than sends a non-retryable
+// out-of-range value.
 func clampRange(v, min, max int) int {
 	if v < min {
 		return min
