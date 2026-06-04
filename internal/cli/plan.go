@@ -125,7 +125,8 @@ func validPlannerProvider(provider string) bool {
 	// rejects TaskExtract above), so extract-only providers (scrapling, httpfetch)
 	// are intentionally NOT valid here — `--providers httpfetch` correctly errors
 	// rather than emitting an unusable search plan for a provider that never searches.
-	case "brave", "tavily", "firecrawl", "wikipedia", "ddgs":
+	// "arxiv" IS search-capable (academic route), so it belongs here, like wikipedia.
+	case "brave", "tavily", "firecrawl", "wikipedia", "arxiv", "ddgs":
 		return true
 	default:
 		return false

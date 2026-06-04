@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-06-04
+
+Theme: **keyless arXiv academic provider.** A new primary-source scholarly-preprint
+search provider reinforces the `academic` route, exactly as the keyless Wikipedia
+provider reinforces the encyclopedic routes. Purely additive — no new key, no setup,
+no dependency, and no change to any frozen CLI/MCP/REST/task-enum surface.
+
+### Added
+
+- **`arxiv` keyless search provider** (`internal/providers/arxiv`), backed by the
+  public arXiv Atom query API (`https://export.arxiv.org/api/query`). No API key,
+  no registration, no new Go dependency (stdlib `encoding/xml`). It is routed on the
+  `academic` task ONLY, positioned immediately before `wikipedia` (after the keyed
+  providers, before the last-resort `ddgs` fallback), so an academic query reaches
+  primary-source preprints first, then the encyclopedic overview, then the general
+  backstop. It is deliberately NOT a general fallback and is on no other route.
+  - Results pass through arXiv's native relevance order; `score` stays unset (arXiv
+    exposes no numeric relevance score and Nólë never fabricates one), and
+    `published_at` is the paper's first-version submit time, verbatim.
+  - The agent's query is passed through verbatim (no field-operator parsing). A
+    query arXiv rejects comes back as an error entry that is skipped — an honest
+    empty fall-through to Wikipedia/DDGS, never an error.
+  - Good-citizen by design: descriptive `User-Agent`, exactly one request per
+    search, retries disabled (arXiv's Terms of Use ask for ≤1 request / 3 s on a
+    single connection, and its edge 429 carries no `Retry-After`), a circuit breaker
+    (it is routed before the DDGS fallback), an SSRF-safe fixed-host request, a
+    size-capped response body, and status-only error redaction.
+- The route-planner allowlist (`nole route-plan --providers arxiv`) and the
+  comprehensive benchmark provider map now include `arxiv`.
+
+### Notes
+
+- This is a route-matrix + provider addition. The route matrix is explicitly **not**
+  part of the frozen stability surface (see `docs/STABILITY.md` → "NOT covered"), and
+  arXiv adds no new command, flag, MCP tool, env var, or task-enum value — so every
+  surface-lock test stays green and `docs/STABILITY.md` is unchanged (consistent with
+  the keyless Wikipedia provider added in v1.1.0). See `docs/ROUTE-EVIDENCE.md` for
+  the (capability-based, not benchmark-measured) insertion rationale.
+
 ## [1.4.0] - 2026-06-04
 
 Theme: **REST (`nole serve`) is now a stable, authenticated surface.** It graduates
