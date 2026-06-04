@@ -45,23 +45,37 @@ const apiBase = "https://export.arxiv.org/api/query"
 // the wikipedia provider.
 var userAgent = "Nole/" + version.Version + " (+https://github.com/dorukardahan/nole)"
 
-// arxivConnSem enforces arXiv's "single connection at a time" Terms of Use
-// (https://info.arxiv.org/help/api/tou.html#rate-limits) PROCESS-WIDE: at most one
-// in-flight arXiv request across every Provider instance in this process. The ToU
-// applies its rate limits "across all machines under your control" and explicitly
-// forbids increasing parallelism to overcome them, so the guard must be shared, not
-// per-instance — two registrations (e.g. the default service + the bench map) must
-// not be able to open two simultaneous connections. Buffered to 1 = a binary
-// semaphore. Every Provider built by New() uses it; tests construct Providers with
-// their own sem (or a nil sem = unguarded) for isolation.
-var arxivConnSem = make(chan struct{}, 1)
+// arxivMinInterval is arXiv's documented minimum spacing between requests ("no
+// more than one request every three seconds"). See connLimiter.
+const arxivMinInterval = 3 * time.Second
+
+// connLimiter enforces BOTH halves of arXiv's rate-limit Terms of Use
+// (https://info.arxiv.org/help/api/tou.html#rate-limits) PROCESS-WIDE: (1) a single
+// connection at a time (the cap-1 sem — no overlapping requests), and (2) at most
+// one request every minInterval (lazy pacing — wait only if the previous request
+// started less than minInterval ago, so an isolated search waits 0). The ToU
+// applies "across all machines under your control" and forbids increasing
+// parallelism to overcome it, so the limiter is shared, not per-instance — two
+// registrations (the default service + the bench map) cannot open two connections
+// or outrun the interval. lastStart is touched only by the current sem holder, so
+// the sem also serializes its access (no extra lock).
+type connLimiter struct {
+	sem         chan struct{}
+	minInterval time.Duration
+	lastStart   time.Time // accessed only while holding sem
+}
+
+// arxivLimiter is the process-wide limiter every New() Provider shares. Tests
+// construct Providers with their own connLimiter (or a nil limiter = unguarded).
+var arxivLimiter = &connLimiter{sem: make(chan struct{}, 1), minInterval: arxivMinInterval}
 
 type Provider struct {
 	httpClient *http.Client
 	breaker    *providerhttp.Breaker
-	// sem is the single-connection guard (see arxivConnSem). New() wires the
-	// process-wide limiter; a nil sem is a no-op (unguarded), used by tests.
-	sem chan struct{}
+	// limiter enforces arXiv's single-connection + min-interval ToU (see
+	// arxivLimiter). New() wires the process-wide limiter; a nil limiter is a no-op
+	// (unguarded), used by tests.
+	limiter *connLimiter
 }
 
 type Option func(*Provider)
@@ -73,13 +87,14 @@ type Option func(*Provider)
 // DDGS/Scrapling (the fallbacks themselves) stay unbreakered. A nil breaker (the
 // default, e.g. the bench map) leaves behaviour unchanged.
 //
-// arXiv's ToU asks for a single connection at a time (no more than one request
-// every three seconds). Concurrent academic searches in a long-lived serve/MCP
-// process are serialized to a single in-flight arXiv connection (see arxivConnSem
-// / acquireConn) so Nólë never opens parallel connections; if arXiv is genuinely
-// down or rate-limiting (edge 429), this breaker short-circuits the academic route
-// to wikipedia/DDGS instead of stalling it on every request. Retries are disabled
-// for the same politeness reason (see retryOptions).
+// arXiv's ToU asks for a single connection at a time and no more than one request
+// every three seconds. Concurrent academic searches in a long-lived serve/MCP
+// process are serialized to a single in-flight arXiv connection AND paced to the
+// minimum interval (see connLimiter / acquireConn / pace), so Nólë never opens
+// parallel connections or outruns the documented rate. If arXiv is genuinely down
+// or rate-limiting (edge 429), this breaker short-circuits the academic route to
+// wikipedia/DDGS instead of stalling it on every request. Retries are disabled for
+// the same politeness reason (see retryOptions).
 func WithBreaker(b *providerhttp.Breaker) Option {
 	return func(p *Provider) { p.breaker = b }
 }
@@ -87,7 +102,7 @@ func WithBreaker(b *providerhttp.Breaker) Option {
 func New(opts ...Option) Provider {
 	p := Provider{
 		httpClient: &http.Client{Timeout: 20 * time.Second},
-		sem:        arxivConnSem,
+		limiter:    arxivLimiter,
 	}
 	for _, opt := range opts {
 		opt(&p)
@@ -95,24 +110,50 @@ func New(opts ...Option) Provider {
 	return p
 }
 
-// acquireConn blocks until this provider may issue an arXiv request, honoring
-// arXiv's single-connection ToU (at most one in-flight request, process-wide). It
-// is context-aware: a queued caller still observes its own cancellation/deadline
-// instead of waiting on the slot indefinitely. A nil sem (a directly constructed
-// Provider, e.g. in tests) is a no-op. The returned release MUST be called once the
-// request completes. It is acquired BEFORE breaker.Allow() so each serialized call
-// re-checks the breaker against the fully-recorded outcome of the previous one — a
-// trip then short-circuits the rest of the queue immediately.
+// acquireConn blocks until this provider may open the single arXiv connection
+// (process-wide), honoring arXiv's single-connection ToU. It is context-aware: a
+// queued caller observes its own cancellation/deadline instead of waiting on the
+// slot indefinitely. A nil limiter (a directly constructed Provider, e.g. in tests)
+// is a no-op. The returned release MUST be called once the request completes. It is
+// acquired BEFORE breaker.Allow() so each serialized call re-checks the breaker
+// against the fully-recorded outcome of the previous one — a trip then
+// short-circuits the rest of the queue immediately. Pacing (pace) runs AFTER
+// Allow() so a short-circuited call does not pay the inter-request wait.
 func (p Provider) acquireConn(ctx context.Context) (func(), error) {
-	if p.sem == nil {
+	if p.limiter == nil {
 		return func() {}, nil
 	}
 	select {
-	case p.sem <- struct{}{}:
-		return func() { <-p.sem }, nil
+	case p.limiter.sem <- struct{}{}:
+		return func() { <-p.limiter.sem }, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// pace waits out the remainder of arXiv's minimum inter-request interval since the
+// previous request started, then stamps this request's start time. It is called
+// only while holding the connection slot (so lastStart access is serialized) and
+// AFTER breaker.Allow() (so a short-circuit skips the wait). An isolated request
+// (previous start older than minInterval, or none) waits zero. It is context-aware:
+// a caller whose deadline elapses while waiting returns ctx.Err() (and the route
+// falls through to wikipedia/DDGS) without issuing a request; lastStart is then left
+// unchanged. A nil limiter is a no-op.
+func (p Provider) pace(ctx context.Context) error {
+	if p.limiter == nil {
+		return nil
+	}
+	if wait := p.limiter.minInterval - time.Since(p.limiter.lastStart); wait > 0 {
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	p.limiter.lastStart = time.Now()
+	return nil
 }
 
 func (p Provider) Name() string { return "arxiv" }
@@ -198,6 +239,16 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 			p.breaker.RecordSuccess(gen)
 		}
 	}()
+
+	// Pace AFTER Allow() (so a short-circuit skips the wait) and while holding the
+	// connection slot: wait out arXiv's minimum inter-request interval since the
+	// previous request started (zero for an isolated search). A caller whose
+	// deadline elapses while waiting is its own cancellation — record it as such and
+	// fall through; arXiv was never contacted.
+	if err := p.pace(ctx); err != nil {
+		callerCancelled = true
+		return core.SearchResponse{}, fmt.Errorf("arxiv: search request failed: %w", err)
+	}
 
 	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, retryOptions())
 	if err != nil {

@@ -581,9 +581,10 @@ func TestArxivSerializesConcurrentRequests(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// A Provider WITH the single-connection guard (its own sem for test isolation),
-	// distinct queries so Service-level singleflight would not coalesce them.
-	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}, sem: make(chan struct{}, 1)}
+	// A Provider WITH the single-connection guard (its own limiter for test
+	// isolation; minInterval 0 so this test measures overlap only, not pacing).
+	// Distinct queries so Service-level singleflight would not coalesce them.
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}, limiter: &connLimiter{sem: make(chan struct{}, 1)}}
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
@@ -595,6 +596,47 @@ func TestArxivSerializesConcurrentRequests(t *testing.T) {
 	wg.Wait()
 	if got := atomic.LoadInt32(&maxInFlight); got != 1 {
 		t.Fatalf("arxiv must issue at most ONE concurrent request (single-connection ToU), saw %d in flight", got)
+	}
+}
+
+// TestArxivPacesConsecutiveRequests pins arXiv's "no more than one request every
+// N" ToU: consecutive requests are spaced by at least minInterval. An isolated
+// (first) request is NOT delayed — only the gap between successive requests is
+// paced. Uses a small interval and a generous lower-bound tolerance to stay
+// non-flaky.
+func TestArxivPacesConsecutiveRequests(t *testing.T) {
+	const interval = 80 * time.Millisecond
+	var mu sync.Mutex
+	var arrivals []time.Time
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		arrivals = append(arrivals, time.Now())
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/atom+xml")
+		_, _ = w.Write([]byte(emptyAtom))
+	}))
+	defer srv.Close()
+
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}, limiter: &connLimiter{sem: make(chan struct{}, 1), minInterval: interval}}
+
+	start := time.Now()
+	for i := 0; i < 2; i++ {
+		if _, err := p.Search(context.Background(), core.SearchRequest{Query: "x"}); err != nil {
+			t.Fatalf("call %d failed: %v", i, err)
+		}
+	}
+	// The first request must NOT have been delayed (isolated → zero wait).
+	mu.Lock()
+	defer mu.Unlock()
+	if len(arrivals) != 2 {
+		t.Fatalf("expected 2 server arrivals, got %d", len(arrivals))
+	}
+	if firstDelay := arrivals[0].Sub(start); firstDelay > interval {
+		t.Errorf("first (isolated) request was delayed %v, should be near-zero (< %v)", firstDelay, interval)
+	}
+	// The gap between the two must be at least ~minInterval (allowing timer slack).
+	if gap := arrivals[1].Sub(arrivals[0]); gap < interval-20*time.Millisecond {
+		t.Fatalf("consecutive requests not paced: gap %v < ~%v (arXiv min-interval ToU)", gap, interval)
 	}
 }
 
@@ -611,8 +653,8 @@ func TestArxivConnSlotRespectsContext(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}, sem: make(chan struct{}, 1)}
-	p.sem <- struct{}{} // occupy the single connection slot
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}, limiter: &connLimiter{sem: make(chan struct{}, 1)}}
+	p.limiter.sem <- struct{}{} // occupy the single connection slot
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
