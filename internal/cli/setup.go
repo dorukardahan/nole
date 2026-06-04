@@ -86,6 +86,22 @@ func newSetupCommand() *cobra.Command {
 			out := cmd.OutOrStdout()
 			errOut := cmd.OutOrStderr()
 			configured := 0
+			failures := 0
+
+			// configure runs one file-writing agent's setup, reporting success or a
+			// failure. A failed REQUESTED agent is counted so the command exits
+			// non-zero (below) instead of misreporting success — e.g. when the
+			// grok-build writer refuses to overwrite a customized config. Claude is
+			// handled separately: it writes nothing and is not counted.
+			configure := func(name string, fn func(launchSpec) error) {
+				if err := fn(spec); err != nil {
+					fmt.Fprintf(errOut, "%s: %v\n", name, err)
+					failures++
+					return
+				}
+				fmt.Fprintf(out, "%s: configured\n", name)
+				configured++
+			}
 
 			if localExtract {
 				fmt.Fprintln(out, "local-extract: preparing isolated Scrapling runtime (first run may take a few minutes)")
@@ -121,76 +137,31 @@ func newSetupCommand() *cobra.Command {
 				}
 			}
 			if cursor {
-				if err := writeCursorConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "cursor: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "cursor: configured")
-					configured++
-				}
+				configure("cursor", writeCursorConfig)
 			}
 			if codex {
-				if err := writeCodexConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "codex: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "codex: configured")
-					configured++
-				}
+				configure("codex", writeCodexConfig)
 			}
 			if opencode {
-				if err := writeOpenCodeConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "opencode: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "opencode: configured")
-					configured++
-				}
+				configure("opencode", writeOpenCodeConfig)
 			}
 			if kimi {
-				if err := writeKimiConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "kimi: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "kimi: configured")
-					configured++
-				}
+				configure("kimi", writeKimiConfig)
 			}
 			if windsurf {
-				if err := writeWindsurfConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "windsurf: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "windsurf: configured")
-					configured++
-				}
+				configure("windsurf", writeWindsurfConfig)
 			}
 			if hermes {
-				if err := writeHermesConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "hermes: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "hermes: configured")
-					configured++
-				}
+				configure("hermes", writeHermesConfig)
 			}
 			if gemini {
-				if err := writeGeminiConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "gemini: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "gemini: configured")
-					configured++
-				}
+				configure("gemini", writeGeminiConfig)
 			}
 			if grok {
-				if err := writeGrokConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "grok: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "grok: configured")
-					configured++
-				}
+				configure("grok", writeGrokConfig)
 			}
 			if grokBuild {
-				if err := writeGrokBuildConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "grok-build: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "grok-build: configured")
-					configured++
-				}
+				configure("grok-build", writeGrokBuildConfig)
 			}
 
 			fmt.Fprintf(out, "\n%d agent(s) configured.\n", configured)
@@ -208,6 +179,13 @@ func newSetupCommand() *cobra.Command {
 				fmt.Fprintln(out, "  For non-Codex clients that do not inherit shell env, point them at an env-sourcing wrapper:")
 				fmt.Fprintln(out, "    nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp")
 				fmt.Fprintln(out, "  Wrapper template: docs/PROVIDER-KEYS.md")
+			}
+			// A requested agent that failed (e.g. the grok-build writer refusing to
+			// overwrite a customized config) must make the command exit non-zero, so a
+			// script/user is not misled into thinking setup succeeded. The per-agent
+			// reason was already printed to stderr above; main prints this summary.
+			if failures > 0 {
+				return fmt.Errorf("setup: %d requested agent(s) could not be configured (see messages above)", failures)
 			}
 			return nil
 		},

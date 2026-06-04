@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -258,6 +259,35 @@ func TestWriteGrokBuildConfigBacksUpExisting(t *testing.T) {
 	bak := readFileString(t, path+".bak")
 	if bak != original {
 		t.Fatalf("backup should match the original byte-for-byte:\ngot:\n%s\nwant:\n%s", bak, original)
+	}
+}
+
+// TestSetupGrokBuildCommandFailsWhenRefused pins that `nole setup --grok-build`
+// exits non-zero (RunE returns an error) when the only requested agent is refused,
+// rather than misreporting success with exit 0.
+func TestSetupGrokBuildCommandFailsWhenRefused(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	grokDir := filepath.Join(dir, ".grok")
+	if err := os.MkdirAll(grokDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	existing := "[mcp_servers.nole]\ncommand = \"/old\"\nargs = [\"mcp\"]\n\n[mcp_servers.nole.env]\nKEY = \"v\"\n"
+	if err := os.WriteFile(filepath.Join(grokDir, "config.toml"), []byte(existing), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"setup", "--grok-build"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("setup --grok-build must exit non-zero when the only requested agent is refused:\n%s", out.String())
+	}
+	if !strings.Contains(err.Error(), "could not be configured") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
