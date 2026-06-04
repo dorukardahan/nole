@@ -239,6 +239,13 @@ In addition, a single MCP stdio JSON-RPC round trip was performed against the wr
 - Smoke search: not run through Grok (a tool-dispatch turn needs Grok login — `grok mcp doctor` reported `grok.com: not logged in` for the throwaway profile — and would consume the user's account; the `mcp doctor` handshake + 6-tool discovery is the recorded in-client evidence for the installed tool).
 - Secret-safety: the written `~/.grok/config.toml` `nole` entry contains only `command` + `args=["mcp"]` + `enabled=true` — no key values, tokens, or headers. No secrets were printed.
 
+### Grok Build TUI — `nole setup --grok-build` writer verified (2026-06-04, v1.6.0)
+
+- Status: **verified (CLI MCP manager)** for xAI's Grok Build TUI. Following issue #64, v1.6.0 adds `nole setup --grok-build`, which writes the TOML `~/.grok/config.toml` the Grok Build TUI reads (distinct from `--grok`, which writes the superagent JSON). This entry verifies the WRITER's output (not the TUI's own `grok mcp add`).
+- Method: in an isolated throwaway `HOME`, `nole setup --grok-build` wrote `~/.grok/config.toml` with a flat `[mcp_servers.nole]` table (`command`, `args = ["mcp"]`, `enabled = true`). Then `grok mcp doctor nole --json` (Grok Build TUI `0.2.20`) read that file (`source ~/.grok/config.toml → found, server_count 1`) and reported every check passing: `command found`, `server started`, `handshake OK (protocol 2025-06-18)`, **`6 tools discovered`**, `healthy: true`.
+- Smoke search: not run through Grok (a tool-dispatch turn needs Grok login; the `mcp doctor` handshake + 6-tool discovery is the recorded in-client evidence, mirroring the `kimi mcp test` path).
+- Secret-safety: the writer's `config.toml` entry carries only `command` + `args` + `enabled` — no key values. The maintainer's real `~/.grok` was untouched (isolated `HOME`, deleted after the run).
+
 ### Nólë MCP tool surface confirmed in this run
 
 `nole doctor --mcp` on the released v1.5.0 binary reported `protocol: initialize/tools/list` and `tools: [budget_status extract provider_status research search search_and_extract]` (6 tools) — matching the "6 tools discovered" the Grok `mcp doctor` handshake reported. This is the surface expanded from the 4 tools recorded in the M11 run, after the v0.6.0 (`research`, `search_and_extract`) and v1.3.0 (always-on keyless `extract`) additions. The same `nole doctor --mcp` also listed the keyless `arxiv` search provider added in v1.5.0 (`[search, status]`, `keyless-free`).

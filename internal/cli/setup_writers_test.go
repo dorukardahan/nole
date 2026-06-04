@@ -302,6 +302,8 @@ func TestSetupWritersIdempotent(t *testing.T) {
 		{name: "cursor-wrapper", ext: "json", spec: launchSpec{Binary: "/usr/local/bin/nole", Wrapper: "/usr/local/bin/nole-mcp"}, fn: writeMCPJSONConfig},
 		{name: "codex-bare", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole"}, fn: writeCodexConfigPath},
 		{name: "codex-wrapper", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole", Wrapper: "/usr/local/bin/nole-mcp"}, fn: writeCodexConfigPath},
+		{name: "grok-build-bare", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole"}, fn: writeGrokBuildConfigPath},
+		{name: "grok-build-wrapper", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole", Wrapper: "/usr/local/bin/nole-mcp"}, fn: writeGrokBuildConfigPath},
 	}
 	for _, tc := range cases {
 		tc := tc

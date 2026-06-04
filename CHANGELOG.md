@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-06-04
+
+Theme: **`nole setup --grok-build` for xAI's Grok Build TUI** (resolves #64). Additive
+minor — a new setup writer + flag; no existing flag/command/behaviour changes.
+
+### Added
+
+- **`nole setup --grok-build`** writes/merges `~/.grok/config.toml` with a TOML
+  `[mcp_servers.nole]` table for xAI's **Grok Build TUI** (the Rust `grok` binary,
+  e.g. 0.2.20). This is a **different product** from `superagent-ai/grok-cli`, which
+  `--grok` targets (JSON `~/.grok/user-settings.json`) — the v1.5.1 verification pass
+  found the installed `grok` was xAI's, whose config nole could not previously write
+  (issue #64). Both flags now coexist; `--grok` is unchanged. The setup help and the
+  "specify at least one agent" message disambiguate the two products.
+  - Reuses the same line-based TOML table upsert as the Codex writer: re-running
+    rewrites the `[mcp_servers.nole]` table while **preserving sibling MCP servers and
+    root keys**; a user-set `enabled = false` on the nole entry is **preserved** across
+    re-runs (a user-added `[mcp_servers.nole.env]` sub-table on the nole entry is
+    replaced — re-add it or use a wrapper for env). Default form is the bare binary
+    (`command`/`args = ["mcp"]`, matching the other writers); `--mcp-wrapper` switches
+    to the env-sourcing wrapper.
+- **Grok Build TUI is now `verified` (CLI MCP manager).** Verified 2026-06-04 on
+  `grok 0.2.20`: `nole setup --grok-build`'s output was read by `grok mcp doctor` —
+  `handshake OK (protocol 2025-06-18)`, 6 tools discovered, `healthy`. The
+  `superagent-ai/grok-cli` documented under `--grok` stays `repo-tested` (not installed
+  on the host). Evidence in `docs/CLIENTS/LIVE-VERIFICATION.md`.
+
+### Notes
+
+- Purely additive: the CLI command set is unchanged (still `setup`), so the
+  command-surface lock stays green; setup flags are an additive-only commitment (not
+  snapshot-frozen), so no `docs/STABILITY.md` change is needed. Issue **#64 resolved**.
+
 ## [1.5.1] - 2026-06-04
 
 Theme: **Gemini CLI + Grok CLI live-verification pass (docs only).** Both real CLIs

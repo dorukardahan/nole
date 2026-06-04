@@ -4,7 +4,7 @@ Status: repo-tested. The `nole setup --grok` writer and its config-merge behavio
 
 Nólë is a free, local web search router for AI agents and coding CLI tools. This page documents **`superagent-ai/grok-cli`** (`@vibe-kit/grok-cli` / `grok-dev`), which reads MCP servers from `~/.grok/user-settings.json` and is what `nole setup --grok` writes. It can use Nólë through MCP stdio by launching `nole mcp` (or an env-sourcing wrapper around it). At the time the writer was pinned, `superagent-ai/grok-cli` did not expose a dedicated `grok mcp add` command, so servers are added via Nólë's writer, the in-TUI `/mcps` command, or by editing the JSON.
 
-> **Two different `grok` CLIs.** There is also xAI's **"Grok Build TUI"** (a distinct Rust product, e.g. `grok 0.2.20`), which reads `~/.grok/config.toml` (`[mcp_servers.<name>]`, TOML — **not** `user-settings.json`) and **does** have a full `grok mcp add/list/remove/doctor` manager. `nole setup --grok` does **not** write that TOML file, so its output is ignored by the Grok Build TUI (`grok mcp list` → `No MCP servers configured`). Nólë's MCP server itself works fine with the Grok Build TUI when configured via its own `grok mcp add` (verified 2026-06-04: `grok mcp doctor` reported handshake OK + 6 tools discovered). Whether to add a `config.toml` writer for the Grok Build TUI is tracked in **issue #64**. To wire Nólë into the Grok Build TUI today, run `grok mcp add nole --command /absolute/path/to/nole --args mcp` (or point it at the env-sourcing wrapper).
+> **Two different `grok` CLIs — pick the flag that matches yours.** There is also xAI's **"Grok Build TUI"** (a distinct Rust product, e.g. `grok 0.2.20`), which reads `~/.grok/config.toml` (`[mcp_servers.<name>]`, TOML — **not** `user-settings.json`) and has a full `grok mcp add/list/remove/doctor` manager. `nole setup --grok` writes the JSON `user-settings.json` (superagent), so it is ignored by the Grok Build TUI. Since v1.6.0, **`nole setup --grok-build`** writes the TOML `~/.grok/config.toml` the Grok Build TUI reads (issue #64, resolved). See the **xAI Grok Build TUI** section below — it is `verified`. Use `--grok` for `superagent-ai/grok-cli` and `--grok-build` for xAI's Grok Build TUI.
 
 ## What is repo-tested
 
@@ -67,6 +67,39 @@ Grok CLI stores MCP servers under `~/.grok/user-settings.json` as a top-level `m
 ```
 
 In wrapper mode the entry becomes `"command": "/absolute/path/to/nole-mcp", "args": []`. Do not place provider key values into shared config; the wrapper sources `~/.config/nole/.env` only at launch.
+
+## xAI Grok Build TUI (`--grok-build`)
+
+Status: **verified (CLI MCP manager).** xAI's Grok Build TUI (the Rust `grok` binary, e.g. `0.2.20`) reads `~/.grok/config.toml` with a TOML `[mcp_servers.nole]` table — a different product/format from `superagent-ai/grok-cli` above.
+
+Setup:
+
+```bash
+nole setup --grok-build
+```
+
+This writes/merges `~/.grok/config.toml`:
+
+```toml
+# nole MCP server
+[mcp_servers.nole]
+command = "/absolute/path/to/nole"
+args = ["mcp"]
+enabled = true
+```
+
+Verify with the Grok Build TUI's own MCP manager:
+
+```bash
+grok mcp list                 # expect nole listed
+grok mcp doctor nole          # expect handshake OK + tools discovered
+```
+
+Notes:
+
+- **Verified 2026-06-04** on `grok 0.2.20`: `nole setup --grok-build` produced the `config.toml` above, and `grok mcp doctor nole` reported `command found`, `server started`, `handshake OK (protocol 2025-06-18)`, **6 tools discovered**, `healthy: true`. Evidence in `docs/CLIENTS/LIVE-VERIFICATION.md`.
+- The writer manages the whole `[mcp_servers.nole]` table: re-running `nole setup --grok-build` rewrites it and **other** MCP servers + root keys are preserved, but a user-added `[mcp_servers.nole.env]` sub-table on the nole entry is replaced (re-add it, or set provider keys via `~/.config/nole/.env` + a wrapper instead). A user-set `enabled = false` IS preserved across re-runs.
+- For provider keys: the Grok Build TUI launches `nole mcp` over stdio. The keyless defaults (DDGS search + httpfetch extract) need nothing. For keyed providers, either ensure your shell environment is inherited by Grok, or use the wrapper: `nole setup --grok-build --mcp-wrapper /absolute/path/to/nole-mcp` (the wrapper sources `~/.config/nole/.env` at launch). The Grok Build TUI also auto-reads `~/.claude.json` and a project `.mcp.json` as additional MCP sources.
 
 ## Verification checklist (to upgrade to `verified`)
 
