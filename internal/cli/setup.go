@@ -681,7 +681,15 @@ func existingGrokBuildEnabled(existing string) bool {
 		if !ok || strings.TrimSpace(key) != "enabled" {
 			continue
 		}
-		switch strings.TrimSpace(value) {
+		value = strings.TrimSpace(value)
+		// Strip a TOML inline comment: `enabled` is always a boolean, so any '#' on
+		// the line begins a comment (e.g. `enabled = false # disabled for now`).
+		// Without this, the commented value matches neither case and we would fall
+		// through to the default true, silently re-enabling a user-disabled entry.
+		if i := strings.IndexByte(value, '#'); i >= 0 {
+			value = strings.TrimSpace(value[:i])
+		}
+		switch value {
 		case "false":
 			return false
 		case "true":

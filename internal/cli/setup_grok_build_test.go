@@ -132,6 +132,8 @@ func TestExistingGrokBuildEnabled(t *testing.T) {
 		{"no-nole-table", "[mcp_servers.other]\nenabled = false\n", true},
 		{"nole-true", "[mcp_servers.nole]\nenabled = true\n", true},
 		{"nole-false", "[mcp_servers.nole]\ncommand = \"x\"\nenabled = false\n", false},
+		{"nole-false-inline-comment", "[mcp_servers.nole]\nenabled = false # disabled for now\n", false},
+		{"nole-true-inline-comment", "[mcp_servers.nole]\nenabled = true  # on\n", true},
 		{"nole-missing-key", "[mcp_servers.nole]\ncommand = \"x\"\n", true},
 		{"sibling-false-nole-default", "[mcp_servers.other]\nenabled = false\n\n[mcp_servers.nole]\ncommand = \"x\"\n", true},
 		{"subtable-does-not-bleed", "[mcp_servers.nole]\ncommand = \"x\"\n\n[mcp_servers.nole.env]\nenabled = false\n", true},

@@ -378,6 +378,24 @@ func TestSetupWrapperPathWithSpace(t *testing.T) {
 	if !strings.Contains(string(codex), "User Apps") {
 		t.Fatalf("codex output did not preserve wrapper path with space:\n%s", string(codex))
 	}
+
+	// Grok Build TUI: TOML %q on the command must round-trip a space-containing
+	// wrapper path verbatim (same %q-into-TOML invariant as Codex, without the
+	// inline shell-launch line).
+	grokBuildPath := filepath.Join(dir, "grok-config.toml")
+	if err := writeGrokBuildConfigPath(grokBuildPath, launchSpec{Binary: "/usr/local/bin/nole", Wrapper: wrapper}); err != nil {
+		t.Fatalf("grok-build write: %v", err)
+	}
+	grokBuild, err := os.ReadFile(grokBuildPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(grokBuild), "User Apps") {
+		t.Fatalf("grok-build output did not preserve wrapper path with space:\n%s", string(grokBuild))
+	}
+	if !strings.Contains(string(grokBuild), `command = "`+wrapper+`"`) {
+		t.Fatalf("grok-build command should be the verbatim wrapper path:\n%s", string(grokBuild))
+	}
 }
 
 func TestSetupKimiFlagWritesUserScopeFile(t *testing.T) {
