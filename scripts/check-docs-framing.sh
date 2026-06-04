@@ -89,6 +89,32 @@ grep -Fq "docs/PUBLIC-RELEASE-CHECKLIST.md" docs/RELEASE-GATES.md \
   || fail "release gates must link the public release checklist"
 grep -Fq "docs/PACKAGING.md" README.md \
   || fail "README must link packaging prep docs"
+root_command_span=$(awk '/cmd\.AddCommand\(/ { if (first == 0) first = NR; last = NR; count++ } END { if (count == 0) exit 1; printf "%d %d %d", count, first, last }' internal/cli/root.go) \
+  || fail "could not derive root command count/range from internal/cli/root.go"
+read -r root_command_count root_command_first root_command_last <<EOF
+$root_command_span
+EOF
+expected_root_count="Registers all ${root_command_count} subcommands"
+expected_root_range='Subcommands (registered `internal/cli/root.go:'"${root_command_first}-${root_command_last}"'`)'
+grep -Fq "$expected_root_count" docs/ARCHITECTURE.md \
+  || fail "architecture docs must match current root command count: $expected_root_count"
+grep -Fq "$expected_root_range" docs/ARCHITECTURE.md \
+  || fail "architecture docs must match current root.go subcommand range: $expected_root_range"
+stale_root_counts=$(grep -Eon '[0-9]+ subcommands' docs/ARCHITECTURE.md | grep -Fv ":${root_command_count} subcommands" || true)
+if [ -n "$stale_root_counts" ]; then
+  fail "architecture docs contain stale subcommand count(s): $stale_root_counts"
+fi
+stale_root_ranges=$(grep -Eon '((internal/cli/)?root\.go):[0-9]+-[0-9]+' docs/ARCHITECTURE.md \
+  | grep -Fv ":internal/cli/root.go:${root_command_first}-${root_command_last}" \
+  | grep -Fv ":root.go:${root_command_first}-${root_command_last}" || true)
+if [ -n "$stale_root_ranges" ]; then
+  fail "architecture docs contain stale root.go subcommand range(s): $stale_root_ranges"
+fi
+if grep -Fq "no keyless extract provider" docs/NEXT-STEPS.md; then
+  fail "next-steps docs contain stale no-keyless-extract wording"
+fi
+grep -Fq 'keyless `httpfetch` backstop' docs/NEXT-STEPS.md \
+  || fail "next-steps docs must mention the keyless httpfetch extract backstop"
 grep -Fq "Public repository visibility" docs/PUBLIC-RELEASE-CHECKLIST.md \
   || fail "public release checklist must gate repository visibility"
 grep -Fq "GitHub Release publication approved" docs/PUBLIC-RELEASE-CHECKLIST.md \

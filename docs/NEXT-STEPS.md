@@ -175,7 +175,7 @@ Goals:
   - classifier/route-plan command once implemented.
 - Public-safe local CLI smoke is interpreted truthfully:
   - `nole search "..." --json` may succeed via keyless DDGS or return a sanitized provider/network error envelope.
-  - `nole extract "..." --json` fails closed in no-key/free-first mode because v0.1 has no keyless extract provider; it may return content only with explicit user-owned extract-provider keys and policy.
+  - `nole extract "..." --json` works out of the box through the keyless `httpfetch` backstop, while higher-fidelity extraction still comes from configured local Scrapling or BYOK extract providers.
 - Final `/tmp/nole-v0.1-private-prep-report.md`.
 - Release tag creation still requires explicit user approval.
 
