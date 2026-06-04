@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [1.6.2] - 2026-06-04
+
+Theme: **Brave Search-plan coverage + agent trust hardening.** This release ships
+Brave's dedicated News Search path for recency tasks and includes the post-v1.6.1
+agent-facing docs/test hardening. No CLI/MCP/REST command or schema surface changes.
+
 ### Added
 
 - **Brave `news` / `factcheck` tasks now use Brave's dedicated News Search endpoint.**
@@ -14,6 +22,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tasks to `/res/v1/news/search` with the existing conservative `freshness=pm`
   window, and maps the News Search top-level `results` array into Nólë's neutral
   `SearchResult` shape without fabricating scores.
+- **Endpoint-aware Brave result limits.** Web Search keeps its documented `count`
+  clamp at 1..20; News Search uses its documented 1..50 range.
+
+### Fixed
+
+- **Config dump tests are isolated from real provider-key env vars.**
+  `TestConfigDumpJSONShape` now unsets provider secret env vars from the same
+  `secretEnvKeys` source of truth used by config dumping, so local machines with
+  BYOK credentials do not false-fail deterministic tests.
+
+### Documentation
+
+- **Agent-facing docs drift was corrected and guarded.** Architecture docs now match
+  the actual 14-command CLI surface and `selfupdate.go` file name; NEXT-STEPS now
+  acknowledges the keyless `httpfetch` extract backstop; `scripts/check-docs-framing.sh`
+  derives command counts/ranges from `internal/cli/root.go` and rejects stale docs.
 
 ## [1.6.1] - 2026-06-04
 
@@ -1307,7 +1331,12 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/dorukardahan/nole/compare/v1.6.1...v1.6.2
+[1.6.1]: https://github.com/dorukardahan/nole/compare/v1.6.0...v1.6.1
+[1.6.0]: https://github.com/dorukardahan/nole/compare/v1.5.1...v1.6.0
+[1.5.1]: https://github.com/dorukardahan/nole/compare/v1.5.0...v1.5.1
+[1.5.0]: https://github.com/dorukardahan/nole/compare/v1.4.0...v1.5.0
 [0.6.0]: https://github.com/dorukardahan/nole/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dorukardahan/nole/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dorukardahan/nole/compare/v0.3.2...v0.4.0
