@@ -100,6 +100,14 @@ grep -Fq "$expected_root_count" docs/ARCHITECTURE.md \
   || fail "architecture docs must match current root command count: $expected_root_count"
 grep -Fq "$expected_root_range" docs/ARCHITECTURE.md \
   || fail "architecture docs must match current root.go subcommand range: $expected_root_range"
+stale_root_counts=$(grep -En '[0-9]+ subcommands' docs/ARCHITECTURE.md | grep -Fv "${root_command_count} subcommands" || true)
+if [ -n "$stale_root_counts" ]; then
+  fail "architecture docs contain stale subcommand count(s): $stale_root_counts"
+fi
+stale_root_ranges=$(grep -En 'internal/cli/root\.go:[0-9]+-[0-9]+' docs/ARCHITECTURE.md | grep -Fv "internal/cli/root.go:${root_command_first}-${root_command_last}" || true)
+if [ -n "$stale_root_ranges" ]; then
+  fail "architecture docs contain stale root.go subcommand range(s): $stale_root_ranges"
+fi
 if grep -Fq "no keyless extract provider" docs/NEXT-STEPS.md; then
   fail "next-steps docs contain stale no-keyless-extract wording"
 fi
