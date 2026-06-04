@@ -62,7 +62,7 @@ See `docs/CLIENTS/README.md` for the client support matrix, `docs/AGENT-INSTALL.
 
 Nólë currently supports these provider adapters:
 
-- Brave Search API: search, BYOK/free-tier capable.
+- Brave Search API: web search plus dedicated news/factcheck search, BYOK/free-tier capable.
 - Tavily: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - Firecrawl: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - DDGS: keyless search fallback (the last-resort general fallback on every search route).
