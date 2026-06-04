@@ -410,7 +410,12 @@ func (h *httpHandler) handleMCP(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		// Route through safeerr.Message like every other endpoint's error path
+		// (writeHTTPDecodeError / writeHTTPJSONError) rather than interpolating the
+		// raw err: a body-read failure here is realistically a MaxBytesError (no
+		// secrets), but this keeps the redaction discipline uniform across the whole
+		// HTTP surface so a future error that did carry sensitive text cannot leak.
+		http.Error(w, "read body: "+safeerr.Message(err), http.StatusBadRequest)
 		return
 	}
 
