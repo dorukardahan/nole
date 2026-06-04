@@ -47,6 +47,7 @@ func newSetupCommand() *cobra.Command {
 	var hermes bool
 	var gemini bool
 	var grok bool
+	var grokBuild bool
 	var localExtract bool
 	var localExtractVenv string
 	var localExtractPython string
@@ -56,15 +57,16 @@ func newSetupCommand() *cobra.Command {
 		Use:   "setup",
 		Short: "Configure AI agents to use nole as MCP server",
 		Long: "Writes MCP server configuration files for supported AI coding agents.\n" +
-			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --gemini, --grok, or --all.\n" +
+			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --gemini, --grok, --grok-build, or --all.\n" +
+			"Note: --grok targets superagent-ai/grok-cli (~/.grok/user-settings.json, JSON); --grok-build targets xAI's Grok Build TUI (~/.grok/config.toml, TOML). They are different products — pick the one whose `grok` you have installed.\n" +
 			"Use --local-extract to install an isolated Scrapling runtime and write NOLE_SCRAPLING_PYTHON.\n" +
 			"Use --mcp-wrapper /absolute/path/to/nole-mcp to register an env-sourcing wrapper instead of the bare binary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
-				claude, cursor, codex, opencode, kimi, windsurf, hermes, gemini, grok = true, true, true, true, true, true, true, true, true
+				claude, cursor, codex, opencode, kimi, windsurf, hermes, gemini, grok, grokBuild = true, true, true, true, true, true, true, true, true, true
 			}
-			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !gemini && !grok && !localExtract {
-				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --gemini, --grok, --local-extract, or --all")
+			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !gemini && !grok && !grokBuild && !localExtract {
+				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --gemini, --grok, --grok-build, --local-extract, or --all")
 			}
 
 			binary, err := os.Executable()
@@ -84,6 +86,22 @@ func newSetupCommand() *cobra.Command {
 			out := cmd.OutOrStdout()
 			errOut := cmd.OutOrStderr()
 			configured := 0
+			failures := 0
+
+			// configure runs one file-writing agent's setup, reporting success or a
+			// failure. A failed REQUESTED agent is counted so the command exits
+			// non-zero (below) instead of misreporting success — e.g. when the
+			// grok-build writer refuses to overwrite a customized config. Claude is
+			// handled separately: it writes nothing and is not counted.
+			configure := func(name string, fn func(launchSpec) error) {
+				if err := fn(spec); err != nil {
+					fmt.Fprintf(errOut, "%s: %v\n", name, err)
+					failures++
+					return
+				}
+				fmt.Fprintf(out, "%s: configured\n", name)
+				configured++
+			}
 
 			if localExtract {
 				fmt.Fprintln(out, "local-extract: preparing isolated Scrapling runtime (first run may take a few minutes)")
@@ -119,68 +137,31 @@ func newSetupCommand() *cobra.Command {
 				}
 			}
 			if cursor {
-				if err := writeCursorConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "cursor: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "cursor: configured")
-					configured++
-				}
+				configure("cursor", writeCursorConfig)
 			}
 			if codex {
-				if err := writeCodexConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "codex: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "codex: configured")
-					configured++
-				}
+				configure("codex", writeCodexConfig)
 			}
 			if opencode {
-				if err := writeOpenCodeConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "opencode: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "opencode: configured")
-					configured++
-				}
+				configure("opencode", writeOpenCodeConfig)
 			}
 			if kimi {
-				if err := writeKimiConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "kimi: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "kimi: configured")
-					configured++
-				}
+				configure("kimi", writeKimiConfig)
 			}
 			if windsurf {
-				if err := writeWindsurfConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "windsurf: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "windsurf: configured")
-					configured++
-				}
+				configure("windsurf", writeWindsurfConfig)
 			}
 			if hermes {
-				if err := writeHermesConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "hermes: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "hermes: configured")
-					configured++
-				}
+				configure("hermes", writeHermesConfig)
 			}
 			if gemini {
-				if err := writeGeminiConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "gemini: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "gemini: configured")
-					configured++
-				}
+				configure("gemini", writeGeminiConfig)
 			}
 			if grok {
-				if err := writeGrokConfig(spec); err != nil {
-					fmt.Fprintf(errOut, "grok: %v\n", err)
-				} else {
-					fmt.Fprintln(out, "grok: configured")
-					configured++
-				}
+				configure("grok", writeGrokConfig)
+			}
+			if grokBuild {
+				configure("grok-build", writeGrokBuildConfig)
 			}
 
 			fmt.Fprintf(out, "\n%d agent(s) configured.\n", configured)
@@ -199,6 +180,13 @@ func newSetupCommand() *cobra.Command {
 				fmt.Fprintln(out, "    nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp")
 				fmt.Fprintln(out, "  Wrapper template: docs/PROVIDER-KEYS.md")
 			}
+			// A requested agent that failed (e.g. the grok-build writer refusing to
+			// overwrite a customized config) must make the command exit non-zero, so a
+			// script/user is not misled into thinking setup succeeded. The per-agent
+			// reason was already printed to stderr above; main prints this summary.
+			if failures > 0 {
+				return fmt.Errorf("setup: %d requested agent(s) could not be configured (see messages above)", failures)
+			}
 			return nil
 		},
 	}
@@ -211,7 +199,8 @@ func newSetupCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&windsurf, "windsurf", false, "configure Windsurf")
 	cmd.Flags().BoolVar(&hermes, "hermes", false, "configure Hermes Agent")
 	cmd.Flags().BoolVar(&gemini, "gemini", false, "configure Gemini CLI")
-	cmd.Flags().BoolVar(&grok, "grok", false, "configure Grok CLI")
+	cmd.Flags().BoolVar(&grok, "grok", false, "configure Grok CLI (superagent-ai/grok-cli; ~/.grok/user-settings.json)")
+	cmd.Flags().BoolVar(&grokBuild, "grok-build", false, "configure xAI Grok Build TUI (~/.grok/config.toml; distinct from --grok)")
 	cmd.Flags().BoolVar(&localExtract, "local-extract", false, "install an isolated local Scrapling extract runtime and write NOLE_SCRAPLING_PYTHON")
 	cmd.Flags().StringVar(&localExtractVenv, "local-extract-venv", "", "absolute path for the local extract Python virtual environment (default: ~/.local/share/nole/scrapling-venv)")
 	cmd.Flags().StringVar(&localExtractPython, "python", "", "Python 3.10+ executable to use for creating the local extract virtual environment (default: auto-detect python3/python)")
@@ -590,6 +579,149 @@ func upsertGrokNoleServer(servers []json.RawMessage, spec launchSpec) ([]json.Ra
 	return out, nil
 }
 
+// writeGrokBuildConfig writes Nólë's MCP entry to xAI's Grok Build TUI config.
+// The Grok Build TUI (the Rust `grok` binary, e.g. 0.2.20, with a `grok mcp
+// add/list/remove/doctor` manager) reads ~/.grok/config.toml with a TOML
+// [mcp_servers.<name>] table — a DIFFERENT product and format from
+// superagent-ai/grok-cli, which writeGrokConfig targets (~/.grok/user-settings.json,
+// JSON). The TOML table shape (command/args/enabled) is identical to Codex's
+// config.toml, so this reuses the same line-based table upsert. Verified
+// 2026-06-04 via `grok mcp doctor` (handshake OK, 6 tools). See docs/CLIENTS/grok.md.
+func writeGrokBuildConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".grok", "config.toml")
+	return writeGrokBuildConfigPath(path, spec)
+}
+
+func writeGrokBuildConfigPath(path string, spec launchSpec) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+	existing, exists, mode, err := readExistingFileWithMode(path)
+	if err != nil {
+		return err
+	}
+	// Refuse to clobber a customized nole entry BEFORE touching anything (no
+	// backup, no write). The line-based table upsert replaces the whole
+	// [mcp_servers.nole] table, which would silently drop a user-owned
+	// [mcp_servers.nole.*] sub-table (e.g. env overrides for keyed providers) or a
+	// direct key we do not manage — AGENTS.md requires preserving existing config +
+	// unknown fields, so we leave the file untouched and tell the user instead. The
+	// common cases — a fresh config, our own prior output, or a `grok mcp add`
+	// entry — carry only the managed launch keys (command/args/enabled) and proceed
+	// normally and idempotently.
+	if conflict, has := grokBuildNoleHasCustomizations(string(existing)); has {
+		return fmt.Errorf("refusing to overwrite %s: the existing [mcp_servers.nole] entry has %s, which `nole setup --grok-build` does not manage and would drop. Update its command/args by hand, or remove that customization and re-run", path, conflict)
+	}
+	if exists {
+		if err := writeBackup(path, existing, mode); err != nil {
+			return err
+		}
+	}
+	// Preserve a user-set enabled=false across re-runs (default true on first
+	// write), matching the superagent Grok writer's preserve-enabled intent. The
+	// upsert replaces the whole [mcp_servers.nole] table, so the prior value is read
+	// first; sibling MCP servers and root keys are preserved by the upsert. (A
+	// customized nole entry never reaches here — it is refused above.)
+	enabled := existingGrokBuildEnabled(string(existing))
+	content := upsertCodexTomlTable(string(existing), "mcp_servers.nole", grokBuildMCPServerBlock(spec, enabled))
+	return atomicWriteFile(path, []byte(content), configWriteMode(exists, mode))
+}
+
+// grokBuildNoleHasCustomizations reports whether an existing [mcp_servers.nole]
+// entry carries content beyond the launch keys this writer manages
+// (command/args/enabled) — namely a [mcp_servers.nole.*] sub-table or any other
+// direct key. The returned phrase names the conflict for the refusal message.
+// Marker/blank/comment lines and the managed keys are ignored, so our own prior
+// output and a plain `grok mcp add` entry report no conflict (the writer proceeds
+// idempotently); only a hand-customized entry is protected from silent loss.
+func grokBuildNoleHasCustomizations(existing string) (string, bool) {
+	inTable := false
+	for _, line := range strings.Split(existing, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if name, ok := tomlTableHeader(trimmed); ok {
+			inTable = name == "mcp_servers.nole"
+			if !inTable && strings.HasPrefix(name, "mcp_servers.nole.") {
+				return "a [" + name + "] sub-table", true
+			}
+			continue
+		}
+		if !inTable || trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		key, _, ok := strings.Cut(trimmed, "=")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(key) {
+		case "command", "args", "enabled":
+		default:
+			return fmt.Sprintf("a custom %q key", strings.TrimSpace(key)), true
+		}
+	}
+	return "", false
+}
+
+// grokBuildMCPServerBlock renders the [mcp_servers.nole] TOML table for the Grok
+// Build TUI. command uses %q (TOML basic string; backslashes in Windows paths are
+// escaped to \\ which TOML decodes correctly); args is a literal TOML array
+// (["mcp"] in bare mode, [] in wrapper mode — never JSON-marshaled). The
+// "# nole MCP server" marker matches the Codex block so upsertCodexTomlTable strips
+// it on re-run instead of accumulating copies.
+func grokBuildMCPServerBlock(spec launchSpec, enabled bool) string {
+	args := spec.args()
+	parts := make([]string, len(args))
+	for i, a := range args {
+		parts[i] = fmt.Sprintf("%q", a)
+	}
+	return fmt.Sprintf(
+		"# nole MCP server\n[mcp_servers.nole]\ncommand = %q\nargs = [%s]\nenabled = %t\n",
+		spec.command(), strings.Join(parts, ", "), enabled,
+	)
+}
+
+// existingGrokBuildEnabled reads the `enabled` flag from an existing
+// [mcp_servers.nole] table in a Grok Build TUI config.toml. It defaults to true
+// when the table or the key is absent (first write / user never disabled it). Only
+// the table's own direct keys are scanned: reading stops at the next table header,
+// including any [mcp_servers.nole.*] sub-table, so a sibling's enabled is never
+// mistaken for nole's.
+func existingGrokBuildEnabled(existing string) bool {
+	inTable := false
+	for _, line := range strings.Split(existing, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if header, ok := tomlTableHeader(trimmed); ok {
+			inTable = header == "mcp_servers.nole"
+			continue
+		}
+		if !inTable {
+			continue
+		}
+		key, value, ok := strings.Cut(trimmed, "=")
+		if !ok || strings.TrimSpace(key) != "enabled" {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		// Strip a TOML inline comment: `enabled` is always a boolean, so any '#' on
+		// the line begins a comment (e.g. `enabled = false # disabled for now`).
+		// Without this, the commented value matches neither case and we would fall
+		// through to the default true, silently re-enabling a user-disabled entry.
+		if i := strings.IndexByte(value, '#'); i >= 0 {
+			value = strings.TrimSpace(value[:i])
+		}
+		switch value {
+		case "false":
+			return false
+		case "true":
+			return true
+		}
+	}
+	return true
+}
+
 // resolveHomeDir returns os.UserHomeDir() with a more actionable error message
 // when neither HOME nor /etc/passwd yields a directory. Falling back silently
 // to "" would have writers create relative paths like ".cursor/mcp.json" in the
@@ -675,6 +807,40 @@ func codexMCPServerBlock(spec launchSpec) string {
 	)
 }
 
+// tomlTableHeader parses a TOML table header from a trimmed line, returning the
+// dotted table name and true. It accepts a standard table (`[a.b]`) or an
+// array-of-tables (`[[a.b]]`), each optionally followed by an inline comment
+// (`[a.b] # note`) — TOML permits a comment after the header, and without
+// tolerating it the writers would fail to match an annotated `[mcp_servers.nole]`
+// header (leaving the old table in place and appending a duplicate, i.e. invalid
+// TOML). Uncommented headers parse exactly as the previous `strings.Trim(line,
+// "[]")` did, so behaviour is preserved for the common case. A `#` inside the
+// header brackets is not handled (MCP table names are bare keys), but a `]` inside
+// a trailing comment is fine (the header ends at its own closing bracket).
+func tomlTableHeader(trimmed string) (string, bool) {
+	var close int
+	switch {
+	case strings.HasPrefix(trimmed, "[["):
+		close = strings.Index(trimmed, "]]")
+		if close < 0 {
+			return "", false
+		}
+		close += 2
+	case strings.HasPrefix(trimmed, "["):
+		close = strings.IndexByte(trimmed, ']')
+		if close < 0 {
+			return "", false
+		}
+		close++
+	default:
+		return "", false
+	}
+	if rest := strings.TrimSpace(trimmed[close:]); rest != "" && !strings.HasPrefix(rest, "#") {
+		return "", false
+	}
+	return strings.Trim(trimmed[:close], "[]"), true
+}
+
 func upsertCodexTomlTable(existing string, table string, block string) string {
 	lines := strings.Split(existing, "\n")
 	var kept []string
@@ -682,8 +848,7 @@ func upsertCodexTomlTable(existing string, table string, block string) string {
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-			header := strings.Trim(trimmed, "[]")
+		if header, ok := tomlTableHeader(trimmed); ok {
 			willSkip := header == table || strings.HasPrefix(header, table+".")
 			if willSkip {
 				// Drop any contiguous comment lines (and a single trailing

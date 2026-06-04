@@ -302,6 +302,8 @@ func TestSetupWritersIdempotent(t *testing.T) {
 		{name: "cursor-wrapper", ext: "json", spec: launchSpec{Binary: "/usr/local/bin/nole", Wrapper: "/usr/local/bin/nole-mcp"}, fn: writeMCPJSONConfig},
 		{name: "codex-bare", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole"}, fn: writeCodexConfigPath},
 		{name: "codex-wrapper", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole", Wrapper: "/usr/local/bin/nole-mcp"}, fn: writeCodexConfigPath},
+		{name: "grok-build-bare", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole"}, fn: writeGrokBuildConfigPath},
+		{name: "grok-build-wrapper", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole", Wrapper: "/usr/local/bin/nole-mcp"}, fn: writeGrokBuildConfigPath},
 	}
 	for _, tc := range cases {
 		tc := tc
@@ -375,6 +377,24 @@ func TestSetupWrapperPathWithSpace(t *testing.T) {
 	}
 	if !strings.Contains(string(codex), "User Apps") {
 		t.Fatalf("codex output did not preserve wrapper path with space:\n%s", string(codex))
+	}
+
+	// Grok Build TUI: TOML %q on the command must round-trip a space-containing
+	// wrapper path verbatim (same %q-into-TOML invariant as Codex, without the
+	// inline shell-launch line).
+	grokBuildPath := filepath.Join(dir, "grok-config.toml")
+	if err := writeGrokBuildConfigPath(grokBuildPath, launchSpec{Binary: "/usr/local/bin/nole", Wrapper: wrapper}); err != nil {
+		t.Fatalf("grok-build write: %v", err)
+	}
+	grokBuild, err := os.ReadFile(grokBuildPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(grokBuild), "User Apps") {
+		t.Fatalf("grok-build output did not preserve wrapper path with space:\n%s", string(grokBuild))
+	}
+	if !strings.Contains(string(grokBuild), `command = "`+wrapper+`"`) {
+		t.Fatalf("grok-build command should be the verbatim wrapper path:\n%s", string(grokBuild))
 	}
 }
 
