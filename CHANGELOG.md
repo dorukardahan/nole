@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-06-04
+
+Theme: **Gemini CLI + Grok CLI live-verification pass (docs only).** Both real CLIs
+were launched on a host; the findings are recorded honestly — neither is upgraded to
+`verified`, and one notable Grok-CLI discrepancy is documented + tracked.
+
+### Documentation
+
+- **Gemini CLI (0.40.1):** recorded that the real CLI was launched and `nole setup
+  --gemini`'s path + `mcpServers` schema match the client's own `gemini mcp add`
+  output. Status stays `repo-tested` (not `verified`): Gemini 0.40.1's `gemini mcp
+  list` prints nothing non-interactively (even for its own added servers) and there
+  is no `gemini mcp test`/`doctor`, so in-client tool visibility was not observable
+  without a model turn.
+- **Grok CLI:** documented that the installed `grok` (xAI's "Grok Build TUI" 0.2.20,
+  reading `~/.grok/config.toml` with a full `grok mcp add/list/remove/doctor`
+  manager) is a **different product** from the `superagent-ai/grok-cli` that `nole
+  setup --grok` targets (JSON `~/.grok/user-settings.json`). Nólë's MCP server
+  connected to the installed Grok Build TUI cleanly (`grok mcp doctor`: handshake OK,
+  6 tools discovered) but via a config Nólë does not write; the documented client was
+  not installed, so it stays `repo-tested`. Corrected the now-stale "no `grok mcp add`
+  command" claim and clarified the two distinct CLIs. Writer-target decision tracked
+  in **issue #64**.
+- Recorded the run (isolated throwaway `HOME`; the maintainer's real `~/.gemini` and
+  `~/.grok` were untouched) in `docs/CLIENTS/LIVE-VERIFICATION.md`, and confirmed
+  Nólë's advertised MCP surface is the expected 6 tools (`search`, `research`,
+  `provider_status`, `budget_status`, `extract`, `search_and_extract`).
+
+No code, schema, or surface changes — docs only.
+
 ## [1.5.0] - 2026-06-04
 
 Theme: **keyless arXiv academic provider.** A new primary-source scholarly-preprint
