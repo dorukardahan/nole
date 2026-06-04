@@ -119,6 +119,62 @@ enabled = false
 	}
 }
 
+// TestWriteGrokBuildConfigHandlesCommentedHeader pins the Codex P2 fix: a TOML
+// table header with an inline comment ([mcp_servers.nole] # ...) must still be
+// recognized so (1) a user-set enabled=false is preserved and (2) the table is
+// REPLACED in place rather than left behind while a duplicate [mcp_servers.nole]
+// is appended (which would be invalid TOML).
+func TestWriteGrokBuildConfigHandlesCommentedHeader(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	existing := `[mcp_servers.nole]  # my pinned server
+command = "/old/nole"
+args = ["mcp"]
+enabled = false # disabled for now
+`
+	if err := os.WriteFile(path, []byte(existing), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeGrokBuildConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got := readFileString(t, path)
+	if strings.Count(got, "[mcp_servers.nole]") != 1 {
+		t.Fatalf("annotated header must be replaced in place, not duplicated (invalid TOML):\n%s", got)
+	}
+	if !strings.Contains(got, "enabled = false") {
+		t.Errorf("enabled=false (set on an annotated header's table) must be preserved:\n%s", got)
+	}
+	if strings.Contains(got, "/old/nole") {
+		t.Errorf("launch-critical command should still be updated:\n%s", got)
+	}
+}
+
+// TestTomlTableHeader unit-pins the header parser: standard/array tables, inline
+// comments (incl. a ']' inside the comment), and non-headers.
+func TestTomlTableHeader(t *testing.T) {
+	cases := []struct {
+		in   string
+		name string
+		ok   bool
+	}{
+		{"[mcp_servers.nole]", "mcp_servers.nole", true},
+		{"[mcp_servers.nole] # note", "mcp_servers.nole", true},
+		{"[mcp_servers.nole]   # see ]bracket in comment", "mcp_servers.nole", true},
+		{"[[mcp_servers]]", "mcp_servers", true},
+		{"[[mcp_servers]] # c", "mcp_servers", true},
+		{`model = "x"`, "", false},
+		{"enabled = false", "", false},
+		{"# just a comment", "", false},
+		{"[unterminated", "", false},
+	}
+	for _, c := range cases {
+		gotName, gotOK := tomlTableHeader(c.in)
+		if gotOK != c.ok || (gotOK && gotName != c.name) {
+			t.Errorf("tomlTableHeader(%q) = (%q,%v), want (%q,%v)", c.in, gotName, gotOK, c.name, c.ok)
+		}
+	}
+}
+
 // TestExistingGrokBuildEnabled unit-pins the enabled reader: default true when
 // absent, the value when present, and that a sibling table's enabled is never read
 // as nole's.

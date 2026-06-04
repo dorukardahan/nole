@@ -670,8 +670,8 @@ func existingGrokBuildEnabled(existing string) bool {
 	inTable := false
 	for _, line := range strings.Split(existing, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-			inTable = strings.Trim(trimmed, "[]") == "mcp_servers.nole"
+		if header, ok := tomlTableHeader(trimmed); ok {
+			inTable = header == "mcp_servers.nole"
 			continue
 		}
 		if !inTable {
@@ -784,6 +784,40 @@ func codexMCPServerBlock(spec launchSpec) string {
 	)
 }
 
+// tomlTableHeader parses a TOML table header from a trimmed line, returning the
+// dotted table name and true. It accepts a standard table (`[a.b]`) or an
+// array-of-tables (`[[a.b]]`), each optionally followed by an inline comment
+// (`[a.b] # note`) — TOML permits a comment after the header, and without
+// tolerating it the writers would fail to match an annotated `[mcp_servers.nole]`
+// header (leaving the old table in place and appending a duplicate, i.e. invalid
+// TOML). Uncommented headers parse exactly as the previous `strings.Trim(line,
+// "[]")` did, so behaviour is preserved for the common case. A `#` inside the
+// header brackets is not handled (MCP table names are bare keys), but a `]` inside
+// a trailing comment is fine (the header ends at its own closing bracket).
+func tomlTableHeader(trimmed string) (string, bool) {
+	var close int
+	switch {
+	case strings.HasPrefix(trimmed, "[["):
+		close = strings.Index(trimmed, "]]")
+		if close < 0 {
+			return "", false
+		}
+		close += 2
+	case strings.HasPrefix(trimmed, "["):
+		close = strings.IndexByte(trimmed, ']')
+		if close < 0 {
+			return "", false
+		}
+		close++
+	default:
+		return "", false
+	}
+	if rest := strings.TrimSpace(trimmed[close:]); rest != "" && !strings.HasPrefix(rest, "#") {
+		return "", false
+	}
+	return strings.Trim(trimmed[:close], "[]"), true
+}
+
 func upsertCodexTomlTable(existing string, table string, block string) string {
 	lines := strings.Split(existing, "\n")
 	var kept []string
@@ -791,8 +825,7 @@ func upsertCodexTomlTable(existing string, table string, block string) string {
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-			header := strings.Trim(trimmed, "[]")
+		if header, ok := tomlTableHeader(trimmed); ok {
 			willSkip := header == table || strings.HasPrefix(header, table+".")
 			if willSkip {
 				// Drop any contiguous comment lines (and a single trailing
