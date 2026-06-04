@@ -181,6 +181,22 @@ func TestRESTOversizedBodyReturns400(t *testing.T) {
 	}
 }
 
+func TestMCPOversizedBodyReturns400(t *testing.T) {
+	h := newTestHTTPHandler(t)
+	// >1 MiB body trips http.MaxBytesReader during io.ReadAll on the /mcp path
+	// (distinct from the /api/* json.Decode path covered above) -> 400. The
+	// read-body error is routed through safeerr.Message (not raw err.Error()), so
+	// the redaction discipline is uniform across the whole HTTP surface.
+	big := bytes.Repeat([]byte("a"), 2<<20)
+	rec := doREST(t, h, http.MethodPost, "/mcp", big)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("oversized POST /mcp = %d, want 400", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "read body:") {
+		t.Fatalf("expected the bounded read-body error, got: %q", body)
+	}
+}
+
 func TestRESTExtractErrorResponseDoesNotLeakSecrets(t *testing.T) {
 	h := newTestHTTPHandler(t)
 	// A loopback URL fails safenet.ValidateURL before any provider call, so this

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-06-04
+
+Theme: **maintenance** — one HTTP redaction-consistency fix + an `docs/ARCHITECTURE.md`
+resync. No behaviour change to any stable surface; no new feature (a project
+assessment found the gateway feature-complete for its north-star, with no clean
+additive opportunity outstanding).
+
+### Fixed
+
+- **`nole serve` `/mcp` body-read error is now redacted like every other endpoint.**
+  The `/mcp` handler interpolated the raw `io.ReadAll` error into the 400 response
+  (`internal/cli/http.go`), the only HTTP error path not routed through
+  `safeerr.Message`. The realistic error is a `MaxBytesError` (no secrets), so this
+  is defense-in-depth / consistency, not a known leak — but it keeps the redaction
+  discipline uniform across the whole HTTP surface. Regression test
+  `TestMCPOversizedBodyReturns400` covers the `/mcp` `io.ReadAll` path (distinct from
+  the `/api/*` `json.Decode` path).
+
+### Documentation
+
+- **`docs/ARCHITECTURE.md` resync** (internal developer map, had drifted since
+  v1.2.3): the providers section now lists the keyless `wikipedia`/`arxiv` search
+  providers and the `httpfetch` extract backstop (added v1.1.0/v1.5.0/v1.3.0) with
+  symbol-table rows; the data-flow + dependency-graph edges reflect the actual
+  registered/imported provider set; the setup-writer subsystem now states ten
+  platforms (was nine), adds the v1.6.0 Grok Build (`--grok-build`) row, distinguishes
+  it from the superagent `--grok` row, and corrects the stale `internal/cli/setup.go`
+  anchors. User-facing docs (README, PROVIDER-KEYS, CLIENTS) were already accurate.
+
 ## [1.6.0] - 2026-06-04
 
 Theme: **`nole setup --grok-build` for xAI's Grok Build TUI** (resolves #64). Additive

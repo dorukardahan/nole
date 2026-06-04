@@ -229,7 +229,7 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 
 ### Area: providers — web search/extract provider adapters + shared HTTP retry/error layer
 
-**Purpose.** Concrete adapters satisfying `core.Provider`, translating Nole's neutral request/response types into each upstream API and back. Four real network providers (brave, tavily, firecrawl, ddgs), one local subprocess provider (scrapling, via Python), a deterministic mock placeholder, and a shared `providerhttp` package supplying retry-with-backoff and a secret-safe HTTP status error type. Keeps provider-specific quirks (auth headers, decoding, rate-limit signaling, redaction) isolated per adapter.
+**Purpose.** Concrete adapters satisfying `core.Provider`, translating Nole's neutral request/response types into each upstream API and back. Three keyed network providers (brave, tavily, firecrawl); keyless network providers — `ddgs` (last-resort search fallback), `wikipedia` + `arxiv` (keyless primary-source search reinforcement, each routed on specific tasks before ddgs), and `httpfetch` (keyless pure-Go HTML-to-text extract backstop, last-resort on TaskExtract); one local subprocess extractor (scrapling, via Python); a deterministic mock placeholder; and a shared `providerhttp` package supplying retry-with-backoff, a circuit breaker, and a secret-safe HTTP status error type. Keeps provider-specific quirks (auth headers, decoding, rate-limit signaling, redaction) isolated per adapter.
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|
@@ -253,12 +253,15 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 | `ddgs.Provider.Search` | method | `internal/providers/ddgs/ddgs.go:40` | Scrapes DDG no-JS HTML via POST w/ browser headers; regex-parses links/snippets; skips ad redirects; special-cases 202 as rate-limit. |
 | `ddgs.cleanHTML` | func | `internal/providers/ddgs/ddgs.go:150` | Strips tags + decodes a hand-picked entity set. |
 | `ddgs` regex set | var | `internal/providers/ddgs/ddgs.go:33` | Package-level compiled regexes driving the brittle scrape. |
+| `wikipedia.Provider.Search` | method | `internal/providers/wikipedia/wikipedia.go:108` | Keyless MediaWiki Action API (`list=search`); breakered; reinforces factcheck/people/academic before the ddgs fallback. Manual breaker mgmt (maxlag is a 200+error-body). |
+| `arxiv.Provider.Search` | method | `internal/providers/arxiv/arxiv.go:184` | Keyless arXiv Atom API; breakered; reinforces academic only. stdlib `encoding/xml`; single-connection + >=3s pacing limiter per arXiv ToU; refuses to clobber a customized entry. |
+| `httpfetch.Provider.Extract` | method | `internal/providers/httpfetch/httpfetch.go:123` | Keyless pure-Go extract backstop (last-resort on TaskExtract); no-follow redirect walk re-validated by safenet (dial-time IP guard); stdlib HTML-to-text. |
 | `scrapling.Provider.Extract` | method | `internal/providers/scrapling/scrapling.go:60` | Runs embedded Python via `exec.CommandContext`, pipes JSON on stdin, decodes `{content,metadata}`; distinguishes timeout, sanitizes stderr. |
 | `scrapling.extractScript` | const | `internal/providers/scrapling/scrapling.go:141` | Embedded Python using `scrapling.fetchers.Fetcher` + HTMLParser fallback. |
 | `scrapling.sanitizeError` | func | `internal/providers/scrapling/scrapling.go:133` | Trims + caps subprocess stderr at 500 chars. |
 | `mock.Provider` | type | `internal/providers/mock/mock.go:10` | Deterministic placeholder; `New`/`NewUnavailable` toggle availability; used when keys absent. |
 
-**Data flow.** Wiring: `app.go:38-61` constructs each provider (real w/ `WithAPIKey` if env key present, else `mock.NewUnavailable` for brave/tavily/firecrawl; ddgs + scrapling always registered). `bench.go:128-132` builds a parallel map. `core.Router`/`Service` select by Task+Capability then call Search/Extract. Each network adapter: guard missing key → build request (GET brave, POST+JSON tavily/firecrawl, POST+form ddgs) → `DoWithRetry(ctx, client, req, DefaultRetryOptions())` → non-200 → `NewHTTPStatusError` (body discarded, size kept) → `json.Decode` → map to `core.SearchResult`/`ExtractResult` w/ Provider tag + 300-char snippet trunc. ddgs diverges: reads HTML, regex-extracts, treats 202 as a locally-built sanitized rate-limit error (documented at `ddgs.go:69-78` because `safeerr.Message` unwraps to `HTTPStatusError.Error()`). scrapling diverges: no HTTP, shells out to Python with per-call timeout. Errors render through `safeerr.Message` for redaction.
+**Data flow.** Wiring: `app.go:53-94` constructs each provider (real w/ `WithAPIKey` if env key present, else `mock.NewUnavailable` for brave/tavily/firecrawl; ddgs, wikipedia, arxiv (keyless search), scrapling, and httpfetch (keyless extract backstop) always registered — wikipedia/arxiv carry circuit breakers since they are routed before the ddgs fallback). `bench.go:131-138` builds a parallel map of all providers. `core.Router`/`Service` select by Task+Capability then call Search/Extract. Each network adapter: guard missing key → build request (GET brave, POST+JSON tavily/firecrawl, POST+form ddgs) → `DoWithRetry(ctx, client, req, DefaultRetryOptions())` → non-200 → `NewHTTPStatusError` (body discarded, size kept) → `json.Decode` → map to `core.SearchResult`/`ExtractResult` w/ Provider tag + 300-char snippet trunc. ddgs diverges: reads HTML, regex-extracts, treats 202 as a locally-built sanitized rate-limit error (documented at `ddgs.go:69-78` because `safeerr.Message` unwraps to `HTTPStatusError.Error()`). scrapling diverges: no HTTP, shells out to Python with per-call timeout. Errors render through `safeerr.Message` for redaction.
 
 ### Area: safety — `internal/safeerr` + `internal/safenet` (error redaction + SSRF URL preflight)
 
@@ -346,21 +349,22 @@ Tracing a search request end to end (extract follows the same shape with an extr
 
 ## Setup-writer subsystem
 
-`nole setup` (`setup.go:39`) registers Nole as an MCP server across nine platforms (Claude is instruction-only, so eight write a file). Each writer merges only the `nole` entry into the agent's native user-scope config, preserving unknown sibling fields/comments, writing atomically via `atomicWriteFile` (`setup.go:936`) with a `.bak` backup and `configWriteMode` (`setup.go:927`) permission preservation.
+`nole setup` (`setup.go:39`) registers Nole as an MCP server across ten platforms (Claude is instruction-only, so nine write a file). A `configure(name, fn)` helper runs each file-writer, reporting success/failure; a failed requested agent makes the command exit non-zero. Each writer merges only the `nole` entry into the agent's native user-scope config, preserving unknown sibling fields/comments, writing atomically via `atomicWriteFile` (`setup.go:1103`) with a `.bak` backup and `configWriteMode` (`setup.go:1094`) permission preservation.
 
 | Platform | Config path family | Serialization | Writer anchor | Notes |
 |---|---|---|---|---|
-| Claude | Managed by Claude Code CLI (no file written) | n/a (CLI command printed) | `printClaudeInstructions` `internal/cli/setup.go:224` | Instruction-only; prints `claude mcp add nole -s user -- ...`; not counted in configured total. |
-| Cursor | Cursor user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:606` | Shared with Windsurf/Gemini; preserves unknown server fields via RawMessage map, replaces only `nole`. |
-| Windsurf | Windsurf user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:606` | Same shared JSON writer as Cursor. |
-| Codex | Codex TOML config | TOML | `writeCodexConfigPath` `internal/cli/setup.go:640` | Hand-rolled `[mcp_servers.nole]` table via `upsertCodexTomlTable`/`codexMCPServerBlock`; embeds `/bin/sh -lc 'set -a; . .env; exec nole mcp'` unless wrapper set. |
-| OpenCode | OpenCode JSON config (`mcp` key) | JSON | `writeOpenCodeConfigPath` `internal/cli/setup.go:734` | `{type:local, command:[bin,mcp], enabled, environment}` shape (`openCodeEntry`). |
-| Kimi | Kimi JSON config (`mcpServers` key) | JSON | `writeKimiConfigPath` `internal/cli/setup.go:807` | `{command}` in wrapper mode or `{command,args}` bare (`kimiEntryRaw`), matching `kimi mcp add` output. |
-| Hermes | Hermes YAML config (`mcp_servers.nole`) | YAML (`yaml.Node` tree) | `writeHermesConfigPath` `internal/cli/setup.go:273` | Comment-preserving via `yamlMappingUpsert`; `upsertHermesNoleServer` sets command/args + default timeout=120/connect_timeout=60 + tools policy. |
-| Gemini | `~/.gemini/settings.json` (`mcpServers` object keyed by name) | JSON | `writeGeminiConfig` `internal/cli/setup.go:449` | Delegates to `writeMCPJSONConfig` (same shape as Cursor). Status `repo-tested`; see `docs/CLIENTS/gemini.md`. |
-| Grok | `~/.grok/user-settings.json` (`mcp.servers` array keyed by `id`) | JSON | `writeGrokConfig` `internal/cli/setup.go:470` | Array upsert-by-`id` via `upsertGrokNoleServer`, preserving other servers + unknown fields. Status `repo-tested`; see `docs/CLIENTS/grok.md`. |
+| Claude | Managed by Claude Code CLI (no file written) | n/a (CLI command printed) | `printClaudeInstructions` `internal/cli/setup.go:215` | Instruction-only; prints `claude mcp add nole -s user -- ...`; not counted in configured total. |
+| Cursor | Cursor user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:740` | Shared with Windsurf/Gemini; preserves unknown server fields via RawMessage map, replaces only `nole`. |
+| Windsurf | Windsurf user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:740` | Same shared JSON writer as Cursor. |
+| Codex | Codex TOML config | TOML | `writeCodexConfigPath` `internal/cli/setup.go:774` | Hand-rolled `[mcp_servers.nole]` table via `upsertCodexTomlTable`/`codexMCPServerBlock`; embeds `/bin/sh -lc 'set -a; . .env; exec nole mcp'` unless wrapper set. |
+| OpenCode | OpenCode JSON config (`mcp` key) | JSON | `writeOpenCodeConfigPath` `internal/cli/setup.go:901` | `{type:local, command:[bin,mcp], enabled, environment}` shape (`openCodeEntry`). |
+| Kimi | Kimi JSON config (`mcpServers` key) | JSON | `writeKimiConfigPath` `internal/cli/setup.go:974` | `{command}` in wrapper mode or `{command,args}` bare (`kimiEntryRaw`), matching `kimi mcp add` output. |
+| Hermes | Hermes YAML config (`mcp_servers.nole`) | YAML (`yaml.Node` tree) | `writeHermesConfigPath` `internal/cli/setup.go:264` | Comment-preserving via `yamlMappingUpsert`; `upsertHermesNoleServer` sets command/args + default timeout=120/connect_timeout=60 + tools policy. |
+| Gemini | `~/.gemini/settings.json` (`mcpServers` object keyed by name) | JSON | `writeGeminiConfig` `internal/cli/setup.go:440` | Delegates to `writeMCPJSONConfig` (same shape as Cursor). Status `repo-tested`; see `docs/CLIENTS/gemini.md`. |
+| Grok (superagent) | `~/.grok/user-settings.json` (`mcp.servers` array keyed by `id`) | JSON | `writeGrokConfig` `internal/cli/setup.go:461` | `--grok`; targets `superagent-ai/grok-cli`. Array upsert-by-`id` via `upsertGrokNoleServer`, preserving other servers + unknown fields. Status `repo-tested`; see `docs/CLIENTS/grok.md`. |
+| Grok Build (xAI) | `~/.grok/config.toml` (`[mcp_servers.nole]`) | TOML | `writeGrokBuildConfig` `internal/cli/setup.go:590` | `--grok-build`; targets xAI's Grok Build TUI (a different product from the superagent row). Reuses `upsertCodexTomlTable` via `grokBuildMCPServerBlock`; preserves a user-set `enabled=false`; refuses to overwrite a customized entry (sub-table / extra key). Status `verified`; see `docs/CLIENTS/grok.md`. |
 
-> **Update (this release):** Gemini and Grok — listed as Phase-2 targets when this map was first written — now have implemented, tested setup writers (rows above). Per-symbol anchors elsewhere in this Phase-1 map are point-in-time (see the note at the top); verify before relying on them. See `docs/RESEARCH-FINDINGS.md` and the CHANGELOG.
+> **Map maintenance note.** This is a point-in-time Phase-1 map. Per-symbol file:line anchors drift as code changes (re-verify before relying on them — see the note at the top of this doc). The setup-writer roster above was last reconciled at v1.6.1, when `--grok-build` (xAI Grok Build TUI) was added alongside the existing `--grok` (superagent). See `docs/CLIENTS/` and the CHANGELOG for current client status.
 
 Optional `--local-extract` (`setupLocalExtract` `setup_local_extract.go:26`) provisions an isolated Python venv, installs `scrapling[fetchers]`, persists `NOLE_SCRAPLING_PYTHON` to `~/.config/nole/.env`, and emits a 0700 POSIX `/bin/sh` env-sourcing wrapper (`writeMCPWrapper` `setup_local_extract.go:195`) so MCP clients that do not inherit shell env still find provider keys.
 
@@ -371,16 +375,16 @@ Optional `--local-extract` (`setupLocalExtract` `setup_local_extract.go:26`) pro
 ### Internal package import edges
 
 - `main` → `internal/cli`, `internal/safeerr`
-- `internal/cli` (app/composition root) → `internal/core`, `internal/providers/{brave,ddgs,firecrawl,mock,scrapling,tavily}`, `internal/safeerr`
+- `internal/cli` (app/composition root) → `internal/core`, `internal/providers/{arxiv,brave,ddgs,firecrawl,httpfetch,mock,scrapling,tavily,wikipedia}`, `internal/safeerr`
 - `internal/cli` (mcp/serve/http) → `internal/mcpserver`, `internal/core`, `internal/safeerr`
-- `internal/cli` (bench) → `internal/bench`, `internal/core`, `internal/providers/{brave,ddgs,firecrawl,scrapling,tavily}`, `internal/safeerr`
+- `internal/cli` (bench) → `internal/bench`, `internal/core`, `internal/providers/{arxiv,brave,ddgs,firecrawl,httpfetch,scrapling,tavily,wikipedia}`, `internal/safeerr`
 - `internal/mcpserver` → `internal/core`, `internal/version`, `internal/safeerr`, `internal/cli` (HTTP wiring sets `EphemeralCtxKey`; `defaultService`)
 - `internal/core` (service) → `internal/safenet`, intra-package (registry, quota, router, planner, cache, insight, byok_metadata, setup_hints, types, errors)
 - `internal/core` → consumes `internal/providers/providerhttp` indirectly (via `safeerr` / error classification) and the `core.Provider` interface implemented by all provider packages
-- `internal/providers/{brave,ddgs,firecrawl,tavily}` → `internal/core`, `internal/providers/providerhttp`
+- `internal/providers/{arxiv,brave,ddgs,firecrawl,httpfetch,tavily,wikipedia}` → `internal/core`, `internal/providers/providerhttp` (arxiv/httpfetch also use `internal/version` for the User-Agent; httpfetch also uses `internal/safenet` for its dial-time SSRF guard)
 - `internal/providers/scrapling` → `internal/core` (no HTTP; shells to Python)
 - `internal/providers/mock` → `internal/core`
-- `internal/bench` → `internal/core`, `internal/providers/providerhttp` (error classification), `internal/providers/{brave,ddgs,firecrawl,scrapling,tavily}`, `internal/safeerr`
+- `internal/bench` → `internal/core`, `internal/providers/providerhttp` (error classification), `internal/safeerr` (provider instances are injected by `internal/cli/bench.go`, not imported here)
 - `internal/safeerr` → `internal/providers/providerhttp` (special-cases `HTTPStatusError`)
 - `internal/safenet` → stdlib only (`net`, `net/url`)
 - `internal/version` → stdlib only (build-stamped vars; consumed only by `internal/mcpserver`)
