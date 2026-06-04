@@ -512,6 +512,51 @@ func TestArxivErrorEntryDoesNotTripBreaker(t *testing.T) {
 	}
 }
 
+// TestArxivOversizeBodyDoesNotTripBreaker pins the over-cap-on-200 branch: a 200
+// response whose body exceeds MaxSearchResponseBytes is a contract problem (or a
+// hostile/oversized upstream), NOT an outage — ReadAllLimited returns a fatal,
+// size-only error and the provider must record a breaker SUCCESS so the route
+// falls through to wikipedia/DDGS rather than spuriously short-circuiting. With
+// breaker threshold 1, a single wrongful failure would open it, so asserting the
+// breaker stays closed AND the server is hit again proves the success default. It
+// also guards the redaction contract: the error names only the byte cap, never the
+// (16 MiB of) body.
+func TestArxivOversizeBodyDoesNotTripBreaker(t *testing.T) {
+	var hits int32
+	oversize := bytes.Repeat([]byte("x"), int(providerhttp.MaxSearchResponseBytes)+1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/atom+xml")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(oversize)
+	}))
+	defer srv.Close()
+
+	br := providerhttp.NewBreaker(providerhttp.BreakerOptions{Threshold: 1, Cooldown: time.Minute})
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}, breaker: br}
+
+	_, err := p.Search(context.Background(), core.SearchRequest{Query: "x"})
+	if err == nil {
+		t.Fatal("expected an over-cap read error on a >16 MiB 200 body")
+	}
+	if !strings.Contains(err.Error(), "exceeded") {
+		t.Errorf("error should name the byte cap, got: %q", err.Error())
+	}
+	if strings.Contains(err.Error(), strings.Repeat("x", 64)) {
+		t.Fatalf("error leaked response body: %q", err.Error())
+	}
+	if br.IsOpen() {
+		t.Fatal("an over-cap 200 body must NOT trip the breaker (a contract problem, not an outage)")
+	}
+	// Breaker still closed → the next call must reach the server (no short-circuit).
+	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "x"}); err == nil {
+		t.Fatal("expected the over-cap error again on the second call")
+	}
+	if got := atomic.LoadInt32(&hits); got != 2 {
+		t.Fatalf("breaker wrongly short-circuited after an over-cap body: server hit %d times, want 2", got)
+	}
+}
+
 // TestArxivNilBreakerStatus pins that an unbreakered Provider (the bench-map /
 // New() case) reports empty breaker fields and stays available — the nil-safe path
 // the rest of the suite relies on.
