@@ -1,8 +1,10 @@
 # Grok CLI client
 
-Status: repo-tested. The `nole setup --grok` writer and its config-merge behavior are covered by repo tests; the real Grok CLI was **not** launched in this environment, so live tool visibility has not been observed. Do not upgrade to `verified` without the live evidence described below.
+Status: repo-tested. The `nole setup --grok` writer and its config-merge behavior are covered by repo tests; the targeted `superagent-ai/grok-cli` was **not** installed on the 2026-06-04 verification host, so its live tool visibility has not been observed. (That host had a *different* product — xAI's "Grok Build TUI" — see the note below; Nólë's MCP server connected to it cleanly, but via a config Nólë does not write.) Do not upgrade to `verified` without the live evidence described below.
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Grok CLI (`@vibe-kit/grok-cli` / `grok-dev`, repo `superagent-ai/grok-cli`) can use Nólë through MCP stdio by launching `nole mcp` (or an env-sourcing wrapper around it). Grok CLI reads MCP servers from `~/.grok/user-settings.json`; it does not expose a dedicated `grok mcp add` command, so servers are added via Nólë's writer, the in-TUI `/mcps` command, or by editing the JSON.
+Nólë is a free, local web search router for AI agents and coding CLI tools. This page documents **`superagent-ai/grok-cli`** (`@vibe-kit/grok-cli` / `grok-dev`), which reads MCP servers from `~/.grok/user-settings.json` and is what `nole setup --grok` writes. It can use Nólë through MCP stdio by launching `nole mcp` (or an env-sourcing wrapper around it). At the time the writer was pinned, `superagent-ai/grok-cli` did not expose a dedicated `grok mcp add` command, so servers are added via Nólë's writer, the in-TUI `/mcps` command, or by editing the JSON.
+
+> **Two different `grok` CLIs.** There is also xAI's **"Grok Build TUI"** (a distinct Rust product, e.g. `grok 0.2.20`), which reads `~/.grok/config.toml` (`[mcp_servers.<name>]`, TOML — **not** `user-settings.json`) and **does** have a full `grok mcp add/list/remove/doctor` manager. `nole setup --grok` does **not** write that TOML file, so its output is ignored by the Grok Build TUI (`grok mcp list` → `No MCP servers configured`). Nólë's MCP server itself works fine with the Grok Build TUI when configured via its own `grok mcp add` (verified 2026-06-04: `grok mcp doctor` reported handshake OK + 6 tools discovered). Whether to add a `config.toml` writer for the Grok Build TUI is tracked in **issue #64**. To wire Nólë into the Grok Build TUI today, run `grok mcp add nole --command /absolute/path/to/nole --args mcp` (or point it at the env-sourcing wrapper).
 
 ## What is repo-tested
 
@@ -12,7 +14,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Gr
 
 ## What is NOT verified here
 
-- The real Grok CLI was not installed/launched, so its in-TUI `/mcps` view showing Nólë tools connected was not observed. Status stays `repo-tested` until that live check is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md`.
+- `superagent-ai/grok-cli` was not installed on the 2026-06-04 host, so its in-TUI `/mcps` view showing Nólë tools connected was not observed. Status stays `repo-tested` until that live check is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md`. (The xAI "Grok Build TUI" that *was* present is a different product Nólë's `--grok` writer does not target; its clean `grok mcp doctor` handshake + 6-tool discovery is recorded in `LIVE-VERIFICATION.md`, and the writer-target gap is tracked in issue #64.)
 
 ## Setup
 

@@ -1,6 +1,6 @@
 # Gemini CLI client
 
-Status: repo-tested. The `nole setup --gemini` writer and its config-merge behavior are covered by repo tests; the real Gemini CLI was **not** launched in this environment, so live tool visibility has not been observed. Do not upgrade to `verified` without the live evidence described below.
+Status: repo-tested. The `nole setup --gemini` writer and its config-merge behavior are covered by repo tests, **and a 2026-06-04 live run (Gemini CLI 0.40.1) confirmed the writer's path + schema match the client's own `gemini mcp add` output** (see `docs/CLIENTS/LIVE-VERIFICATION.md`). It stays `repo-tested` (not `verified`) because Gemini 0.40.1 offers no non-interactive way to observe the client enumerating Nólë's tools — `gemini mcp list` prints nothing (even for the client's own added servers) and there is no `gemini mcp test`/`doctor`. Upgrade to `verified` only once in-client tool visibility (e.g. a tool-dispatch turn) is observed and recorded.
 
 Nólë is a free, local web search router for AI agents and coding CLI tools. Gemini CLI (`@google/gemini-cli`, repo `google-gemini/gemini-cli`) can use Nólë through MCP stdio by launching `nole mcp` (or an env-sourcing wrapper around it). Gemini CLI has a first-class MCP manager (`gemini mcp add/list/remove/enable/disable`), and it also reads MCP servers from `~/.gemini/settings.json`.
 
@@ -12,7 +12,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. Ge
 
 ## What is NOT verified here
 
-- The real Gemini CLI was not installed/launched, so `/mcp list` showing Nólë tools as `Connected` was not observed. Status stays `repo-tested` until that live check is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md`.
+- In-client tool visibility was **not observed**. In the 2026-06-04 run, Gemini CLI 0.40.1's `gemini mcp list` printed nothing to stdout/stderr (exit 0) — even for a server added by the client's own `gemini mcp add` — and 0.40.1 has no `gemini mcp test`/`doctor` connectivity probe. Confirming the client enumerates Nólë's tools would require a model turn (Gemini auth + quota), which was not exercised. Status stays `repo-tested`; the writer-parity finding is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md`. Nólë's advertised tool set (6 tools) is independently confirmed there via `nole doctor --mcp` and a real MCP handshake.
 
 ## Setup
 

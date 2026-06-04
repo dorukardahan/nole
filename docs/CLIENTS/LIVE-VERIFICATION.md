@@ -1,8 +1,8 @@
 # Live client verification evidence (M11)
 
-Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs, plus a 2026-05-28 OpenClaw compatibility re-check and Hermes v2026.5.28 source compatibility review.
+Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs, plus a 2026-05-28 OpenClaw compatibility re-check and Hermes v2026.5.28 source compatibility review, plus a 2026-06-04 Gemini CLI + Grok CLI follow-up run.
 Run kind: local maintainer run, real clients launched.
-Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up); 2026-05-28 (OpenClaw 2026.5.27 compatibility re-check); 2026-05-28 (Hermes Agent v2026.5.28 source compatibility review).
+Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up); 2026-05-28 (OpenClaw 2026.5.27 compatibility re-check); 2026-05-28 (Hermes Agent v2026.5.28 source compatibility review); 2026-06-04 (Gemini CLI 0.40.1 + Grok CLI follow-up run).
 Host description: macOS arm64 workstation with Go toolchain installed for M11/Cursor, and Ubuntu x86_64 VPS hosts with OpenClaw or Hermes Agent installed for the follow-up runs.
 Cost policy: free-first (default; no policy change during the run).
 Live provider calls: low-limit keyless smoke searches via DDGS only; each follow-up run records its own single search where applicable.
@@ -217,6 +217,32 @@ In addition, a single MCP stdio JSON-RPC round trip was performed against the wr
 - Verification still required before upgrading this status to v0.15 live-verified: run a disposable Hermes v0.15 profile, `hermes mcp test nole`, confirm tools visible, dispatch `mcp_nole_provider_status` and one low-limit search, then record sanitized evidence.
 - Secret-safety: this review records only public source/config shapes and no provider key values, bearer tokens, auth headers, raw provider payloads, private URLs, private paths or chat transcripts.
 
+### Gemini CLI (2026-06-04 follow-up run)
+
+- Status: **repo-tested (not upgraded)** — real CLI launched and the setup-writer output confirmed against the client's own MCP manager, but in-client tool visibility was **not observable non-interactively** in this CLI version.
+- Client version: Gemini CLI `0.40.1` (`google-gemini/gemini-cli`).
+- Run isolation: an isolated throwaway `HOME` was used so the maintainer's real `~/.gemini` was never modified; the temp profile was deleted after the run.
+- Writer parity (confirmed live): `nole setup --gemini` writes `~/.gemini/settings.json` with a top-level `mcpServers` object keyed by name. Running the client's **own** `gemini mcp add --scope user <name> …` against the same profile wrote into the **same file with the same `mcpServers` object shape** (both the Nólë-written `nole` entry and the client-written probe entry coexisted in one valid file). So the writer's path + schema are correct against the installed Gemini CLI.
+- Why not upgraded to `verified`: in `0.40.1`, `gemini mcp list` prints **nothing** to stdout or stderr (exit 0) even for the client's own freshly-added server, and there is no `gemini mcp test`/`doctor` connectivity probe. So the client enumerating Nólë's tools could not be observed without a model turn (which needs Gemini auth + would consume the user's quota). Tool visibility was therefore not observed *in-client*. Nólë's advertised tool set is independently confirmed below (`nole doctor --mcp` + the Grok `mcp doctor` handshake): 6 tools — `search`, `research`, `provider_status`, `budget_status`, `extract`, `search_and_extract`.
+- Smoke search: not run through Gemini (a tool-dispatch turn needs model auth; not exercised to avoid using the user's credentials/quota).
+- Secret-safety: the written `~/.gemini/settings.json` `nole` entry contains only `command` + `args:["mcp"]` — no key values, tokens, or headers. No secrets were printed by the client or Nólë.
+
+### Grok CLI (2026-06-04 follow-up run)
+
+- Status: **repo-tested (not upgraded)** for the documented `superagent-ai/grok-cli`; that client was **not installed** on this host. The `grok` that *is* installed is a **different product** (see below), which Nólë's MCP server connected to cleanly.
+- Important finding — two distinct `grok` CLIs (tracked in issue **#64**):
+  - `nole setup --grok` targets **`superagent-ai/grok-cli`** (`@vibe-kit/grok-cli`), which reads `~/.grok/user-settings.json` as `{ "mcp": { "servers": [ {id,…} ] } }` (a JSON array). That CLI was not present here, so the documented client stays `repo-tested`.
+  - The installed `grok` is **xAI's "Grok Build TUI" `0.2.20`** (`~/.grok/bin/grok`), which reads **`~/.grok/config.toml`** (`[mcp_servers.<name>]`, TOML) and has a full MCP manager: `grok mcp add/list/remove/doctor`. It does **not** read the JSON file Nólë's `--grok` writer produces — `grok mcp list` reported `No MCP servers configured` after `nole setup --grok`.
+- Nólë MCP works with the installed xAI Grok Build TUI (via its own config): configured through `grok mcp add nole --command /absolute/path/to/nole --args mcp` (writes `~/.grok/config.toml`), `grok mcp doctor nole --json` reported all checks passing — `command found`, `server started`, `handshake OK (protocol 2025-06-18)`, **`6 tools discovered`**, `healthy: true`. Its config-source scan also reads `~/.claude.json` and project `.mcp.json`.
+- Run isolation: an isolated throwaway `HOME` was used; the maintainer's real `~/.grok` was never modified; the temp profile was deleted after the run.
+- Why the documented client is not upgraded: the `superagent-ai/grok-cli` Nólë's writer targets is not installed here, so its in-client tool visibility was not observed. The installed xAI tool is a different product Nólë does not currently write config for (issue #64 tracks whether to add a `config.toml` writer).
+- Smoke search: not run through Grok (a tool-dispatch turn needs Grok login — `grok mcp doctor` reported `grok.com: not logged in` for the throwaway profile — and would consume the user's account; the `mcp doctor` handshake + 6-tool discovery is the recorded in-client evidence for the installed tool).
+- Secret-safety: the written `~/.grok/config.toml` `nole` entry contains only `command` + `args=["mcp"]` + `enabled=true` — no key values, tokens, or headers. No secrets were printed.
+
+### Nólë MCP tool surface confirmed in this run
+
+`nole doctor --mcp` on the released v1.5.0 binary reported `protocol: initialize/tools/list` and `tools: [budget_status extract provider_status research search search_and_extract]` (6 tools) — matching the "6 tools discovered" the Grok `mcp doctor` handshake reported. This is the surface expanded from the 4 tools recorded in the M11 run, after the v0.6.0 (`research`, `search_and_extract`) and v1.3.0 (always-on keyless `extract`) additions. The same `nole doctor --mcp` also listed the keyless `arxiv` search provider added in v1.5.0 (`[search, status]`, `keyless-free`).
+
 ## Pending clients on these hosts
 
 These clients remain `generic/unverified` per the matrix in `docs/CLIENTS/README.md`. Each requires its own host-side test before status upgrade:
@@ -226,6 +252,8 @@ These clients remain `generic/unverified` per the matrix in `docs/CLIENTS/README
 ## Findings and follow-ups
 
 Earlier M11 setup-writer follow-ups were addressed in follow-up PRs. Priority named-client live coverage is now recorded for Claude Code, Codex CLI, OpenCode, Kimi, Cursor, OpenClaw and Hermes Agent. Generic MCP clients remain template-only until a specific client/runtime is named and tested.
+
+The 2026-06-04 Gemini CLI + Grok CLI run launched both real CLIs but did not upgrade either to `verified`: Gemini `0.40.1` confirmed Nólë's writer matches the client's own `gemini mcp add` output (same path + schema) but offers no non-interactive way to observe in-client tool visibility (`gemini mcp list` is silent; no `mcp test`/`doctor`); and the installed `grok` turned out to be xAI's "Grok Build TUI" `0.2.20` (TOML `~/.grok/config.toml`), a different product from the `superagent-ai/grok-cli` that `nole setup --grok` targets (JSON `~/.grok/user-settings.json`). Nólë's MCP server connected cleanly to the installed Grok Build TUI (`grok mcp doctor`: handshake OK, 6 tools), but via a config Nólë does not write. Follow-up: issue **#64** tracks whether to add a `config.toml` writer for xAI's Grok Build TUI.
 
 ## Public-safety statement
 
