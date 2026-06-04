@@ -44,10 +44,10 @@ func TestWriteGrokBuildConfigWrapperShape(t *testing.T) {
 	}
 }
 
-// TestWriteGrokBuildConfigPreservesSiblingsAndRoot guards the wholesale-table
-// upsert: an existing config.toml with a root key and a sibling [mcp_servers.other]
-// table must survive; only the [mcp_servers.nole] table is (re)written, and its old
-// contents (including a stale [mcp_servers.nole.env] sub-table) are dropped.
+// TestWriteGrokBuildConfigPreservesSiblingsAndRoot guards the table upsert: an
+// existing config.toml with a root key and a sibling [mcp_servers.other] table must
+// survive; only the [mcp_servers.nole] table is (re)written (its stale launch keys
+// replaced). (A customized nole entry is refused instead — see the refuse test.)
 func TestWriteGrokBuildConfigPreservesSiblingsAndRoot(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	existing := `model = "grok-4"
@@ -61,9 +61,6 @@ enabled = true
 command = "/old/nole"
 args = ["mcp"]
 enabled = true
-
-[mcp_servers.nole.env]
-STALE = "value"
 `
 	if err := os.WriteFile(path, []byte(existing), 0600); err != nil {
 		t.Fatal(err)
@@ -78,11 +75,55 @@ STALE = "value"
 	if !strings.Contains(got, "[mcp_servers.other]") || !strings.Contains(got, `/usr/bin/other`) {
 		t.Errorf("sibling MCP server not preserved:\n%s", got)
 	}
-	if strings.Contains(got, "/old/nole") || strings.Contains(got, "[mcp_servers.nole.env]") || strings.Contains(got, "STALE") {
-		t.Errorf("stale nole table/sub-table not replaced:\n%s", got)
+	if strings.Contains(got, "/old/nole") {
+		t.Errorf("stale nole command not replaced:\n%s", got)
 	}
 	if !strings.Contains(got, `command = "/usr/local/bin/nole"`) {
 		t.Errorf("new nole command missing:\n%s", got)
+	}
+}
+
+// TestWriteGrokBuildConfigRefusesToClobber pins the AGENTS.md preserve-config
+// contract: a nole entry with user-owned content the writer does not manage (a
+// [mcp_servers.nole.*] sub-table, or an extra direct key) must NOT be silently
+// dropped. The writer refuses with an error and leaves the file byte-for-byte
+// untouched (no write, no backup).
+func TestWriteGrokBuildConfigRefusesToClobber(t *testing.T) {
+	cases := map[string]string{
+		"sub-table": `[mcp_servers.nole]
+command = "/old/nole"
+args = ["mcp"]
+enabled = false
+
+[mcp_servers.nole.env]
+NOLE_SECRET_OVERRIDE = "keep me"
+`,
+		"extra-direct-key": `[mcp_servers.nole]
+command = "/old/nole"
+args = ["mcp"]
+timeout = 30
+`,
+	}
+	for name, existing := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(path, []byte(existing), 0600); err != nil {
+				t.Fatal(err)
+			}
+			err := writeGrokBuildConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"})
+			if err == nil {
+				t.Fatal("expected a refusal error when the nole entry has unmanaged content")
+			}
+			if !strings.Contains(err.Error(), "refusing to overwrite") {
+				t.Errorf("unexpected error text: %v", err)
+			}
+			if got := readFileString(t, path); got != existing {
+				t.Fatalf("file must be left untouched on refusal:\n%s", got)
+			}
+			if _, statErr := os.Stat(path + ".bak"); statErr == nil {
+				t.Fatal("no backup should be written on refusal")
+			}
+		})
 	}
 }
 

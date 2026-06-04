@@ -626,6 +626,18 @@ func writeGrokBuildConfigPath(path string, spec launchSpec) error {
 	if err != nil {
 		return err
 	}
+	// Refuse to clobber a customized nole entry BEFORE touching anything (no
+	// backup, no write). The line-based table upsert replaces the whole
+	// [mcp_servers.nole] table, which would silently drop a user-owned
+	// [mcp_servers.nole.*] sub-table (e.g. env overrides for keyed providers) or a
+	// direct key we do not manage — AGENTS.md requires preserving existing config +
+	// unknown fields, so we leave the file untouched and tell the user instead. The
+	// common cases — a fresh config, our own prior output, or a `grok mcp add`
+	// entry — carry only the managed launch keys (command/args/enabled) and proceed
+	// normally and idempotently.
+	if conflict, has := grokBuildNoleHasCustomizations(string(existing)); has {
+		return fmt.Errorf("refusing to overwrite %s: the existing [mcp_servers.nole] entry has %s, which `nole setup --grok-build` does not manage and would drop. Update its command/args by hand, or remove that customization and re-run", path, conflict)
+	}
 	if exists {
 		if err := writeBackup(path, existing, mode); err != nil {
 			return err
@@ -633,13 +645,46 @@ func writeGrokBuildConfigPath(path string, spec launchSpec) error {
 	}
 	// Preserve a user-set enabled=false across re-runs (default true on first
 	// write), matching the superagent Grok writer's preserve-enabled intent. The
-	// upsert below replaces the whole [mcp_servers.nole] table, so the prior value
-	// must be read before it is dropped. Other tables (sibling MCP servers) and
-	// root keys are preserved by the upsert; a user-added [mcp_servers.nole.env]
-	// sub-table is replaced along with the table (documented in docs/CLIENTS/grok.md).
+	// upsert replaces the whole [mcp_servers.nole] table, so the prior value is read
+	// first; sibling MCP servers and root keys are preserved by the upsert. (A
+	// customized nole entry never reaches here — it is refused above.)
 	enabled := existingGrokBuildEnabled(string(existing))
 	content := upsertCodexTomlTable(string(existing), "mcp_servers.nole", grokBuildMCPServerBlock(spec, enabled))
 	return atomicWriteFile(path, []byte(content), configWriteMode(exists, mode))
+}
+
+// grokBuildNoleHasCustomizations reports whether an existing [mcp_servers.nole]
+// entry carries content beyond the launch keys this writer manages
+// (command/args/enabled) — namely a [mcp_servers.nole.*] sub-table or any other
+// direct key. The returned phrase names the conflict for the refusal message.
+// Marker/blank/comment lines and the managed keys are ignored, so our own prior
+// output and a plain `grok mcp add` entry report no conflict (the writer proceeds
+// idempotently); only a hand-customized entry is protected from silent loss.
+func grokBuildNoleHasCustomizations(existing string) (string, bool) {
+	inTable := false
+	for _, line := range strings.Split(existing, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if name, ok := tomlTableHeader(trimmed); ok {
+			inTable = name == "mcp_servers.nole"
+			if !inTable && strings.HasPrefix(name, "mcp_servers.nole.") {
+				return "a [" + name + "] sub-table", true
+			}
+			continue
+		}
+		if !inTable || trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		key, _, ok := strings.Cut(trimmed, "=")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(key) {
+		case "command", "args", "enabled":
+		default:
+			return fmt.Sprintf("a custom %q key", strings.TrimSpace(key)), true
+		}
+	}
+	return "", false
 }
 
 // grokBuildMCPServerBlock renders the [mcp_servers.nole] TOML table for the Grok

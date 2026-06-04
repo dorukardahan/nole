@@ -22,12 +22,15 @@ minor — a new setup writer + flag; no existing flag/command/behaviour changes.
   (issue #64). Both flags now coexist; `--grok` is unchanged. The setup help and the
   "specify at least one agent" message disambiguate the two products.
   - Reuses the same line-based TOML table upsert as the Codex writer: re-running
-    rewrites the `[mcp_servers.nole]` table while **preserving sibling MCP servers and
-    root keys**; a user-set `enabled = false` on the nole entry is **preserved** across
-    re-runs (a user-added `[mcp_servers.nole.env]` sub-table on the nole entry is
-    replaced — re-add it or use a wrapper for env). Default form is the bare binary
-    (`command`/`args = ["mcp"]`, matching the other writers); `--mcp-wrapper` switches
-    to the env-sourcing wrapper.
+    rewrites the `[mcp_servers.nole]` launch keys while **preserving sibling MCP
+    servers and root keys**, and a user-set `enabled = false` is **preserved**. If the
+    nole entry has been hand-customized with content the writer does not manage (a
+    `[mcp_servers.nole.*]` sub-table such as `[mcp_servers.nole.env]`, or an extra
+    direct key), the writer **refuses to overwrite it** (leaves the file untouched
+    with a clear error) rather than silently dropping the user's settings. Annotated
+    TOML headers (`[mcp_servers.nole] # note`) and inline-commented `enabled` values
+    are handled. Default form is the bare binary (`command`/`args = ["mcp"]`, matching
+    the other writers); `--mcp-wrapper` switches to the env-sourcing wrapper.
 - **Grok Build TUI is now `verified` (CLI MCP manager).** Verified 2026-06-04 on
   `grok 0.2.20`: `nole setup --grok-build`'s output was read by `grok mcp doctor` —
   `handshake OK (protocol 2025-06-18)`, 6 tools discovered, `healthy`. The
