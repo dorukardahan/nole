@@ -13,6 +13,7 @@ import (
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/nolelog"
+	"github.com/dorukardahan/nole/internal/providers/arxiv"
 	"github.com/dorukardahan/nole/internal/providers/brave"
 	"github.com/dorukardahan/nole/internal/providers/ddgs"
 	"github.com/dorukardahan/nole/internal/providers/firecrawl"
@@ -78,6 +79,11 @@ func defaultService() *core.Service {
 	// not stall those routes on every request).
 	_ = registry.Register(wikipedia.New(wikipedia.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
 
+	// arXiv — keyless free, reinforces the academic route with primary-source
+	// scholarly preprints. Breakered for the same reason as Wikipedia (routed
+	// before the DDGS fallback on academic).
+	_ = registry.Register(arxiv.New(arxiv.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
+
 	// Scrapling — local Python extractor, keyless/free when installed
 	_ = registry.Register(scrapling.New())
 
@@ -109,6 +115,7 @@ func defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey string) []core.QuotaE
 		providerQuotaEntry("firecrawl", firecrawlKey != ""),
 		{Provider: "ddgs", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 		{Provider: "wikipedia", CostClass: core.CostClassKeylessFree, KeylessFree: true},
+		{Provider: "arxiv", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 		{Provider: "scrapling", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 		{Provider: "httpfetch", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 	}

@@ -126,3 +126,24 @@ func TestRoutePlanCommandAcceptsWikipediaOverride(t *testing.T) {
 		t.Fatalf("expected wikipedia override route, got %#v", got.Routes)
 	}
 }
+
+func TestRoutePlanCommandAcceptsArxivOverride(t *testing.T) {
+	// arxiv is a registered, routed SEARCH provider (academic), so the planner
+	// override allowlist must accept it — mirroring the wikipedia regression guard.
+	// (Contrast httpfetch, which is extract-only and correctly rejected.)
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"route-plan", "retrieval augmented generation survey", "--providers", "arxiv,ddgs", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("route-plan with arxiv override failed: %v", err)
+	}
+	var got core.RoutePlan
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("route-plan output is not JSON: %v\n%s", err, out.String())
+	}
+	if len(got.Routes) == 0 || len(got.Routes[0].Route) != 2 || got.Routes[0].Route[0] != "arxiv" || got.Routes[0].Route[1] != "ddgs" {
+		t.Fatalf("expected arxiv override route, got %#v", got.Routes)
+	}
+}

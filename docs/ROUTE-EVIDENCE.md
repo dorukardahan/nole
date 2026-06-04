@@ -158,3 +158,25 @@ being keyless it is always available without consuming any BYOK free-tier quota.
 `ddgs` remains the final, last-resort entry on every search route (including
 these three). Wikipedia was deliberately NOT added to `general` or any other
 route, so it never becomes a general fallback.
+
+## arXiv insertion (v1.5.0)
+
+The keyless `arxiv` provider (arXiv Atom query API,
+`https://export.arxiv.org/api/query`) was added to the `academic` route ONLY,
+positioned immediately before `wikipedia` — after the keyed providers, before the
+last-resort `ddgs` fallback. So an academic query reaches primary-source preprints
+first, then the encyclopedic overview, then the general backstop.
+
+Like the Wikipedia insertion, this is a **capability-based extension, not a
+measured re-ranking**: arXiv was not part of the 2026-05-26 live run above, so no
+benchmark score is claimed for it, and the existing providers' relative order is
+unchanged. The rationale is coverage, not a quality judgement (Nólë never judges
+quality): arXiv is the canonical primary source for scholarly preprints
+(CS/physics/math/stat/econ/q-bio/q-fin), a strong keyless complement for
+`academic` queries, and being keyless it is always available without consuming any
+BYOK free-tier quota. An empty or query-error response from arXiv falls through to
+`wikipedia` then `ddgs` (the service treats an empty result set as a fall-through),
+so a non-STEM academic query is never stranded. `ddgs` remains the final,
+last-resort entry on the route. arXiv was deliberately NOT added to `research`,
+`general`, or any other route, so it never becomes a general fallback and never
+dilutes the deep-research fan-out.

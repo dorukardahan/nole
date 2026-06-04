@@ -145,7 +145,7 @@ func TestDefaultRouteMatrixMatchesLatestTaskBenchmarkEvidence(t *testing.T) {
 		TaskGeneral:   {"brave", "tavily", "firecrawl", "ddgs"},
 		TaskNews:      {"firecrawl", "tavily", "brave", "ddgs"},
 		TaskDocs:      {"firecrawl", "brave", "tavily", "ddgs"},
-		TaskAcademic:  {"tavily", "firecrawl", "brave", "wikipedia", "ddgs"},
+		TaskAcademic:  {"tavily", "firecrawl", "brave", "arxiv", "wikipedia", "ddgs"},
 		TaskFactcheck: {"firecrawl", "tavily", "brave", "wikipedia", "ddgs"},
 		TaskSemantic:  {"tavily", "brave", "firecrawl", "ddgs"},
 		TaskCode:      {"tavily", "firecrawl", "brave", "ddgs"},

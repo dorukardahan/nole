@@ -13,6 +13,7 @@ Default policy is `free-first` and each supported BYOK provider is classified as
 | Firecrawl | `FIRECRAWL_API_KEY` | 250 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Free plan = 1000 credits/month, reset monthly with no rollover, no card; Nólë seeds a 250-call floor because search is 2 credits per 10 results, so a 20-result search (Nólë permits up to 20) costs 4 credits while the ledger debits 1. Verify the dashboard balance matches Nólë's local counter before high-volume use. |
 | DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
 | Wikipedia/MediaWiki | none | Keyless encyclopedic search, no counter | n/a | Reinforces `factcheck`/`people`/`academic` routing only (not a general fallback). Uses the official MediaWiki Action API with a descriptive `User-Agent` per Wikimedia policy. Keyless does not mean guaranteed availability or unlimited use. |
+| arXiv | none | Keyless academic search, no counter | n/a | Reinforces the `academic` route only (tried before the DDGS backstop; not a general fallback). Uses the keyless arXiv Atom query API (`https://export.arxiv.org/api/query`) with a descriptive `User-Agent`. Keyless does not mean guaranteed availability or unlimited use. |
 | Scrapling | `NOLE_SCRAPLING_PYTHON` | Local keyless extraction fallback, no counter | n/a | Prefer `nole setup --local-extract`, which creates an isolated venv and writes this variable locally. Nólë validates public URLs before calling it, but website terms and robots.txt remain the user's responsibility. |
 | httpfetch | none | Keyless pure-Go extraction backstop, no counter | n/a | Always available, no setup. Last-resort `extract` fallback (after Scrapling and the keyed remotes). Pure stdlib HTTP fetch + HTML-to-text; runs **no JavaScript**, so it is weaker than Scrapling/Firecrawl on SPA/JS-rendered pages. SSRF-preflighted on every redirect hop. Keyless does not mean guaranteed availability or unlimited use. |
 
@@ -249,6 +250,34 @@ Notes:
   slow/down upstream short-circuits fast in a long-lived `serve`/MCP process
   rather than stalling the route on every request.
 
+## arXiv
+
+Use for: keyless academic search reinforcing the `academic` route (tried before
+the DDGS backstop; not a general fallback).
+
+Setup: none. No key, no account.
+
+Notes:
+
+- Backed by the keyless arXiv Atom query API (`https://export.arxiv.org/api/query`,
+  `search_query=all:<query>`). Nólë sends a descriptive `User-Agent` identifying
+  the project; arXiv does not require one, but it is good-citizen practice.
+- Primary-source scholarly **preprints** (CS/physics/math/stat/econ/q-bio/q-fin).
+  Results are passed through in arXiv's native relevance order; `score` stays unset
+  (arXiv exposes no numeric relevance score and Nólë never fabricates one), and a
+  result's `published_at` is the paper's first-version submit time, verbatim.
+- The agent's query is passed through verbatim (Nólë does not parse or rewrite
+  arXiv field operators). A query arXiv rejects comes back as an error entry that
+  is skipped — an honest empty fall-through to Wikipedia/DDGS, never an error.
+- arXiv's Terms of Use ask for at most one request every three seconds on a single
+  connection. Nólë issues exactly one request per search and disables retries for
+  arXiv specifically, so it never fires a rapid second request; a transient failure
+  simply falls through. Because it is routed before the DDGS fallback it carries a
+  circuit breaker (a persistently slow/down upstream, or sustained edge rate-limit,
+  short-circuits fast rather than stalling the route).
+- Keyless does not mean guaranteed availability or unlimited use; respect arXiv's
+  Terms of Use and per-paper licenses.
+
 ## Scrapling
 
 Use for: local keyless URL extraction when configured, with remote extract providers as fallback.
@@ -350,7 +379,7 @@ Nólë exposes cost policy/status in `nole providers --json`, `nole doctor`, MCP
 
 Cost classes:
 
-- `keyless-free`: no provider key required; the DDGS search fallback, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback are current examples.
+- `keyless-free`: no provider key required; the DDGS search fallback, the Wikipedia and arXiv keyless search providers, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback are current examples.
 - `free-tier-BYOK`: a user-keyed provider with a known local free quota tracked in the ledger. Default for keyed Brave / Tavily / Firecrawl.
 - `premium-capable`: a keyed provider that may incur paid usage depending on the user's account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost`: cost cannot be safely classified; fail closed except under explicit `quality-first`.

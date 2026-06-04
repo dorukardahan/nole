@@ -12,11 +12,17 @@ func DefaultRouteMatrix() RouteMatrix {
 		// encyclopedic routes — factcheck/people/academic — placed before "ddgs"
 		// so it is tried before the last-resort general fallback but never
 		// displaces it. It is deliberately NOT in TaskGeneral (that would make it
-		// a general fallback) nor in any other route.
+		// a general fallback) nor in any other route. "arxiv" (keyless arXiv Atom
+		// API) is the academic-only analogue: a primary-source scholarly-preprint
+		// reinforcement on TaskAcademic ONLY, placed just before "wikipedia" (so a
+		// keyless academic query reaches papers first, then the encyclopedic
+		// overview, then ddgs). It is NOT in any other route. Both keyless
+		// reinforcements sit after the keyed remotes and before the ddgs backstop;
+		// an empty/error response from either falls through (see service.go).
 		TaskGeneral:   {"brave", "tavily", "firecrawl", "ddgs"},
 		TaskNews:      {"firecrawl", "tavily", "brave", "ddgs"},
 		TaskDocs:      {"firecrawl", "brave", "tavily", "ddgs"},
-		TaskAcademic:  {"tavily", "firecrawl", "brave", "wikipedia", "ddgs"},
+		TaskAcademic:  {"tavily", "firecrawl", "brave", "arxiv", "wikipedia", "ddgs"},
 		TaskFactcheck: {"firecrawl", "tavily", "brave", "wikipedia", "ddgs"},
 		TaskSemantic:  {"tavily", "brave", "firecrawl", "ddgs"},
 		TaskCode:      {"tavily", "firecrawl", "brave", "ddgs"},
