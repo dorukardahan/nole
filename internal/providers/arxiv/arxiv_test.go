@@ -5,10 +5,12 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -554,6 +556,75 @@ func TestArxivOversizeBodyDoesNotTripBreaker(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&hits); got != 2 {
 		t.Fatalf("breaker wrongly short-circuited after an over-cap body: server hit %d times, want 2", got)
+	}
+}
+
+// TestArxivSerializesConcurrentRequests pins arXiv's single-connection ToU: a
+// Provider with the connection guard never has more than one in-flight HTTP request
+// at a time, even under concurrent academic searches (the long-lived serve/MCP
+// case). Without the guard, Service.Search only coalesces identical cache keys, so
+// distinct concurrent queries would open parallel arXiv connections.
+func TestArxivSerializesConcurrentRequests(t *testing.T) {
+	var inFlight, maxInFlight int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&inFlight, 1)
+		for {
+			m := atomic.LoadInt32(&maxInFlight)
+			if cur <= m || atomic.CompareAndSwapInt32(&maxInFlight, m, cur) {
+				break
+			}
+		}
+		time.Sleep(30 * time.Millisecond) // hold the connection so any overlap is observable
+		atomic.AddInt32(&inFlight, -1)
+		w.Header().Set("Content-Type", "application/atom+xml")
+		_, _ = w.Write([]byte(emptyAtom))
+	}))
+	defer srv.Close()
+
+	// A Provider WITH the single-connection guard (its own sem for test isolation),
+	// distinct queries so Service-level singleflight would not coalesce them.
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}, sem: make(chan struct{}, 1)}
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			_, _ = p.Search(context.Background(), core.SearchRequest{Query: fmt.Sprintf("q%d", n)})
+		}(i)
+	}
+	wg.Wait()
+	if got := atomic.LoadInt32(&maxInFlight); got != 1 {
+		t.Fatalf("arxiv must issue at most ONE concurrent request (single-connection ToU), saw %d in flight", got)
+	}
+}
+
+// TestArxivConnSlotRespectsContext pins that a caller waiting for the single
+// connection slot still observes its own cancellation/deadline (it does not block
+// forever and does not issue a request). We occupy the slot, then a call with an
+// already-cancelled context must bail with context.Canceled and never hit the wire.
+func TestArxivConnSlotRespectsContext(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/atom+xml")
+		_, _ = w.Write([]byte(emptyAtom))
+	}))
+	defer srv.Close()
+
+	p := Provider{httpClient: &http.Client{Transport: redirectTransport{baseURL: srv.URL}}, sem: make(chan struct{}, 1)}
+	p.sem <- struct{}{} // occupy the single connection slot
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := p.Search(ctx, core.SearchRequest{Query: "x"})
+	if err == nil {
+		t.Fatal("expected an error when the slot is occupied and the caller's context is cancelled")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled while waiting for the connection slot, got: %v", err)
+	}
+	if got := atomic.LoadInt32(&hits); got != 0 {
+		t.Fatalf("a caller that gave up waiting for the slot must NOT issue a request, server hit %d times", got)
 	}
 }
 

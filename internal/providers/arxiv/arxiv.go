@@ -45,9 +45,23 @@ const apiBase = "https://export.arxiv.org/api/query"
 // the wikipedia provider.
 var userAgent = "Nole/" + version.Version + " (+https://github.com/dorukardahan/nole)"
 
+// arxivConnSem enforces arXiv's "single connection at a time" Terms of Use
+// (https://info.arxiv.org/help/api/tou.html#rate-limits) PROCESS-WIDE: at most one
+// in-flight arXiv request across every Provider instance in this process. The ToU
+// applies its rate limits "across all machines under your control" and explicitly
+// forbids increasing parallelism to overcome them, so the guard must be shared, not
+// per-instance — two registrations (e.g. the default service + the bench map) must
+// not be able to open two simultaneous connections. Buffered to 1 = a binary
+// semaphore. Every Provider built by New() uses it; tests construct Providers with
+// their own sem (or a nil sem = unguarded) for isolation.
+var arxivConnSem = make(chan struct{}, 1)
+
 type Provider struct {
 	httpClient *http.Client
 	breaker    *providerhttp.Breaker
+	// sem is the single-connection guard (see arxivConnSem). New() wires the
+	// process-wide limiter; a nil sem is a no-op (unguarded), used by tests.
+	sem chan struct{}
 }
 
 type Option func(*Provider)
@@ -60,12 +74,12 @@ type Option func(*Provider)
 // default, e.g. the bench map) leaves behaviour unchanged.
 //
 // arXiv's ToU asks for a single connection at a time (no more than one request
-// every three seconds). Nólë issues exactly one request per logical search and
-// never internally fans out concurrent arXiv requests. Concurrent academic
-// searches in a long-lived process CAN still draw an edge 429 ("Rate exceeded.")
-// that trips this breaker — that is intended, honest backpressure: the route then
-// degrades to wikipedia/DDGS rather than hammering arXiv. Retries are disabled for
-// the same politeness reason (see retryOptions).
+// every three seconds). Concurrent academic searches in a long-lived serve/MCP
+// process are serialized to a single in-flight arXiv connection (see arxivConnSem
+// / acquireConn) so Nólë never opens parallel connections; if arXiv is genuinely
+// down or rate-limiting (edge 429), this breaker short-circuits the academic route
+// to wikipedia/DDGS instead of stalling it on every request. Retries are disabled
+// for the same politeness reason (see retryOptions).
 func WithBreaker(b *providerhttp.Breaker) Option {
 	return func(p *Provider) { p.breaker = b }
 }
@@ -73,11 +87,32 @@ func WithBreaker(b *providerhttp.Breaker) Option {
 func New(opts ...Option) Provider {
 	p := Provider{
 		httpClient: &http.Client{Timeout: 20 * time.Second},
+		sem:        arxivConnSem,
 	}
 	for _, opt := range opts {
 		opt(&p)
 	}
 	return p
+}
+
+// acquireConn blocks until this provider may issue an arXiv request, honoring
+// arXiv's single-connection ToU (at most one in-flight request, process-wide). It
+// is context-aware: a queued caller still observes its own cancellation/deadline
+// instead of waiting on the slot indefinitely. A nil sem (a directly constructed
+// Provider, e.g. in tests) is a no-op. The returned release MUST be called once the
+// request completes. It is acquired BEFORE breaker.Allow() so each serialized call
+// re-checks the breaker against the fully-recorded outcome of the previous one — a
+// trip then short-circuits the rest of the queue immediately.
+func (p Provider) acquireConn(ctx context.Context) (func(), error) {
+	if p.sem == nil {
+		return func() {}, nil
+	}
+	select {
+	case p.sem <- struct{}{}:
+		return func() { <-p.sem }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (p Provider) Name() string { return "arxiv" }
@@ -127,6 +162,19 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	// NOTE: we do NOT set Accept-Encoding. net/http transparently requests gzip and
 	// decompresses ONLY when it adds the header itself; setting it manually would
 	// hand us a raw gzip body the XML parser cannot read.
+
+	// Single-connection guard (arXiv ToU): at most one in-flight arXiv request
+	// process-wide. Acquired BEFORE Allow() so a serialized caller checks the breaker
+	// against the previous call's fully-recorded outcome. release() runs AFTER the
+	// breaker is recorded (deferred LIFO: the record-defer below is registered later,
+	// so it runs first), so the next queued caller sees fresh breaker state. A caller
+	// that cancels/times out while waiting for the slot returns here WITHOUT touching
+	// the breaker (nothing was admitted).
+	release, err := p.acquireConn(ctx)
+	if err != nil {
+		return core.SearchResponse{}, fmt.Errorf("arxiv: search request failed: %w", err)
+	}
+	defer release()
 
 	// Manage the breaker manually (like wikipedia): arXiv reports a query error as
 	// an HTTP 200 + error <entry> (not a status), so classifying the FULL outcome
