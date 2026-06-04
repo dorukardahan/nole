@@ -89,6 +89,18 @@ grep -Fq "docs/PUBLIC-RELEASE-CHECKLIST.md" docs/RELEASE-GATES.md \
   || fail "release gates must link the public release checklist"
 grep -Fq "docs/PACKAGING.md" README.md \
   || fail "README must link packaging prep docs"
+grep -Fq "Registers all 14 subcommands" docs/ARCHITECTURE.md \
+  || fail "architecture docs must match the current root command count"
+grep -Fq 'Subcommands (registered `internal/cli/root.go:14-27`)' docs/ARCHITECTURE.md \
+  || fail "architecture docs must match the current root.go subcommand range"
+if grep -Fq "12 subcommands" docs/ARCHITECTURE.md; then
+  fail "architecture docs contain stale 12-subcommand wording"
+fi
+if grep -Fq "no keyless extract provider" docs/NEXT-STEPS.md; then
+  fail "next-steps docs contain stale no-keyless-extract wording"
+fi
+grep -Fq 'keyless `httpfetch` backstop' docs/NEXT-STEPS.md \
+  || fail "next-steps docs must mention the keyless httpfetch extract backstop"
 grep -Fq "Public repository visibility" docs/PUBLIC-RELEASE-CHECKLIST.md \
   || fail "public release checklist must gate repository visibility"
 grep -Fq "GitHub Release publication approved" docs/PUBLIC-RELEASE-CHECKLIST.md \

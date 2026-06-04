@@ -13,9 +13,9 @@ The process entrypoint is `main.go`, which builds the Cobra command tree and ren
 | Element | Anchor | Notes |
 |---|---|---|
 | `main` (process entry) | `main.go:11` | Builds root via `cli.NewRootCommand()`, executes, on error prints `safeerr.Message(err)` to stderr then `os.Exit(1)`. |
-| `NewRootCommand` (cobra root) | `internal/cli/root.go:7` | `Use="nole"`, `SilenceUsage+SilenceErrors=true`. Registers all 12 subcommands. |
+| `NewRootCommand` (cobra root) | `internal/cli/root.go:7` | `Use="nole"`, `SilenceUsage+SilenceErrors=true`. Registers all 14 subcommands. |
 
-Subcommands (registered `internal/cli/root.go:14-25`):
+Subcommands (registered `internal/cli/root.go:14-27`):
 
 | Subcommand | Constructor | Anchor | Role |
 |---|---|---|---|
@@ -27,12 +27,14 @@ Subcommands (registered `internal/cli/root.go:14-25`):
 | `bench` | `newBenchCommand` | `internal/cli/bench.go:21` | Offline/live/comprehensive eval + sanitized route-evidence. |
 | `providers` | `newProvidersCommand` | `internal/cli/providers.go:10` | Provider status table / JSON via `Service.ProviderStatus`. |
 | `doctor` | `newDoctorCommand` | `internal/cli/doctor.go:50` | Health + secret-presence + budget + optional `--mcp` smoke checks. |
+| `config` | `newConfigCommand` | `internal/cli/config.go:111` | Read-only config/budget/key-presence dump; reports secret status as set/unset only. |
 | `mcp` | `newMCPCommand` | `internal/cli/mcp.go:9` | stdio MCP transport: `server.ServeStdio(mcpserver.New(...))`. |
 | `serve` | `newServeCommand` | `internal/cli/serve.go:9` | HTTP server (requires `--mcp`); exposes `/mcp` JSON-RPC + REST + `/health`. |
 | `setup` | `newSetupCommand` | `internal/cli/setup.go:39` | Writes MCP client configs for 9 platforms (8 file writers + Claude instruction-only) + optional local Scrapling bootstrap. |
-| `version` | `newVersionCommand` | `internal/cli/version.go` | Prints `version.Version`/`Commit`/`Date`; the runtime consumer for the otherwise build-only stamp vars (added in this release). |
+| `version` | `newVersionCommand` | `internal/cli/version.go` | Prints `version.Version`/`Commit`/`Date`; the runtime consumer for build-stamped identity. |
+| `self-update` | `newSelfUpdateCommand` | `internal/cli/selfupdate.go` | Checks for and installs signed/checksummed release assets for the current platform. |
 
-The `version` subcommand (added in this release) lets the CLI report build identity; the MCP server also reports `version.Version`.
+The `version` subcommand lets the CLI report build identity; the MCP server also reports `version.Version`. The `self-update` subcommand gives installed binaries a built-in upgrade path without requiring a source checkout.
 
 ---
 
@@ -40,12 +42,12 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 
 ### Area: entry-cli — CLI entrypoint + composition root (`main`, `cli/app`, `cli/root`, `version`)
 
-**Purpose.** Process entrypoint and dependency-composition root. `main.go` runs the Cobra tree and renders redacted errors to stderr. `cli/root.go` assembles the 12 subcommands. `cli/app.go` is the wiring layer that reads environment variables and constructs a fully-configured `core.Service` (provider registry, quota ledger, response cache, route matrix) plus shared JSON/insight/task-parsing helpers used by every subcommand. `internal/version` holds build-stamped identity vars consumed by the MCP server.
+**Purpose.** Process entrypoint and dependency-composition root. `main.go` runs the Cobra tree and renders redacted errors to stderr. `cli/root.go` assembles the 14 subcommands. `cli/app.go` is the wiring layer that reads environment variables and constructs a fully-configured `core.Service` (provider registry, quota ledger, response cache, route matrix) plus shared JSON/insight/task-parsing helpers used by every subcommand. `internal/version` holds build-stamped identity vars consumed by the MCP server and the `version` CLI command.
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|
 | `main` | func | `main.go:11` | Entrypoint; builds root, executes, prints redacted error to stderr + `os.Exit(1)`. stdout clean on failure. |
-| `NewRootCommand` | func | `internal/cli/root.go:7` | Root cobra.Command; registers all 12 subcommands. |
+| `NewRootCommand` | func | `internal/cli/root.go:7` | Root cobra.Command; registers all 14 subcommands. |
 | `defaultService` | func | `internal/cli/app.go:24` | Central composition root: loads `.env`, builds `core.Registry`, registers real-or-mock providers + keyless ddgs/scrapling, assembles quota ledger + optional cache, returns `core.NewService(...)`. Discards every `registry.Register` error via `_ =`. |
 | `defaultQuotaLedger` | func | `internal/cli/app.go:83` | Selects ledger backend: memory/off/none → in-memory; else file-backed at `NOLE_QUOTA_LEDGER_PATH` or default path, with memory fallback. Has a redundant error branch (lines 120-125). |
 | `defaultQuotaLedgerPath` | func | `internal/cli/app.go:144` | Resolves on-disk ledger location; honors `XDG_STATE_HOME` only when absolute, else `~/.local/state/nole/quota-ledger.json`; "" when no home. |
@@ -56,9 +58,9 @@ The `version` subcommand (added in this release) lets the CLI report build ident
 | `cliErrorEnvelope` | type | `internal/cli/app.go:256` | JSON error contract: operation, error, optional route, routing_insight, route_trace. |
 | `writeJSON` / `writeJSONTo` | func | `internal/cli/app.go:246` | Shared 2-space-indented JSON encoders (stdout / any `io.Writer`). |
 | `runSearch` | func | `internal/cli/app.go:388` | Thin search facade; rejects empty query, calls `defaultService().Search` with `context.Background()`. Builds a new Service per call. |
-| `version` vars | var | `internal/version/version.go:3` | Build-stamped `Version`/`Commit`/`Date`. Only `Version` is read (`mcpserver/server.go:10`) and only `Version` is ldflag-stamped (`scripts/check-release-builds.sh:44`); Commit/Date are dead. |
+| `version` vars | var | `internal/version/version.go:3` | Build-stamped `Version`/`Commit`/`Date`. `Version` is consumed by the MCP server and the `version` CLI command; `Commit`/`Date` are consumed by the `version` CLI command and stamped by release-shaped builds. |
 
-**Data flow.** `os/shell` → `main.main` (`main.go:11`) → `cli.NewRootCommand().Execute()`. Cobra dispatches to one of 12 subcommands. Each calls `defaultService()` (`app.go:24`) → `loadDefaultNoleEnvFile()` reads provider keys → `core.NewRegistry()` + `registry.Register(real-or-mock)` → `defaultQuotaEntries` (`app.go:73`) → per-provider `providerQuotaEntry` (`app.go:205`) → `defaultQuotaLedger` (`app.go:83`) → `defaultResponseCacheFromEnv`/`defaultCacheTTL` (`app.go:155/162`) → `core.NewService(registry, ledger, core.DefaultRouteMatrix(), opts)`. Output flows through `writeJSON` or `applyXxxInsightMode` + `writeHumanRoutingInsight` (`app.go:290-347`). Errors bubble to `main`, get redacted by `safeerr.Message` (`safeerr.go:18`), print to stderr. `version.Version` flows separately into `mcpserver.NewMCPServer`.
+**Data flow.** `os/shell` → `main.main` (`main.go:11`) → `cli.NewRootCommand().Execute()`. Cobra dispatches to one of 14 subcommands. Service-backed commands call `defaultService()` (`app.go:24`) → `loadDefaultNoleEnvFile()` reads provider keys → `core.NewRegistry()` + `registry.Register(real-or-mock)` → `defaultQuotaEntries` (`app.go:73`) → per-provider `providerQuotaEntry` (`app.go:205`) → `defaultQuotaLedger` (`app.go:83`) → `defaultResponseCacheFromEnv`/`defaultCacheTTL` (`app.go:155/162`) → `core.NewService(registry, ledger, core.DefaultRouteMatrix(), opts)`. Output flows through `writeJSON` or `applyXxxInsightMode` + `writeHumanRoutingInsight` (`app.go:290-347`). Errors bubble to `main`, get redacted by `safeerr.Message` (`safeerr.go:18`), print to stderr. `version.Version` flows separately into `mcpserver.NewMCPServer`; `version` and `self-update` use lightweight non-provider paths.
 
 ### Area: core-routing — `internal/core` routing engine (route matrix, registry, deterministic planner, shared types, insight formatting)
 
@@ -387,14 +389,14 @@ Optional `--local-extract` (`setupLocalExtract` `setup_local_extract.go:26`) pro
 - `internal/bench` → `internal/core`, `internal/providers/providerhttp` (error classification), `internal/safeerr` (provider instances are injected by `internal/cli/bench.go`, not imported here)
 - `internal/safeerr` → `internal/providers/providerhttp` (special-cases `HTTPStatusError`)
 - `internal/safenet` → stdlib only (`net`, `net/url`)
-- `internal/version` → stdlib only (build-stamped vars; consumed only by `internal/mcpserver`)
+- `internal/version` → stdlib only (build-stamped vars; consumed by `internal/mcpserver` and the `version` CLI command)
 
 ### External modules (from `go.mod`)
 
 | Module | Version | Role |
 |---|---|---|
 | `github.com/mark3labs/mcp-go` | v0.43.1 | MCP server library: `NewMCPServer`, `AddTool`, `ServeStdio`, in-process sessions, `HandleMessage`, JSON-RPC tool result/error types. Backbone of `internal/mcpserver` + the HTTP MCP bridge. |
-| `github.com/spf13/cobra` | v1.10.2 | CLI command framework for the root command and all 12 subcommands. |
+| `github.com/spf13/cobra` | v1.10.2 | CLI command framework for the root command and all 14 subcommands. |
 | `gopkg.in/yaml.v3` | v3.0.1 | `yaml.Node` tree parsing/marshaling for the comment-preserving Hermes setup writer. |
 | `github.com/bahlo/generic-list-go` | v0.2.0 (indirect) | Transitive dep of mcp-go / jsonschema tooling. |
 | `github.com/buger/jsonparser` | v1.1.1 (indirect) | Transitive (mcp-go JSON handling). |
@@ -453,9 +455,7 @@ This feeds Phase 2 research. Only seeds present in the area maps are listed.
 
 | Title | Area | Anchor | Confidence | Rationale |
 |---|---|---|---|---|
-| version.Commit and version.Date are dead code | quality | `internal/version/version.go:5` | high | Only `version.Version` is read (`mcpserver/server.go:10`) and only Version is ldflag-stamped (`check-release-builds.sh:44`); Commit/Date are declared but never consumed and always stay "unknown". Wire them in or remove. |
 | Redundant/unreachable error branch in defaultQuotaLedger | quality | `internal/cli/app.go:120` | high | `if err != nil && ledger != nil { return ledger }` (120-122) is identical to the following `if ledger != nil` (123-125); `NewFileQuotaLedgerWithPolicy` always returns non-nil, so the memory-fallback at 126-130 is unreachable for a non-empty path. |
-| No top-level version command despite version package | docs | `internal/cli/root.go:14` | medium | Root registers 12 subcommands but no `version` subcommand and no cobra Version field, though `internal/version` is build-stamped. CLI users/agents cannot query the running version. |
 | defaultService() reconstructs the whole Service on every call | latency | `internal/cli/app.go:24` | medium | `runSearch` and other subcommands rebuild registry, re-open the file-backed ledger (disk read + lock), and allocate a fresh cache per invocation. Acceptable for per-turn MCP spawn; any in-process multi-call path pays full reconstruction + cold cache. No memoization. |
 | All registry.Register errors are silently discarded | stability | `internal/cli/app.go:38` | medium | Every `registry.Register(...)` discards its error with `_ =` (38,40,45,47,52,54,58,61). A duplicate/invariant violation is invisible at startup, surfacing only as a missing provider at routing time with no breadcrumb. |
 | Router.Select is dead code in production | quality | `internal/core/router.go:41` | high | `.Select(` appears only in `router_test.go`; `service.go` reads `s.router.matrix` directly (`service.go:260`) and re-walks providers itself. The two paths can drift; well-tested Select gives false confidence the runtime path is covered. |

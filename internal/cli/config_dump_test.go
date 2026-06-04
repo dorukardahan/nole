@@ -40,6 +40,8 @@ func TestConfigDumpShowsSecretAsSetNotValue(t *testing.T) {
 }
 
 func TestConfigDumpJSONShape(t *testing.T) {
+	unsetProviderKeyEnvForTest(t)
+
 	out := runConfigDump(t, "--json")
 	var d configDump
 	if err := json.Unmarshal([]byte(out), &d); err != nil {
@@ -112,6 +114,13 @@ func TestConfigDumpConfigEnvNeverCarriesAKey(t *testing.T) {
 	out := runConfigDump(t, "--json")
 	if strings.Contains(out, "placeholder-brave-secret") {
 		t.Fatalf("config_env leaked a key value:\n%s", out)
+	}
+}
+
+func unsetProviderKeyEnvForTest(t *testing.T) {
+	t.Helper()
+	for _, key := range secretEnvKeys {
+		unsetEnvForTest(t, key.Env)
 	}
 }
 
