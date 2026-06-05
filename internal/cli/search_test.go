@@ -42,6 +42,15 @@ func TestSearchCommandHasRoutingInsightFlag(t *testing.T) {
 	}
 }
 
+func TestSearchCommandHasSearchOptionsFlags(t *testing.T) {
+	cmd := newSearchCommand()
+	for _, name := range []string{"country", "search-lang", "ui-lang", "safesearch", "freshness"} {
+		if flag := cmd.Flags().Lookup(name); flag == nil {
+			t.Fatalf("search command missing --%s flag", name)
+		}
+	}
+}
+
 func TestExtractCommandHasRoutingInsightFlag(t *testing.T) {
 	cmd := newExtractCommand()
 	flag := cmd.Flags().Lookup("insight")

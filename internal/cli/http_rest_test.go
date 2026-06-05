@@ -128,6 +128,42 @@ func TestRESTSearchPostHappyPath(t *testing.T) {
 	}
 }
 
+func TestRESTSearchInvalidOptionsReturns400(t *testing.T) {
+	h := newTestHTTPHandler(t)
+	rec := doREST(t, h, http.MethodPost, "/api/search", []byte(`{"query":"hello","task":"general","options":{"safesearch":"anything-goes"}}`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("POST /api/search invalid options = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("invalid options Content-Type = %q, want application/json", ct)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("400 body is not JSON: %v", err)
+	}
+	if !strings.Contains(rec.Body.String(), "safesearch") {
+		t.Fatalf("expected invalid field in error body, got %s", rec.Body.String())
+	}
+}
+
+func TestRESTSearchAndExtractInvalidOptionsReturns400(t *testing.T) {
+	h := newTestHTTPHandler(t)
+	rec := doREST(t, h, http.MethodPost, "/api/search_and_extract", []byte(`{"query":"hello","task":"general","extract_top":1,"options":{"freshness":"forever"}}`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("POST /api/search_and_extract invalid options = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("invalid search_and_extract options Content-Type = %q, want application/json", ct)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("400 body is not JSON: %v", err)
+	}
+	if !strings.Contains(rec.Body.String(), "freshness") {
+		t.Fatalf("expected invalid field in error body, got %s", rec.Body.String())
+	}
+}
+
 func TestRESTExtractPostHappyPath(t *testing.T) {
 	h := newTestHTTPHandler(t)
 	// Public literal IP passes safenet.ValidateURL without DNS.

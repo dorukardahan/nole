@@ -21,6 +21,29 @@ The free-tier numbers above are conservative anchors verified 2026-06 against ea
 
 Use `nole doctor`, `nole providers --json` and MCP `provider_status`/`budget_status` to inspect status safely. These surfaces should report presence/status and local policy decisions, never key values.
 
+## Search option support
+
+SearchOptions are caller-controlled hints exposed consistently across CLI, REST
+and MCP search surfaces. Nólë validates and canonicalizes them once in
+`core.Service` before any provider call, and the search cache keys the canonical
+option set. Unsupported providers ignore unsupported options; they do not invent
+equivalent behavior.
+
+| Provider | Supported SearchOptions subset | Notes |
+| --- | --- | --- |
+| Brave Search API | `country`, `search_lang`, `ui_lang`, `safesearch`, `freshness` | Forwarded to Brave Search-plan Web/News endpoints. News/factcheck keep the default `freshness=pm` unless the caller supplies a freshness override. |
+| Tavily | `country`, `freshness` | `freshness` maps to Tavily `time_range` (`day`, `week`, `month`, `year`). News/factcheck keep `topic=news` for dated results; non-recency tasks do not silently opt into news mode. |
+| Firecrawl | `country`, `freshness` | `freshness` maps to `tbs` (`pd→qdr:d`, `pw→qdr:w`, `pm→qdr:m`, `py→qdr:y`). |
+| DDGS | none | Keyless fallback ignores SearchOptions. |
+| Wikipedia/MediaWiki | none | SearchOptions are ignored; Nólë passes through MediaWiki's native search order and metadata. |
+| arXiv | none | SearchOptions are ignored; Nólë passes through arXiv's native relevance order and submit timestamps. |
+| Scrapling / httpfetch | n/a | Extract-only paths; search options apply only to the search leg of `search_and_extract`. |
+
+This first slice deliberately does **not** include Brave Goggles/result filters,
+extra snippets, Brave Answers/chat-completions, Tavily domain/chunk/search-depth
+controls, or Firecrawl sources/location/scrape options. Add those only as separate
+typed slices with provider-doc evidence and their own stability review.
+
 ## General rules
 
 - Create provider keys in each provider's dashboard.

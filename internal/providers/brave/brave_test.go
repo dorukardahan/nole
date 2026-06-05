@@ -135,6 +135,71 @@ func TestBraveSearchKeepsNonRecencyTasksOnWebEndpoint(t *testing.T) {
 	}
 }
 
+func TestBraveSearchAppliesSearchOptions(t *testing.T) {
+	var got map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		got = map[string]string{
+			"country":     q.Get("country"),
+			"search_lang": q.Get("search_lang"),
+			"ui_lang":     q.Get("ui_lang"),
+			"safesearch":  q.Get("safesearch"),
+			"freshness":   q.Get("freshness"),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(braveSearchResponse{Web: &braveWebResults{Results: []braveWebResult{{Title: "Result", URL: "https://example.com", Description: "snippet"}}}})
+	}))
+	defer srv.Close()
+
+	p := Provider{
+		apiKey:     "test-key",
+		httpClient: &http.Client{Transport: newRedirectTransport(srv.URL)},
+	}
+	_, err := p.Search(context.Background(), core.SearchRequest{
+		Query: "test",
+		Task:  core.TaskGeneral,
+		Limit: 5,
+		Options: core.SearchOptions{
+			Country:    "us",
+			SearchLang: "en",
+			UILang:     "en-us",
+			SafeSearch: "strict",
+			Freshness:  "pw",
+		},
+	})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	want := map[string]string{"country": "us", "search_lang": "en", "ui_lang": "en-us", "safesearch": "strict", "freshness": "pw"}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("%s = %q, want %q (all params: %#v)", k, got[k], v, got)
+		}
+	}
+}
+
+func TestBraveSearchOptionFreshnessOverridesTaskDefault(t *testing.T) {
+	var gotFreshness string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotFreshness = r.URL.Query().Get("freshness")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"type":"news","results":[{"title":"Fresh story","url":"https://example.com/news","description":"recent context"}]}`))
+	}))
+	defer srv.Close()
+
+	p := Provider{
+		apiKey:     "test-key",
+		httpClient: &http.Client{Transport: newRedirectTransport(srv.URL)},
+	}
+	_, err := p.Search(context.Background(), core.SearchRequest{Query: "test", Task: core.TaskNews, Limit: 5, Options: core.SearchOptions{Freshness: "pd"}})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if gotFreshness != "pd" {
+		t.Fatalf("freshness = %q, want caller option pd to override task default", gotFreshness)
+	}
+}
+
 func TestBraveSearchClampsCountToBraveMax(t *testing.T) {
 	// Brave Web Search documents a hard max of 20 for `count`; an over-large
 	// limit must be clamped to 20 in the built request rather than passed through

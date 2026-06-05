@@ -102,12 +102,41 @@ Try the CLI:
 ./nole classify "OpenAI API docs pricing and latest changelog" --json
 ./nole route-plan "OpenAI API docs pricing and latest changelog" --json
 ./nole search "Go net/http Client Timeout documentation" --task docs --json
+./nole search "latest AI regulation news" --task news --country us --search-lang en --freshness week --json
 ./nole extract "https://go.dev/doc/" --json
 ./nole config dump --json
 ./nole doctor --json
 ```
 
 Search, extract, classify and route-plan JSON responses include a short `routing_insight` by default; search, extract and route-plan keep detailed `route_trace` for debugging where available. Human search/extract output prints the same one-line insight before results. Use `--insight off` to omit the user-facing insight, or `--insight verbose` to print the compact line plus route trace lines in human output. The insight is deterministic and sanitized; it should not contain API keys, auth headers, raw provider payloads or private URLs.
+
+### Search options
+
+The search surfaces expose one small typed option set for caller-controlled locale,
+safety and recency hints:
+
+| Field | CLI flag | Meaning |
+| --- | --- | --- |
+| `country` | `--country` | two-letter search country code, such as `us` or `tr` |
+| `search_lang` | `--search-lang` | search-result language/locale hint, such as `en` |
+| `ui_lang` | `--ui-lang` | provider UI locale/language hint, such as `en-us` |
+| `safesearch` | `--safesearch` | `off`, `moderate`, or `strict` |
+| `freshness` | `--freshness` | `pd`/`day`, `pw`/`week`, `pm`/`month`, or `py`/`year` |
+
+REST accepts these under an optional `options` object on `/api/search` and
+`/api/search_and_extract`; MCP exposes the same semantic fields as optional
+top-level tool parameters on `search` and `search_and_extract`.
+
+Nólë validates and normalizes options once in `core.Service` before routing.
+Invalid caller values fail as request errors; provider calls are not attempted.
+The response cache keys the canonical option set, so a localized/freshness/safe
+search request cannot collide with the same query using default options.
+
+Provider support is intentionally conservative: Brave forwards all five fields on
+the Search-plan Web/News endpoints; Tavily and Firecrawl forward only `country`
+plus a freshness/time-window mapping; DDGS, Wikipedia, arXiv and extract-only
+providers ignore unsupported options. Nólë does not emulate unsupported behavior,
+fabricate rankings, or use Brave Answers/chat-completions for this surface.
 
 Install a prebuilt release binary with the install script — it detects your OS/arch, downloads the matching asset, **verifies its SHA256 checksum before installing** (fails closed on mismatch), and installs to `~/.local/bin`. Download-and-read first (recommended), then run:
 

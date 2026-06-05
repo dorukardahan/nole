@@ -58,10 +58,11 @@ type tavilySearchRequest struct {
 	MaxResults    int    `json:"max_results"`
 	SearchDepth   string `json:"search_depth"`
 	IncludeAnswer bool   `json:"include_answer"`
-	// Topic/TimeRange are set only for recency tasks (news/factcheck); omitempty
-	// keeps every other task's request byte-identical to before.
+	// Topic/TimeRange are set only for recency tasks or explicit freshness;
+	// omitempty keeps every other task's request byte-identical to before.
 	Topic     string `json:"topic,omitempty"`
 	TimeRange string `json:"time_range,omitempty"`
+	Country   string `json:"country,omitempty"`
 }
 
 type tavilySearchResponse struct {
@@ -109,19 +110,26 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		MaxResults:    limit,
 		SearchDepth:   depth,
 		IncludeAnswer: false,
+		Country:       req.Options.Country,
 	}
-	// Task-aware freshness (allowlist): only recency tasks get a time window, so
-	// every other task sends a byte-identical request. Conservative month window
-	// avoids emptying sparse-recency queries (the agent judges true recency via
-	// each result's published_date).
-	switch req.Task {
-	case core.TaskNews, core.TaskFactcheck:
-		// Both recency tasks use topic=news so Tavily returns published_date (it
-		// only does so under topic=news) — the recency sort needs those dates, and
-		// this matches how Brave/Firecrawl treat news==factcheck. time_range keeps
-		// it to the conservative month window.
-		body.Topic = "news"
-		body.TimeRange = "month"
+	// Task-aware freshness (allowlist): recency tasks get a time window by
+	// default; explicit SearchOptions.Freshness overrides the task default and may
+	// be used on any task.
+	if tr := core.FreshnessTimeRange(req.Options.Freshness); tr != "" {
+		body.TimeRange = tr
+		if req.Task == core.TaskNews || req.Task == core.TaskFactcheck {
+			body.Topic = "news"
+		}
+	} else {
+		switch req.Task {
+		case core.TaskNews, core.TaskFactcheck:
+			// Both recency tasks use topic=news so Tavily returns published_date (it
+			// only does so under topic=news) — the recency sort needs those dates, and
+			// this matches how Brave/Firecrawl treat news==factcheck. time_range keeps
+			// it to the conservative month window.
+			body.Topic = "news"
+			body.TimeRange = "month"
+		}
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {

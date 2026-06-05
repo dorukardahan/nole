@@ -57,6 +57,29 @@ func TestFirecrawlSearchHappyPath(t *testing.T) {
 	}
 }
 
+func TestFirecrawlSearchOptionsMapCountryAndFreshness(t *testing.T) {
+	var body firecrawlSearchRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(firecrawlSearchResponse{
+			Success: true,
+			Data:    firecrawlSearchData{Web: []firecrawlSearchWebResult{{Title: "Nólë", URL: "https://example.com/nole", Description: "router"}}},
+		})
+	}))
+	defer srv.Close()
+
+	p := New(WithAPIKey("test-key"), WithBaseURL(srv.URL))
+	_, err := p.Search(context.Background(), core.SearchRequest{Query: "nole", Task: core.TaskGeneral, Limit: 3, Options: core.SearchOptions{Country: "us", Freshness: "pd"}})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if body.Country != "us" || body.TBS != "qdr:d" {
+		t.Fatalf("country/tbs = %q/%q, want us/qdr:d", body.Country, body.TBS)
+	}
+}
+
 func TestFirecrawlSearchHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)

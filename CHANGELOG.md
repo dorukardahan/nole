@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added
+
+- **SearchOptions are now exposed across CLI, REST, and MCP search surfaces.**
+  `search` and `search_and_extract` accept optional `country`, `search_lang`,
+  `ui_lang`, `safesearch`, and `freshness` controls. Inputs are normalized once in
+  `core.Service`, invalid user values fail as request errors, and the search cache
+  keys the canonical option set so localized/safesearch/freshness queries cannot
+  collide with the same query using default options.
+- **Provider-aware option mapping for the first supported subset.** Brave forwards
+  Search-plan Web/News options (`country`, `search_lang`, `ui_lang`, `safesearch`,
+  `freshness`) while preserving the news/factcheck default `freshness=pm` when no
+  caller override is supplied. Tavily and Firecrawl forward the supported subset
+  (`country` plus freshness/time-window mapping). Unsupported providers safely ignore
+  the extra controls rather than fabricating provider behavior.
+
+### Documentation
+
+- Documented the new search option surface in README, provider setup notes,
+  architecture docs, and stability commitments. MCP parameter locks were updated so
+  future additions/removals remain an explicit surface decision.
 
 ## [1.6.2] - 2026-06-04
 

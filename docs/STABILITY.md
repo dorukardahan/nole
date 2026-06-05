@@ -8,7 +8,7 @@ Nólë at 1.x should keep working across 1.x upgrades without changes.
   command, flag, MCP tool, or response field; a changed default that alters
   behaviour; a tightened input contract.
 - **MINOR** (1.x.0): additive, backward-compatible — a new command, flag, MCP
-  tool, optional response field, or env var.
+  tool, optional request/response field, or env var.
 - **PATCH** (1.0.x): bug fixes and internal changes with no surface impact.
 
 ## Stable surfaces (frozen for 1.x)
@@ -28,6 +28,11 @@ drift silently. Their primary flags (e.g. `--json`, `--task`, `--insight`,
 **stability commitment** — additive-only in 1.x (new flags/fields may be added;
 existing ones are not removed/renamed) — upheld by the behaviour test suite and
 release review rather than a dedicated field-snapshot lock.
+
+The Unreleased SearchOptions expansion is an intentional MINOR surface addition:
+`nole search` adds optional `--country`, `--search-lang`, `--ui-lang`,
+`--safesearch`, and `--freshness` flags. These are caller hints, normalized by
+`core.Service`; existing search behavior is unchanged when they are omitted.
 
 ### MCP tools
 
@@ -50,6 +55,11 @@ results** (field names) is a stability commitment — additive-only in 1.x — u
 by the behaviour test suite and release review rather than a result-snapshot lock.
 **MCP `stdout` carries JSON-RPC only** (logs go to stderr) — an invariant, not just
 a convention.
+
+The Unreleased SearchOptions expansion intentionally adds optional MCP params to
+`search` and `search_and_extract`: `country`, `search_lang`, `ui_lang`,
+`safesearch`, and `freshness`. The parameter lock was updated with this doc so
+future MCP parameter drift remains fail-closed and explicit.
 
 ### Configuration (environment variables)
 
@@ -98,6 +108,11 @@ the HTTP surface are a frozen 1.x contract:
 - **Route set** (locked by `TestStableRESTSurface`): `/health`, `/mcp`,
   `/api/search`, `/api/extract`, `/api/search_and_extract`, `/api/research`,
   `/api/providers`, `/api/budget`. Removing/renaming a route is breaking.
+- **Request-body fields are additive-only.** The Unreleased SearchOptions
+  expansion intentionally adds an optional `options` object to `/api/search` and
+  `/api/search_and_extract` with `country`, `search_lang`, `ui_lang`,
+  `safesearch`, and `freshness`. Invalid option values are caller-controlled
+  request errors and return the standard `/api/*` 400 envelope.
 - **Error envelope shape** (frozen) — for `/api/*` request-decode (400), auth
   (401), and service errors (402/500): a JSON `{operation, error}` body, plus the
   additive `route` / `routing_insight` / `route_trace` on routed service errors

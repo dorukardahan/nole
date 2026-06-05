@@ -99,10 +99,14 @@ func (h *httpHandler) validBearer(r *http.Request) bool {
 }
 
 // httpErrorStatus maps a service error to the HTTP status for the error envelope.
-// An exhausted/blocked free-tier (NoFreeQuotaError) is 402 Payment Required — an
-// honest "this would require paid usage you have not authorized" — rather than a
-// generic 500. Everything else is 500.
+// Caller-controlled invalid request fields are 400, and an exhausted/blocked
+// free-tier (NoFreeQuotaError) is 402 Payment Required — an honest "this would
+// require paid usage you have not authorized" — rather than a generic 500.
+// Everything else is 500.
 func httpErrorStatus(err error) int {
+	if core.IsInvalidRequest(err) {
+		return http.StatusBadRequest
+	}
 	if core.IsNoFreeQuota(err) {
 		return http.StatusPaymentRequired
 	}
@@ -203,10 +207,11 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		// loopback; this matters when the user passes --listen 0.0.0.0.
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var req struct {
-			Query        string `json:"query"`
-			Task         string `json:"task"`
-			Limit        int    `json:"limit"`
-			IncludeTrace bool   `json:"include_trace"`
+			Query        string             `json:"query"`
+			Task         string             `json:"task"`
+			Limit        int                `json:"limit"`
+			Options      core.SearchOptions `json:"options"`
+			IncludeTrace bool               `json:"include_trace"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			h.writeHTTPDecodeError(w, "search", err)
@@ -221,8 +226,9 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			// "community"→social resolve correctly and an unknown/blank task falls
 			// through to classification instead of misrouting + lying about
 			// task_source. Keeps CLI/MCP/REST in lockstep (spec D1).
-			Task:  core.NormalizeTaskParam(req.Task),
-			Limit: req.Limit,
+			Task:    core.NormalizeTaskParam(req.Task),
+			Limit:   req.Limit,
+			Options: req.Options,
 		})
 		if err != nil {
 			h.writeHTTPJSONError(w, "search", httpErrorStatus(err), buildCLIError("search", err, resp.Route, resp.RouteTrace))
@@ -276,11 +282,12 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var req struct {
-			Query        string `json:"query"`
-			Task         string `json:"task"`
-			Limit        int    `json:"limit"`
-			ExtractTop   int    `json:"extract_top"`
-			IncludeTrace bool   `json:"include_trace"`
+			Query        string             `json:"query"`
+			Task         string             `json:"task"`
+			Limit        int                `json:"limit"`
+			ExtractTop   int                `json:"extract_top"`
+			Options      core.SearchOptions `json:"options"`
+			IncludeTrace bool               `json:"include_trace"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			h.writeHTTPDecodeError(w, "search_and_extract", err)
@@ -291,6 +298,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			Task:       core.NormalizeTaskParam(req.Task),
 			Limit:      req.Limit,
 			ExtractTop: req.ExtractTop,
+			Options:    req.Options,
 		})
 		if err != nil {
 			h.writeHTTPJSONError(w, "search_and_extract", httpErrorStatus(err), buildCLIError("search_and_extract", err, resp.Search.Route, resp.Search.RouteTrace))

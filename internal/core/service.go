@@ -84,6 +84,13 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		req.Limit = maxSearchLimit
 	}
 	route := s.routeFor(req.Task)
+	options, err := normalizeSearchOptions(req.Options)
+	if err != nil {
+		resp := SearchResponse{Query: req.Query, Task: req.Task, TaskSource: source, Route: append([]string(nil), route...)}
+		resp.RoutingInsight = BuildErrorRoutingInsight("search", resp.Route, nil)
+		return resp, err
+	}
+	req.Options = options
 	// A caller that is already cancelled does no work and surfaces its own
 	// cancellation immediately.
 	if err := ctx.Err(); err != nil {
@@ -328,7 +335,7 @@ func (s *Service) SearchAndExtract(ctx context.Context, req SearchAndExtractRequ
 		n = maxExtractTop
 	}
 
-	searchResp, err := s.Search(ctx, SearchRequest{Query: req.Query, Task: req.Task, Limit: req.Limit})
+	searchResp, err := s.Search(ctx, SearchRequest{Query: req.Query, Task: req.Task, Limit: req.Limit, Options: req.Options})
 	if err != nil {
 		// A search failure (or cancellation surfaced by Search) is fatal — there
 		// is nothing to extract.

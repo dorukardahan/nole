@@ -60,9 +60,22 @@ const (
 )
 
 type SearchRequest struct {
-	Query string   `json:"query"`
-	Task  TaskType `json:"task"`
-	Limit int      `json:"limit"`
+	Query   string        `json:"query"`
+	Task    TaskType      `json:"task"`
+	Limit   int           `json:"limit"`
+	Options SearchOptions `json:"options,omitempty"`
+}
+
+// SearchOptions carries caller-supplied search controls that providers apply
+// when their public API supports the field. The service validates and normalizes
+// the struct before routing, so providers receive canonical values and the cache
+// keys options deterministically.
+type SearchOptions struct {
+	Country    string `json:"country,omitempty"`
+	SearchLang string `json:"search_lang,omitempty"`
+	UILang     string `json:"ui_lang,omitempty"`
+	SafeSearch string `json:"safesearch,omitempty"`
+	Freshness  string `json:"freshness,omitempty"`
 }
 
 type ExtractRequest struct {
@@ -112,10 +125,11 @@ type ExtractResponse struct {
 // SearchAndExtractRequest drives the combined search→read primitive: search,
 // then extract the top ExtractTop result URLs in a single call.
 type SearchAndExtractRequest struct {
-	Query      string   `json:"query"`
-	Task       TaskType `json:"task,omitempty"`
-	Limit      int      `json:"limit"`
-	ExtractTop int      `json:"extract_top"`
+	Query      string        `json:"query"`
+	Task       TaskType      `json:"task,omitempty"`
+	Limit      int           `json:"limit"`
+	ExtractTop int           `json:"extract_top"`
+	Options    SearchOptions `json:"options,omitempty"`
 }
 
 // SearchAndExtractResponse pairs the search results with the extracted content of

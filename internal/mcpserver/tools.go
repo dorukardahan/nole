@@ -79,6 +79,11 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		mcp.WithString("query", mcp.Required(), mcp.Description("Natural-language web search or internet research query")),
 		mcp.WithString("task", mcp.Description(taskDesc), mcp.Enum(buildTaskEnumValues()...)),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of search results to return")),
+		mcp.WithString("country", mcp.Description("Optional two-letter search country code (for supported providers, e.g. us, tr)")),
+		mcp.WithString("search_lang", mcp.Description("Optional search result language code for supported providers (e.g. en)")),
+		mcp.WithString("ui_lang", mcp.Description("Optional provider UI locale/language code (e.g. en-us)")),
+		mcp.WithString("safesearch", mcp.Description("Optional safe search setting for supported providers: off, moderate, or strict")),
+		mcp.WithString("freshness", mcp.Description("Optional freshness window: pd/day, pw/week, pm/month, or py/year")),
 		mcp.WithBoolean("include_trace", mcp.Description(includeTraceDescription)),
 	)
 	// tipState tracks which client-supplied session IDs have already received
@@ -121,7 +126,8 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		// it), so leniency must live here, not in an error.
 		task := core.NormalizeTaskParam(req.GetString("task", ""))
 		limit := int(req.GetFloat("limit", 5))
-		resp, err := svc.Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit})
+		options := searchOptionsFromMCP(req)
+		resp, err := svc.Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit, Options: options})
 		if err != nil {
 			return mcp.NewToolResultError(string(toolErrorJSON("search", err, resp.Route, resp.RouteTrace))), nil
 		}
@@ -245,6 +251,11 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 			mcp.WithString("task", mcp.Description(taskDesc), mcp.Enum(buildTaskEnumValues()...)),
 			mcp.WithNumber("limit", mcp.Description("Maximum number of search results to return")),
 			mcp.WithNumber("extract_top", mcp.Description("How many of the top results to also extract (default 1, max 3)")),
+			mcp.WithString("country", mcp.Description("Optional two-letter search country code (for supported providers, e.g. us, tr)")),
+			mcp.WithString("search_lang", mcp.Description("Optional search result language code for supported providers (e.g. en)")),
+			mcp.WithString("ui_lang", mcp.Description("Optional provider UI locale/language code (e.g. en-us)")),
+			mcp.WithString("safesearch", mcp.Description("Optional safe search setting for supported providers: off, moderate, or strict")),
+			mcp.WithString("freshness", mcp.Description("Optional freshness window: pd/day, pw/week, pm/month, or py/year")),
 			mcp.WithBoolean("include_trace", mcp.Description(includeTraceDescription)),
 		)
 		s.AddTool(saeTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -255,7 +266,8 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 			task := core.NormalizeTaskParam(req.GetString("task", ""))
 			limit := int(req.GetFloat("limit", 5))
 			extractTop := int(req.GetFloat("extract_top", 1))
-			resp, err := svc.SearchAndExtract(ctx, core.SearchAndExtractRequest{Query: query, Task: task, Limit: limit, ExtractTop: extractTop})
+			options := searchOptionsFromMCP(req)
+			resp, err := svc.SearchAndExtract(ctx, core.SearchAndExtractRequest{Query: query, Task: task, Limit: limit, ExtractTop: extractTop, Options: options})
 			if err != nil {
 				return mcp.NewToolResultError(string(toolErrorJSON("search_and_extract", err, resp.Search.Route, resp.Search.RouteTrace))), nil
 			}
@@ -318,6 +330,16 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		}
 		return mcp.NewToolResultText(string(b)), nil
 	})
+}
+
+func searchOptionsFromMCP(req mcp.CallToolRequest) core.SearchOptions {
+	return core.SearchOptions{
+		Country:    req.GetString("country", ""),
+		SearchLang: req.GetString("search_lang", ""),
+		UILang:     req.GetString("ui_lang", ""),
+		SafeSearch: req.GetString("safesearch", ""),
+		Freshness:  req.GetString("freshness", ""),
+	}
 }
 
 // buildTaskDescription generates the task parameter description from the canonical task list.
