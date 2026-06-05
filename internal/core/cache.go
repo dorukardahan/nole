@@ -192,7 +192,18 @@ func searchCacheKey(req SearchRequest) string {
 		string(task),
 		normalizeCacheText(req.Query),
 		intCachePart(req.Limit),
+		searchOptionsCachePart(req.Options),
 	}, "\x00")
+}
+
+func searchOptionsCachePart(opts SearchOptions) string {
+	return strings.Join([]string{
+		"country=" + opts.Country,
+		"search_lang=" + opts.SearchLang,
+		"ui_lang=" + opts.UILang,
+		"safesearch=" + opts.SafeSearch,
+		"freshness=" + opts.Freshness,
+	}, "\x1f")
 }
 
 func extractCacheKey(req ExtractRequest) string {

@@ -108,6 +108,25 @@ func TestTavilySearchServerError(t *testing.T) {
 	}
 }
 
+func TestTavilySearchOptionsMapCountryAndFreshness(t *testing.T) {
+	var receivedBody tavilySearchRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tavilySearchResponse{Results: []tavilyResult{{Title: "Test", URL: "https://example.com", Content: "content"}}})
+	}))
+	defer srv.Close()
+
+	p := Provider{apiKey: "k", httpClient: &http.Client{Transport: &testTransport{srv.URL}}}
+	_, err := p.Search(context.Background(), core.SearchRequest{Query: "q", Task: core.TaskGeneral, Limit: 5, Options: core.SearchOptions{Country: "us", Freshness: "pd"}})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if receivedBody.Country != "us" || receivedBody.TimeRange != "day" {
+		t.Fatalf("country/time_range = %q/%q, want us/day", receivedBody.Country, receivedBody.TimeRange)
+	}
+}
+
 func TestTavilySearchUsesAdvancedForResearch(t *testing.T) {
 	var receivedBody tavilySearchRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

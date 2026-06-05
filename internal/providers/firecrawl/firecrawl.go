@@ -60,10 +60,11 @@ func (p Provider) Capabilities() []core.Capability {
 // --- Firecrawl Search API request/response types ---
 
 type firecrawlSearchRequest struct {
-	Query string `json:"query"`
-	Limit int    `json:"limit"`
-	// TBS is set only for recency tasks (news/factcheck) → "qdr:m" (past month);
-	// omitempty keeps every other task's request byte-identical to before.
+	Query   string `json:"query"`
+	Limit   int    `json:"limit"`
+	Country string `json:"country,omitempty"`
+	// TBS is set only for recency tasks or explicit freshness. qdr:m = past
+	// month; omitempty keeps every other task's request byte-identical to before.
 	TBS string `json:"tbs,omitempty"`
 }
 
@@ -101,16 +102,22 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 
 	body := firecrawlSearchRequest{
-		Query: req.Query,
-		Limit: limit,
+		Query:   req.Query,
+		Limit:   limit,
+		Country: req.Options.Country,
 	}
 	// Task-aware freshness (allowlist): recency tasks get a conservative past-month
-	// window. firecrawl web-source results carry no per-result date (only
-	// sources=news would, deferred to v0.6.0), so this filters but adds no
-	// PublishedAt to pass through yet.
-	switch req.Task {
-	case core.TaskNews, core.TaskFactcheck:
-		body.TBS = "qdr:m"
+	// window by default; explicit SearchOptions.Freshness overrides the task
+	// default and may be used on any task. firecrawl web-source results carry no
+	// per-result date (only sources=news would, deferred), so this filters but adds
+	// no PublishedAt to pass through yet.
+	if tbs := core.FreshnessTBS(req.Options.Freshness); tbs != "" {
+		body.TBS = tbs
+	} else {
+		switch req.Task {
+		case core.TaskNews, core.TaskFactcheck:
+			body.TBS = "qdr:m"
+		}
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {

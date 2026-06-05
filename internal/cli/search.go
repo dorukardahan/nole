@@ -11,6 +11,7 @@ import (
 func newSearchCommand() *cobra.Command {
 	var taskRaw string
 	var limit int
+	var options core.SearchOptions
 	var jsonOut bool
 	var insightRaw string
 	cmd := &cobra.Command{
@@ -22,7 +23,7 @@ func newSearchCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := runSearch(cmd.Context(), args[0], resolveCLITask(cmd, taskRaw), limit)
+			resp, err := runSearch(cmd.Context(), args[0], resolveCLITask(cmd, taskRaw), limit, options)
 			resp = applySearchInsightMode(resp, insightMode)
 			if err != nil {
 				if jsonOut {
@@ -45,6 +46,11 @@ func newSearchCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&taskRaw, "task", "", taskHelpText())
 	cmd.Flags().IntVar(&limit, "limit", 5, "maximum results")
+	cmd.Flags().StringVar(&options.Country, "country", "", "two-letter search country code (e.g. us, tr)")
+	cmd.Flags().StringVar(&options.SearchLang, "search-lang", "", "search result language code (provider-supported, e.g. en)")
+	cmd.Flags().StringVar(&options.UILang, "ui-lang", "", "provider UI locale/language code (e.g. en-us)")
+	cmd.Flags().StringVar(&options.SafeSearch, "safesearch", "", "safe search setting: off, moderate, or strict")
+	cmd.Flags().StringVar(&options.Freshness, "freshness", "", "freshness window: pd/day, pw/week, pm/month, or py/year")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output JSON")
 	cmd.Flags().StringVar(&insightRaw, "insight", string(core.InsightCompact), "routing insight output: compact, off, or verbose")
 	return cmd

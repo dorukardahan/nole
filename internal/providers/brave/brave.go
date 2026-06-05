@@ -87,13 +87,31 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	// at 20, while News Search caps at 50. Clamp so an over-large caller limit
 	// degrades to the endpoint cap instead of failing the whole request.
 	endpoint := braveSearchEndpoint(req.Task)
-	u := fmt.Sprintf("https://api.search.brave.com%s?q=%s&count=%d",
-		endpoint, url.QueryEscape(req.Query), clampRange(req.Limit, 1, braveCountMax(req.Task)))
-	// Task-aware freshness (allowlist): recency tasks get a conservative last-month
-	// window; every other task sends an unchanged URL.
-	if f := braveFreshness(req.Task); f != "" {
-		u += "&freshness=" + f
+	params := url.Values{}
+	params.Set("q", req.Query)
+	params.Set("count", fmt.Sprintf("%d", clampRange(req.Limit, 1, braveCountMax(req.Task))))
+	if req.Options.Country != "" {
+		params.Set("country", req.Options.Country)
 	}
+	if req.Options.SearchLang != "" {
+		params.Set("search_lang", req.Options.SearchLang)
+	}
+	if req.Options.UILang != "" {
+		params.Set("ui_lang", req.Options.UILang)
+	}
+	if req.Options.SafeSearch != "" {
+		params.Set("safesearch", req.Options.SafeSearch)
+	}
+	// Task-aware freshness (allowlist): recency tasks get a conservative last-month
+	// window by default; an explicit caller SearchOptions.Freshness overrides it.
+	freshness := req.Options.Freshness
+	if freshness == "" {
+		freshness = braveFreshness(req.Task)
+	}
+	if freshness != "" {
+		params.Set("freshness", freshness)
+	}
+	u := fmt.Sprintf("https://api.search.brave.com%s?%s", endpoint, params.Encode())
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {

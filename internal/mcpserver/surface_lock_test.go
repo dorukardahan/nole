@@ -32,9 +32,9 @@ var (
 	// stableMCPToolParams pins each tool's input parameter NAME set (the full
 	// 6-tool surface, i.e. with an extract-capable provider configured).
 	stableMCPToolParams = map[string][]string{
-		"search":             {"query", "task", "limit", "include_trace"},
+		"search":             {"query", "task", "limit", "country", "search_lang", "ui_lang", "safesearch", "freshness", "include_trace"},
 		"extract":            {"url", "format", "include_trace"},
-		"search_and_extract": {"query", "task", "limit", "extract_top", "include_trace"},
+		"search_and_extract": {"query", "task", "limit", "extract_top", "country", "search_lang", "ui_lang", "safesearch", "freshness", "include_trace"},
 		"research":           {"question", "max_steps"},
 		"provider_status":    {},
 		"budget_status":      {},

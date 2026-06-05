@@ -459,9 +459,9 @@ func parseTaskStrict(raw string) (core.TaskType, bool) {
 	}
 }
 
-func runSearch(ctx context.Context, query string, task core.TaskType, limit int) (core.SearchResponse, error) {
+func runSearch(ctx context.Context, query string, task core.TaskType, limit int, options core.SearchOptions) (core.SearchResponse, error) {
 	if query == "" {
 		return core.SearchResponse{}, fmt.Errorf("query is required")
 	}
-	return defaultService().Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit})
+	return defaultService().Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit, Options: options})
 }
