@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
 )
@@ -117,15 +116,53 @@ func TestFirecrawlExtractHappyPath(t *testing.T) {
 	}
 }
 
-func TestFirecrawlMissingAPIKey(t *testing.T) {
+func TestFirecrawlKeylessSearchOmitsAuthorization(t *testing.T) {
+	var auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		_ = json.NewEncoder(w).Encode(firecrawlSearchResponse{
+			Success: true,
+			Data:    firecrawlSearchData{Web: []firecrawlSearchWebResult{{Title: "Nólë", URL: "https://example.com/nole", Description: "router"}}},
+		})
+	}))
+	defer srv.Close()
+
+	p := New(WithAPIKey(""), WithBaseURL(srv.URL))
+	p.apiKey = ""
+	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "nole"}); err != nil {
+		t.Fatalf("keyless search failed: %v", err)
+	}
+	if auth != "" {
+		t.Fatalf("keyless request must omit Authorization header, got %q", auth)
+	}
+}
+
+func TestFirecrawlKeylessExtractOmitsAuthorization(t *testing.T) {
+	var auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		_ = json.NewEncoder(w).Encode(firecrawlScrapeResponse{Success: true, Data: firecrawlScrapeData{Markdown: "# ok"}})
+	}))
+	defer srv.Close()
+
+	p := New(WithAPIKey(""), WithBaseURL(srv.URL))
+	p.apiKey = ""
+	if _, err := p.Extract(context.Background(), core.ExtractRequest{URL: "https://example.com"}); err != nil {
+		t.Fatalf("keyless extract failed: %v", err)
+	}
+	if auth != "" {
+		t.Fatalf("keyless request must omit Authorization header, got %q", auth)
+	}
+}
+
+func TestFirecrawlStatusWithoutKeyIsAvailable(t *testing.T) {
 	p := New(WithAPIKey(""))
 	p.apiKey = ""
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	if _, err := p.Search(ctx, core.SearchRequest{Query: "nole"}); err == nil {
-		t.Fatal("expected missing key error")
+	status := p.Status(context.Background())
+	if !status.Available {
+		t.Fatalf("expected keyless firecrawl to be available, got %#v", status)
 	}
-	if _, err := p.Extract(ctx, core.ExtractRequest{URL: "https://example.com"}); err == nil {
-		t.Fatal("expected missing key error")
+	if status.Reason == "" {
+		t.Fatal("expected status reason to mention keyless/account-backed mode")
 	}
 }

@@ -50,12 +50,10 @@ func defaultService() *core.Service {
 	// en.wikipedia.org would stall those routes ahead of DDGS on every request.
 	breakerOpts := providerhttp.DefaultBreakerOptions()
 
-	// Firecrawl — real adapter (search + extract)
-	if firecrawlKey != "" {
-		_ = registry.Register(firecrawl.New(firecrawl.WithAPIKey(firecrawlKey), firecrawl.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
-	} else {
-		_ = registry.Register(mock.NewUnavailable("firecrawl"))
-	}
+	// Firecrawl — real adapter (search + extract). Firecrawl now supports
+	// limited keyless API calls; FIRECRAWL_API_KEY remains optional for
+	// account-backed quota / scale.
+	_ = registry.Register(firecrawl.New(firecrawl.WithAPIKey(firecrawlKey), firecrawl.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
 
 	// Brave — real adapter (search only)
 	if braveKey != "" {
@@ -276,6 +274,9 @@ func isProviderPaidMode(provider string) bool {
 
 func providerQuotaEntry(provider string, keyPresent bool) core.QuotaEntry {
 	if !keyPresent {
+		if provider == "firecrawl" {
+			return core.QuotaEntry{Provider: provider, CostClass: core.CostClassKeylessFree, KeylessFree: true}
+		}
 		return core.QuotaEntry{Provider: provider, CostClass: core.CostClassDisabledNoKey}
 	}
 	if isProviderPaidMode(provider) {

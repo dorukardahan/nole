@@ -85,10 +85,6 @@ type firecrawlSearchWebResult struct {
 }
 
 func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.SearchResponse, error) {
-	if p.apiKey == "" {
-		return core.SearchResponse{}, fmt.Errorf("firecrawl: FIRECRAWL_API_KEY not set")
-	}
-
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 5
@@ -128,7 +124,9 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	if err != nil {
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: create request: %w", err)
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if p.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := providerhttp.DoWithRetryBreaker(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions(), p.breaker)
@@ -189,10 +187,6 @@ type firecrawlScrapeData struct {
 }
 
 func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
-	if p.apiKey == "" {
-		return core.ExtractResponse{}, fmt.Errorf("firecrawl: FIRECRAWL_API_KEY not set")
-	}
-
 	body := firecrawlScrapeRequest{
 		URL: req.URL,
 	}
@@ -205,7 +199,9 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	if err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("firecrawl: create request: %w", err)
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if p.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := providerhttp.DoWithRetryBreaker(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions(), p.breaker)
@@ -240,14 +236,6 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 }
 
 func (p Provider) Status(ctx context.Context) core.ProviderStatus {
-	if p.apiKey == "" {
-		return core.ProviderStatus{
-			Name:         p.Name(),
-			Available:    false,
-			Capabilities: p.Capabilities(),
-			Reason:       "FIRECRAWL_API_KEY not set",
-		}
-	}
 	state, consecFails, openedAt := providerhttp.BreakerStatusFields(p.breaker)
 	status := core.ProviderStatus{
 		Name:               p.Name(),
@@ -256,6 +244,9 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 		BreakerState:       state,
 		BreakerConsecFails: consecFails,
 		BreakerOpenedAt:    openedAt,
+	}
+	if p.apiKey == "" {
+		status.Reason = "keyless mode; set FIRECRAWL_API_KEY for account-backed quota"
 	}
 	if p.breaker.IsOpen() {
 		status.Available = false
