@@ -246,7 +246,7 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 		BreakerOpenedAt:    openedAt,
 	}
 	if p.apiKey == "" {
-		status.Reason = "keyless mode; set FIRECRAWL_API_KEY for account-backed quota"
+		status.Reason = "keyless mode: limited/shared upstream; set FIRECRAWL_API_KEY for account-backed quota"
 	}
 	if p.breaker.IsOpen() {
 		status.Available = false

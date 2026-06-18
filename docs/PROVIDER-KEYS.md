@@ -224,19 +224,20 @@ Notes:
 
 Use for: search and extraction, especially docs/news/fact-check/people/pricing/research/social scenarios when evidence supports it.
 
-Default classification: `free-tier-BYOK`, 250 calls/month, refilled at the start of each UTC month. No credit card on file. The free plan grants 1000 credits/month (reset monthly, no rollover); Nólë seeds a 250-call floor because search is 2 credits per 10 results, so a 20-result search (Service permits up to maxSearchLimit=20) costs 4 credits while the ledger debits 1 per call (scrape is 1 credit; the 5-credit Enhanced Mode is never used by Nólë).
+Default classification depends on mode. Without `FIRECRAWL_API_KEY`, Firecrawl is `keyless-free`: limited/shared zero-setup API access, no local free-tier ledger entry and no claim about remote balance. With `FIRECRAWL_API_KEY`, Firecrawl is `free-tier-BYOK` by default: account-backed quota, 250 calls/month in Nólë's local ledger, refilled at the start of each UTC month. The keyed free plan grants 1000 credits/month (reset monthly, no rollover); Nólë seeds a 250-call floor because search is 2 credits per 10 results, so a 20-result search (Service permits up to maxSearchLimit=20) costs 4 credits while the ledger debits 1 per call (scrape is 1 credit; the 5-credit Enhanced Mode is never used by Nólë).
 
 Setup:
 
-1. Create a Firecrawl API key.
-2. Export `FIRECRAWL_API_KEY` locally.
+1. For zero-setup use, omit `FIRECRAWL_API_KEY`; Nólë will try Firecrawl keyless mode when the route selects it.
+2. For account-backed quota, create a Firecrawl API key and export `FIRECRAWL_API_KEY` locally.
 3. Run `nole doctor`.
 
 Notes:
 
-- Firecrawl's free quota semantics changed in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume use, and bump the hardcoded default if the provider raises it.
-- Set `NOLE_FIRECRAWL_PAID=1` to treat Firecrawl as premium-capable when on a paid plan.
-- Live extraction may consume the local counter quickly; keep dry-run experiments small.
+- Keyless Firecrawl is limited/shared upstream. A 429 in keyless mode means provider rate-limit/drift or route failure; it is not Nólë discovering local ledger exhaustion or remote account balance.
+- Firecrawl's keyed free quota semantics changed in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume keyed use, and bump the hardcoded default if the provider raises it.
+- Set `NOLE_FIRECRAWL_PAID=1` to treat keyed Firecrawl as premium-capable when on a paid plan.
+- Keyed live extraction may consume the local counter quickly; keep dry-run experiments small.
 
 ## DDGS
 
