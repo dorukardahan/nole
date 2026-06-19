@@ -79,11 +79,11 @@ var byokProviders = []BYOKProvider{
 		SupportsSearch:  true,
 		SupportsExtract: true,
 		SignupURL:       "https://firecrawl.dev",
-		FreeTierNote:    "1000 credits/month on Firecrawl's free plan, reset monthly with no rollover, no credit card required. Credits are variable-cost (scrape 1/page; search 2 credits per 10 results, so a 20-result search costs 4; Enhanced Mode 5/request, which Nólë does not use), so Nólë seeds a 250-call fail-safe floor (1000 credits / 4 worst-case per call) and counts its own calls - verify your dashboard.",
+		FreeTierNote:    "Firecrawl supports limited keyless API calls for zero-setup use. FIRECRAWL_API_KEY is optional and switches Nólë to account-backed quota: 1000 credits/month on Firecrawl's free plan, reset monthly with no rollover, no credit card required. Credits are variable-cost (scrape 1/page; search 2 credits per 10 results, so a 20-result search costs 4; Enhanced Mode 5/request, which Nólë does not use), so keyed mode seeds a 250-call fail-safe floor (1000 credits / 4 worst-case per call) and counts its own calls - verify your dashboard.",
 		EnvExample:      "export FIRECRAWL_API_KEY=fc-...",
 		Unlocks:         []string{"url_extraction"},
 		MeteringModel:   "credit-based",
-		RateLimitNote:   "credit-based: scrape ~1 credit/page, search ~2 credits per 10 results (up to 4 for a 20-result call; Nólë never issues the 5-credit Enhanced Mode); Nólë debits 1 per call against a 250-call floor. Free-tier rate limits /scrape 10 rpm, /search 5 rpm, not tracked.",
+		RateLimitNote:   "keyless mode may be shared/anonymous and can rate-limit independently of any local ledger; Nólë reports provider 429 drift but does not pretend to know remote balance. Keyed mode is credit-based: scrape ~1 credit/page, search ~2 credits per 10 results (up to 4 for a 20-result call; Nólë never issues the 5-credit Enhanced Mode); Nólë debits 1 per call against a 250-call floor. Free-tier rate limits /scrape 10 rpm, /search 5 rpm, not tracked.",
 		EstimateOnly:    true,
 	},
 }

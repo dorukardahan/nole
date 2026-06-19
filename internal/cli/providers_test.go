@@ -38,6 +38,9 @@ func TestProvidersCommandJSONIncludesCostPolicyWithoutSecrets(t *testing.T) {
 	if got := byName["brave"]; got.CostClass != core.CostClassDisabledNoKey || got.AllowedByPolicy || got.PolicyReason != "disabled_no_key" {
 		t.Fatalf("unexpected brave disabled status: %#v", got)
 	}
+	if got := byName["firecrawl"]; got.CostClass != core.CostClassKeylessFree || !got.AllowedByPolicy || !got.Available || got.FreeRemaining != 0 || got.Reason != "keyless mode: limited/shared upstream; set FIRECRAWL_API_KEY for account-backed quota" {
+		t.Fatalf("unexpected firecrawl keyless status: %#v", got)
+	}
 	forbidden := []string{"SECRET", "Bearer", "Authorization", "api_key"}
 	for _, token := range forbidden {
 		if bytes.Contains(out.Bytes(), []byte(token)) {
@@ -107,8 +110,8 @@ func TestProvidersCommandPaidModeQualityFirstExplicitlyAllows(t *testing.T) {
 
 // TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions asserts that the
 // --json output is an envelope (not a bare array) and that setup_suggestions
-// is populated when all BYOK keys are absent. Three BYOK providers are
-// registered (brave, tavily, firecrawl), so we expect exactly three entries.
+// is populated when BYOK-only providers are absent. Firecrawl has a keyless
+// API path now, so a missing FIRECRAWL_API_KEY must not appear as a blocker.
 func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
 	clearProviderPolicyEnv(t)
 	// All BYOK keys are already cleared by clearProviderPolicyEnv; be explicit.
@@ -122,20 +125,22 @@ func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
 	if len(envelope.Providers) == 0 {
 		t.Fatal("expected providers in envelope")
 	}
-	if len(envelope.SetupSuggestions) != 3 {
-		t.Fatalf("expected 3 setup_suggestions (brave/tavily/firecrawl all missing), got %d: %#v",
+	if len(envelope.SetupSuggestions) != 2 {
+		t.Fatalf("expected 2 setup_suggestions (brave/tavily missing; firecrawl is keyless), got %d: %#v",
 			len(envelope.SetupSuggestions), envelope.SetupSuggestions)
 	}
-	// All three BYOK providers must appear as missing keys.
 	byKey := map[string]core.SetupSuggestion{}
 	for _, s := range envelope.SetupSuggestions {
 		byKey[s.MissingKey] = s
 	}
-	for _, wantKey := range []string{"BRAVE_API_KEY", "TAVILY_API_KEY", "FIRECRAWL_API_KEY"} {
+	for _, wantKey := range []string{"BRAVE_API_KEY", "TAVILY_API_KEY"} {
 		if _, ok := byKey[wantKey]; !ok {
 			t.Errorf("expected setup_suggestions to contain missing key %q, got keys: %v",
 				wantKey, keysOf(byKey))
 		}
+	}
+	if _, ok := byKey["FIRECRAWL_API_KEY"]; ok {
+		t.Fatalf("FIRECRAWL_API_KEY should be optional now, got keys: %v", keysOf(byKey))
 	}
 	// Impact must be set for each suggestion.
 	for _, s := range envelope.SetupSuggestions {

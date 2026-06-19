@@ -2,7 +2,7 @@
 
 Nólë is BYOK-first: you use your own provider accounts and keys. It should never print key values, auth headers or raw provider payloads. It should only report whether a key is present.
 
-Default policy is `free-first` and each supported BYOK provider is classified as `free-tier-BYOK` when its key is set. Nólë seeds a hardcoded monthly free quota per provider (currently 1000 calls/month for Brave, 500 for Tavily, 250 for Firecrawl — the lower floors reflect those two providers' variable per-credit metering: the ledger debits 1 per call, but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4), tracks it in the local ledger and refills it at the start of each UTC calendar month. Premium-capable behavior is opt-in via `NOLE_<PROVIDER>_PAID=1`; in that mode the cost-capped or quality-first policies decide eligibility for paid calls.
+Default policy is `free-first`. Brave and Tavily remain BYOK-gated and are classified as `free-tier-BYOK` when their keys are set. Firecrawl also supports limited keyless API calls, so `FIRECRAWL_API_KEY` is optional: without it Nólë treats Firecrawl as `keyless-free`; with it Nólë uses account-backed free-tier quota. For BYOK free tiers, Nólë seeds a hardcoded monthly free quota per provider (currently 1000 calls/month for Brave, 500 for Tavily, 250 for keyed Firecrawl — the lower floors reflect those two providers' variable per-credit metering: the ledger debits 1 per call, but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4), tracks it in the local ledger and refills it at the start of each UTC calendar month. Premium-capable behavior is opt-in via `NOLE_<PROVIDER>_PAID=1`; in that mode the cost-capped or quality-first policies decide eligibility for paid calls.
 
 ## Provider cost/overage checklist
 
@@ -10,14 +10,14 @@ Default policy is `free-first` and each supported BYOK provider is classified as
 | --- | --- | --- | --- | --- |
 | Brave Search API | `BRAVE_API_KEY` or `BRAVE_SEARCH_API_KEY` | 1000 calls/month, monthly reset | `NOLE_BRAVE_PAID=1` | Free tier is now a $5/month auto-renewing credit (~1000 Web Search queries at $0.005/query, 50 req/sec) with a credit card on file (overages billed unless you set a usage limit in the Brave dashboard, which Brave recommends); the old flat 2000+/month tier ended Feb 2026. Nólë caps usage at the local monthly quota, but any overage outside Nólë (concurrent process, ledger desync) bills the CC unless you set that dashboard limit. `nole doctor` surfaces this when the key is set. |
 | Tavily | `TAVILY_API_KEY` | 500 calls/month, monthly reset | `NOLE_TAVILY_PAID=1` | Free Researcher tier = 1000 credits/month, no card required; Nólë seeds a 500-call floor because advanced search/extract cost 2 credits while the ledger debits 1 per call. Paid plans charge per credit; review the dashboard before flipping the opt-in. |
-| Firecrawl | `FIRECRAWL_API_KEY` | 250 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Free plan = 1000 credits/month, reset monthly with no rollover, no card; Nólë seeds a 250-call floor because search is 2 credits per 10 results, so a 20-result search (Nólë permits up to 20) costs 4 credits while the ledger debits 1. Verify the dashboard balance matches Nólë's local counter before high-volume use. |
+| Firecrawl | optional `FIRECRAWL_API_KEY` | Keyless API fallback; keyed mode seeds 250 calls/month, monthly reset | `NOLE_FIRECRAWL_PAID=1` | Firecrawl supports limited keyless API calls for zero setup. Anonymous/keyless quota may be shared or rate-limited upstream; it is not an unlimited SLA. Setting `FIRECRAWL_API_KEY` switches to account-backed quota. The free plan = 1000 credits/month, reset monthly with no rollover, no card; Nólë seeds a 250-call floor because search is 2 credits per 10 results, so a 20-result search (Nólë permits up to 20) costs 4 credits while the ledger debits 1. Verify the dashboard balance matches Nólë's local counter before high-volume use. |
 | DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
 | Wikipedia/MediaWiki | none | Keyless encyclopedic search, no counter | n/a | Reinforces `factcheck`/`people`/`academic` routing only (not a general fallback). Uses the official MediaWiki Action API with a descriptive `User-Agent` per Wikimedia policy. Keyless does not mean guaranteed availability or unlimited use. |
 | arXiv | none | Keyless academic search, no counter | n/a | Reinforces the `academic` route only (tried before the DDGS backstop; not a general fallback). Uses the keyless arXiv Atom query API (`https://export.arxiv.org/api/query`) with a descriptive `User-Agent`. Keyless does not mean guaranteed availability or unlimited use. |
 | Scrapling | `NOLE_SCRAPLING_PYTHON` | Local keyless extraction fallback, no counter | n/a | Prefer `nole setup --local-extract`, which creates an isolated venv and writes this variable locally. Nólë validates public URLs before calling it, but website terms and robots.txt remain the user's responsibility. |
 | httpfetch | none | Keyless pure-Go extraction backstop, no counter | n/a | Always available, no setup. Last-resort `extract` fallback (after Scrapling and the keyed remotes). Pure stdlib HTTP fetch + HTML-to-text; runs **no JavaScript**, so it is weaker than Scrapling/Firecrawl on SPA/JS-rendered pages. SSRF-preflighted on every redirect hop. Keyless does not mean guaranteed availability or unlimited use. |
 
-The free-tier numbers above are conservative anchors verified 2026-06 against each provider's published pricing. Tavily and Firecrawl meter in variable credits while the ledger debits 1 per call, so each floor is credits ÷ the priciest call Nólë can issue: Tavily 1000 ÷ 2 (advanced search/extract) = 500; Firecrawl 1000 ÷ 4 (a 20-result search at 2 credits per 10 results) = 250. This avoids over-reading remaining headroom; undercounting is the safe direction and the drift signal catches the rest. They are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
+The free-tier numbers above are conservative anchors verified 2026-06 against each provider's published pricing. Tavily and keyed Firecrawl meter in variable credits while the ledger debits 1 per call, so each floor is credits ÷ the priciest call Nólë can issue: Tavily 1000 ÷ 2 (advanced search/extract) = 500; keyed Firecrawl 1000 ÷ 4 (a 20-result search at 2 credits per 10 results) = 250. Firecrawl keyless mode is treated like other keyless-free providers: allowed under `free-first`, with upstream 429s surfaced through normal route errors/drift warnings rather than a fabricated local balance. This avoids over-reading remaining headroom; undercounting is the safe direction and the drift signal catches the rest. The BYOK floors are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
 
 Use `nole doctor`, `nole providers --json` and MCP `provider_status`/`budget_status` to inspect status safely. These surfaces should report presence/status and local policy decisions, never key values.
 
@@ -60,11 +60,11 @@ Nólë currently reads:
 ```bash
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
-export FIRECRAWL_API_KEY="..."
+export FIRECRAWL_API_KEY="..."       # optional: account-backed Firecrawl quota; omitted = keyless mode
 export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"  # written by `nole setup --local-extract`
 ```
 
-DDGS is keyless and does not need a key. Scrapling is also keyless, but it is local Python software rather than a remote account. Prefer `nole setup --local-extract`; it sets `NOLE_SCRAPLING_PYTHON` only after the created Python environment can import `scrapling.fetchers`.
+DDGS and Firecrawl keyless mode do not need keys. Scrapling is also keyless, but it is local Python software rather than a remote account. Prefer `nole setup --local-extract`; it sets `NOLE_SCRAPLING_PYTHON` only after the created Python environment can import `scrapling.fetchers`.
 
 Per-provider paid opt-in (default: free-tier-BYOK). Use only when the user has a paid plan and wants Nólë to treat the provider as premium-capable so cost-capped or quality-first policies apply:
 
@@ -224,19 +224,20 @@ Notes:
 
 Use for: search and extraction, especially docs/news/fact-check/people/pricing/research/social scenarios when evidence supports it.
 
-Default classification: `free-tier-BYOK`, 250 calls/month, refilled at the start of each UTC month. No credit card on file. The free plan grants 1000 credits/month (reset monthly, no rollover); Nólë seeds a 250-call floor because search is 2 credits per 10 results, so a 20-result search (Service permits up to maxSearchLimit=20) costs 4 credits while the ledger debits 1 per call (scrape is 1 credit; the 5-credit Enhanced Mode is never used by Nólë).
+Default classification depends on mode. Without `FIRECRAWL_API_KEY`, Firecrawl is `keyless-free`: limited/shared zero-setup API access, no local free-tier ledger entry and no claim about remote balance. With `FIRECRAWL_API_KEY`, Firecrawl is `free-tier-BYOK` by default: account-backed quota, 250 calls/month in Nólë's local ledger, refilled at the start of each UTC month. The keyed free plan grants 1000 credits/month (reset monthly, no rollover); Nólë seeds a 250-call floor because search is 2 credits per 10 results, so a 20-result search (Service permits up to maxSearchLimit=20) costs 4 credits while the ledger debits 1 per call (scrape is 1 credit; the 5-credit Enhanced Mode is never used by Nólë).
 
 Setup:
 
-1. Create a Firecrawl API key.
-2. Export `FIRECRAWL_API_KEY` locally.
+1. For zero-setup use, omit `FIRECRAWL_API_KEY`; Nólë will try Firecrawl keyless mode when the route selects it.
+2. For account-backed quota, create a Firecrawl API key and export `FIRECRAWL_API_KEY` locally.
 3. Run `nole doctor`.
 
 Notes:
 
-- Firecrawl's free quota semantics changed in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume use, and bump the hardcoded default if the provider raises it.
-- Set `NOLE_FIRECRAWL_PAID=1` to treat Firecrawl as premium-capable when on a paid plan.
-- Live extraction may consume the local counter quickly; keep dry-run experiments small.
+- Keyless Firecrawl is limited/shared upstream. A 429 in keyless mode means provider rate-limit/drift or route failure; it is not Nólë discovering local ledger exhaustion or remote account balance.
+- Firecrawl's keyed free quota semantics changed in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume keyed use, and bump the hardcoded default if the provider raises it.
+- Set `NOLE_FIRECRAWL_PAID=1` to treat keyed Firecrawl as premium-capable when on a paid plan.
+- Keyed live extraction may consume the local counter quickly; keep dry-run experiments small.
 
 ## DDGS
 
