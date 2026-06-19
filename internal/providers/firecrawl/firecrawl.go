@@ -6,7 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -84,6 +88,24 @@ type firecrawlSearchWebResult struct {
 	Markdown    string `json:"markdown"`
 }
 
+type firecrawlResearchPapersResponse struct {
+	Success bool                           `json:"success"`
+	Results []firecrawlResearchPaperResult `json:"results"`
+}
+
+type firecrawlResearchPaperResult struct {
+	PaperID         string              `json:"paperId"`
+	PrimaryID       string              `json:"primaryId"`
+	IDs             map[string][]string `json:"ids"`
+	Title           string              `json:"title"`
+	Abstract        string              `json:"abstract"`
+	URL             string              `json:"url"`
+	Score           *float64            `json:"score"`
+	PublishedAt     string              `json:"publishedAt"`
+	PublishedDate   string              `json:"publishedDate"`
+	PublicationDate string              `json:"publicationDate"`
+}
+
 func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.SearchResponse, error) {
 	limit := req.Limit
 	if limit <= 0 {
@@ -95,6 +117,9 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	// bypasses that single upstream guard.
 	if limit > 20 {
 		limit = 20
+	}
+	if req.Task == core.TaskAcademic {
+		return p.searchResearchPapers(ctx, req, limit)
 	}
 
 	body := firecrawlSearchRequest{
@@ -168,6 +193,104 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		Provider: "firecrawl",
 		Results:  results,
 	}, nil
+}
+
+func (p Provider) searchResearchPapers(ctx context.Context, req core.SearchRequest, limit int) (core.SearchResponse, error) {
+	endpoint, err := url.Parse(strings.TrimRight(p.baseURL, "/") + "/search/research/papers")
+	if err != nil {
+		return core.SearchResponse{}, fmt.Errorf("firecrawl: create research request URL: %w", err)
+	}
+	query := endpoint.Query()
+	query.Set("query", req.Query)
+	query.Set("k", strconv.Itoa(limit))
+	endpoint.RawQuery = query.Encode()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return core.SearchResponse{}, fmt.Errorf("firecrawl: create research request: %w", err)
+	}
+	if p.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+
+	resp, err := providerhttp.DoWithRetryBreaker(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions(), p.breaker)
+	if err != nil {
+		return core.SearchResponse{}, fmt.Errorf("firecrawl: research search request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxSearchResponseBytes)
+		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("firecrawl", "research search", resp.StatusCode, respBody)
+	}
+
+	var fcresp firecrawlResearchPapersResponse
+	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxSearchResponseBytes, &fcresp); err != nil {
+		return core.SearchResponse{}, fmt.Errorf("firecrawl: decode research response: %w", err)
+	}
+
+	results := make([]core.SearchResult, 0, len(fcresp.Results))
+	for _, r := range fcresp.Results {
+		results = append(results, core.SearchResult{
+			Title:       r.Title,
+			URL:         researchPaperURL(r),
+			Snippet:     core.TruncateRunes(r.Abstract, 300),
+			Provider:    "firecrawl",
+			Score:       r.Score,
+			PublishedAt: researchPaperPublishedAt(r),
+		})
+	}
+
+	return core.SearchResponse{
+		Query:    req.Query,
+		Task:     req.Task,
+		Provider: "firecrawl",
+		Results:  results,
+	}, nil
+}
+
+func researchPaperPublishedAt(r firecrawlResearchPaperResult) string {
+	for _, candidate := range []string{r.PublishedAt, r.PublishedDate, r.PublicationDate} {
+		candidate = strings.TrimSpace(candidate)
+		if candidate != "" {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func researchPaperURL(r firecrawlResearchPaperResult) string {
+	if strings.TrimSpace(r.URL) != "" {
+		return strings.TrimSpace(r.URL)
+	}
+	if arxivURL := canonicalArxivURL(r.PrimaryID); arxivURL != "" {
+		return arxivURL
+	}
+	for _, id := range r.IDs["arxiv"] {
+		if arxivURL := canonicalArxivURL(id); arxivURL != "" {
+			return arxivURL
+		}
+	}
+	return ""
+}
+
+var arxivIDPattern = regexp.MustCompile(`^(?:\d{4}\.\d{4,5}(?:v\d+)?|[A-Za-z-]+(?:\.[A-Za-z-]+)?/\d{7}(?:v\d+)?)$`)
+
+func canonicalArxivURL(value string) string {
+	id := strings.TrimSpace(value)
+	if id == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(id), "https://arxiv.org/abs/") {
+		return id
+	}
+	if strings.HasPrefix(strings.ToLower(id), "arxiv:") {
+		id = strings.TrimSpace(id[len("arxiv:"):])
+	}
+	if !arxivIDPattern.MatchString(id) {
+		return ""
+	}
+	return "https://arxiv.org/abs/" + id
 }
 
 // --- Firecrawl Scrape API request/response types ---
