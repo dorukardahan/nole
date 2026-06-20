@@ -11,18 +11,23 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 nole="$tmpdir/nole"
 go build -o "$nole" .
+mkdir -p "$tmpdir/home" "$tmpdir/config" "$tmpdir/state"
 
-# We set a placeholder TAVILY_API_KEY so the conditional MCP extract tool
-# is registered for the evidence smoke. Without it, extract is hidden by
-# design (Task 7's partial-keys behavior). The placeholder never enables
-# a real provider call — the smoke does not exercise extract.
+# Provider keys are fully unset and the local Nólë env file is disabled. Extract
+# and search_and_extract are registered via the keyless httpfetch backstop, so no
+# fake key is needed to populate the MCP tool surface.
 common_env=(
   env
   -u BRAVE_API_KEY
   -u BRAVE_SEARCH_API_KEY
   -u JINA_API_KEY
   -u FIRECRAWL_API_KEY
-  TAVILY_API_KEY=fake-integration-evidence-key
+  -u TAVILY_API_KEY
+  -u NOLE_SCRAPLING_PYTHON
+  HOME="$tmpdir/home"
+  XDG_CONFIG_HOME="$tmpdir/config"
+  XDG_STATE_HOME="$tmpdir/state"
+  NOLE_DISABLE_ENV_FILE=1
   NOLE_COST_POLICY=free-first
   NOLE_QUOTA_LEDGER_PATH=memory
   NOLE_CACHE_TTL=5m
@@ -55,7 +60,7 @@ Live provider calls: none
 Network required: false
 Secrets required: false
 Cost policy: free-first
-Provider key handling: presence/status only; keys unset during this run
+Provider key handling: presence/status only; process env keys unset and local env file disabled during this run
 
 ## What this verifies
 
@@ -78,7 +83,7 @@ Provider key handling: presence/status only; keys unset during this run
 - nole bench --json
 - nole bench --evidence-md
 
-All commands above ran with provider key environment variables unset and with local-only accounting/cache settings.
+Runtime Nólë commands above ran with provider key environment variables unset, the local Nólë env file disabled, and local-only accounting/cache settings. The build step is provider-free and uses only the current repository state.
 
 ## Client status evidence
 

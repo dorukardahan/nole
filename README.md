@@ -64,7 +64,7 @@ Nólë currently supports these provider adapters:
 
 - Brave Search API: web search plus dedicated news/factcheck search, BYOK/free-tier capable.
 - Tavily: search + extract, BYOK/free-tier/premium-capable depending on your account.
-- Firecrawl: search + extract, BYOK/free-tier/premium-capable depending on your account.
+- Firecrawl: search + extract; keyless API mode works without a key, BYOK/free-tier/premium-capable with `FIRECRAWL_API_KEY`.
 - DDGS: keyless search fallback (the last-resort general fallback on every search route).
 - Wikipedia/MediaWiki: keyless encyclopedic search via the official MediaWiki Action API. Reinforces the `factcheck`, `people`, and `academic` routes only (tried before the DDGS backstop); it is deliberately not a general fallback. No key, no setup.
 - arXiv: keyless academic search via the public arXiv Atom API. Reinforces the `academic` route only (tried before the DDGS backstop), with primary-source scholarly preprints; it is deliberately not a general fallback. No key, no setup.
