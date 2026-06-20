@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
 )
+
+func boolPtr(v bool) *bool { return &v }
 
 func TestNewHasHTTPTimeout(t *testing.T) {
 	p := New(WithAPIKey("test-key"))
@@ -36,7 +39,7 @@ func TestFirecrawlSearchHappyPath(t *testing.T) {
 			t.Fatalf("expected query nole, got %#v", body["query"])
 		}
 		_ = json.NewEncoder(w).Encode(firecrawlSearchResponse{
-			Success: true,
+			Success: boolPtr(true),
 			Data: firecrawlSearchData{Web: []firecrawlSearchWebResult{{
 				Title:       "Nólë",
 				URL:         "https://example.com/nole",
@@ -59,6 +62,55 @@ func TestFirecrawlSearchHappyPath(t *testing.T) {
 	}
 }
 
+func TestFirecrawlSearchSuccessFalseIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": false,
+			"data": map[string]any{
+				"web": []any{},
+				"raw": "do not leak provider body",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	p := New(WithAPIKey("test-key"), WithBaseURL(srv.URL))
+	_, err := p.Search(context.Background(), core.SearchRequest{Query: "nole"})
+	if err == nil {
+		t.Fatal("expected error for success:false response")
+	}
+	if got, want := err.Error(), "firecrawl: search failed (provider returned success=false)"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if strings.Contains(err.Error(), "do not leak") {
+		t.Fatalf("error must not leak raw provider body: %v", err)
+	}
+}
+
+func TestFirecrawlSearchOmittedSuccessIsAccepted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"web": []map[string]any{{
+					"title":       "Nólë",
+					"url":         "https://example.com/nole",
+					"description": "router",
+				}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	p := New(WithAPIKey("test-key"), WithBaseURL(srv.URL))
+	resp, err := p.Search(context.Background(), core.SearchRequest{Query: "nole"})
+	if err != nil {
+		t.Fatalf("omitted success field should not error: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("results = %#v, want one result", resp.Results)
+	}
+}
+
 func TestFirecrawlSearchOptionsMapCountryAndFreshness(t *testing.T) {
 	var body firecrawlSearchRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +118,7 @@ func TestFirecrawlSearchOptionsMapCountryAndFreshness(t *testing.T) {
 			t.Fatalf("decode request: %v", err)
 		}
 		_ = json.NewEncoder(w).Encode(firecrawlSearchResponse{
-			Success: true,
+			Success: boolPtr(true),
 			Data:    firecrawlSearchData{Web: []firecrawlSearchWebResult{{Title: "Nólë", URL: "https://example.com/nole", Description: "router"}}},
 		})
 	}))
@@ -195,6 +247,30 @@ func TestFirecrawlAcademicSearchEmptyResponse(t *testing.T) {
 	}
 }
 
+func TestFirecrawlAcademicSearchOmittedSuccessIsAccepted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{{
+				"paperId":   "paper-1",
+				"primaryId": "arxiv:2401.01234",
+				"title":     "Graph RAG",
+				"abstract":  "A grounded abstract.",
+				"score":     0.5,
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	p := New(WithAPIKey("test-key"), WithBaseURL(srv.URL))
+	resp, err := p.Search(context.Background(), core.SearchRequest{Query: "graph rag", Task: core.TaskAcademic, Limit: 1})
+	if err != nil {
+		t.Fatalf("omitted academic success field should not error: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("results = %#v, want one result", resp.Results)
+	}
+}
+
 func TestFirecrawlAcademicSearchMalformedResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"success":true,"results":[`))
@@ -204,6 +280,29 @@ func TestFirecrawlAcademicSearchMalformedResponse(t *testing.T) {
 	p := New(WithAPIKey("test-key"), WithBaseURL(srv.URL))
 	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "broken", Task: core.TaskAcademic, Limit: 2}); err == nil {
 		t.Fatal("expected malformed academic response error")
+	}
+}
+
+func TestFirecrawlResearchSuccessFalseIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": false,
+			"results": []any{},
+			"raw":     "do not leak provider body",
+		})
+	}))
+	defer srv.Close()
+
+	p := New(WithAPIKey("test-key"), WithBaseURL(srv.URL))
+	_, err := p.Search(context.Background(), core.SearchRequest{Query: "graph rag", Task: core.TaskAcademic, Limit: 3})
+	if err == nil {
+		t.Fatal("expected error for academic success:false response")
+	}
+	if got, want := err.Error(), "firecrawl: research search failed (provider returned success=false)"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if strings.Contains(err.Error(), "do not leak") {
+		t.Fatalf("error must not leak raw provider body: %v", err)
 	}
 }
 
@@ -225,7 +324,7 @@ func TestFirecrawlExtractHappyPath(t *testing.T) {
 			t.Fatalf("expected /scrape, got %s", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(firecrawlScrapeResponse{
-			Success: true,
+			Success: boolPtr(true),
 			Data: firecrawlScrapeData{
 				Markdown: "# Nólë\nResearch content",
 				Metadata: map[string]interface{}{"title": "Nólë"},
@@ -244,12 +343,56 @@ func TestFirecrawlExtractHappyPath(t *testing.T) {
 	}
 }
 
+func TestFirecrawlExtractSuccessFalseIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": false,
+			"data": map[string]any{
+				"markdown": "do not leak provider body",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	p := New(WithAPIKey("test-key"), WithBaseURL(srv.URL))
+	_, err := p.Extract(context.Background(), core.ExtractRequest{URL: "https://example.com"})
+	if err == nil {
+		t.Fatal("expected error for scrape success:false response")
+	}
+	if got, want := err.Error(), "firecrawl: extract failed (provider returned success=false)"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if strings.Contains(err.Error(), "do not leak") {
+		t.Fatalf("error must not leak raw provider body: %v", err)
+	}
+}
+
+func TestFirecrawlExtractOmittedSuccessIsAccepted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"markdown": "# ok",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	p := New(WithAPIKey("test-key"), WithBaseURL(srv.URL))
+	resp, err := p.Extract(context.Background(), core.ExtractRequest{URL: "https://example.com"})
+	if err != nil {
+		t.Fatalf("omitted scrape success field should not error: %v", err)
+	}
+	if resp.Content != "# ok" {
+		t.Fatalf("content = %q, want # ok", resp.Content)
+	}
+}
+
 func TestFirecrawlKeylessSearchOmitsAuthorization(t *testing.T) {
 	var auth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth = r.Header.Get("Authorization")
 		_ = json.NewEncoder(w).Encode(firecrawlSearchResponse{
-			Success: true,
+			Success: boolPtr(true),
 			Data:    firecrawlSearchData{Web: []firecrawlSearchWebResult{{Title: "Nólë", URL: "https://example.com/nole", Description: "router"}}},
 		})
 	}))
@@ -269,7 +412,7 @@ func TestFirecrawlKeylessExtractOmitsAuthorization(t *testing.T) {
 	var auth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth = r.Header.Get("Authorization")
-		_ = json.NewEncoder(w).Encode(firecrawlScrapeResponse{Success: true, Data: firecrawlScrapeData{Markdown: "# ok"}})
+		_ = json.NewEncoder(w).Encode(firecrawlScrapeResponse{Success: boolPtr(true), Data: firecrawlScrapeData{Markdown: "# ok"}})
 	}))
 	defer srv.Close()
 

@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`country` plus freshness/time-window mapping). Unsupported providers safely ignore
   the extra controls rather than fabricating provider behavior.
 
+### Fixed
+
+- **Firecrawl application-level failures are now explicit provider errors.** HTTP
+  200 responses with `success:false` from Firecrawl search, Research Index paper
+  search, or scrape now fail with a sanitized provider error instead of looking
+  like empty results/content. Responses that omit the `success` field remain
+  accepted for compatibility; only explicit false is treated as failure.
+
 ### Documentation
 
 - Documented the new search option surface in README, provider setup notes,
