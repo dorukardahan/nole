@@ -113,6 +113,17 @@ fi
 if grep -Fq "no keyless extract provider" docs/NEXT-STEPS.md; then
   fail "next-steps docs contain stale no-keyless-extract wording"
 fi
+if grep -Fq "fake-integration-evidence-key" scripts/verify-integration-evidence.sh; then
+  fail "integration evidence script must not inject a fake provider key"
+fi
+if grep -Eq '^[[:space:]]*[A-Z0-9_]*API_KEY=' scripts/verify-integration-evidence.sh; then
+  fail "integration evidence script must not assign provider API keys"
+fi
+grep -Fq "NOLE_DISABLE_ENV_FILE=1" scripts/verify-integration-evidence.sh \
+  || fail "integration evidence script must disable the local Nólë env file"
+if grep -Fq "no keyless-free provider" docs/RELEASE-GATES.md; then
+  fail "release gates must not claim extract has no keyless-free provider"
+fi
 grep -Fq 'keyless `httpfetch` backstop' docs/NEXT-STEPS.md \
   || fail "next-steps docs must mention the keyless httpfetch extract backstop"
 grep -Fq "Public repository visibility" docs/PUBLIC-RELEASE-CHECKLIST.md \

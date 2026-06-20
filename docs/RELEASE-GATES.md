@@ -84,9 +84,10 @@ Optional public-safe CLI smoke before declaring release readiness from a local c
 # do not make CI depend on live web availability.
 nole search "Nólë private prep smoke" --task general --limit 1 --json
 
-# Extract has no keyless-free provider in v0.1. In a no-key/free-first environment this should
-# fail closed with a sanitized JSON error envelope; with explicit user-owned extract-provider keys
-# and policy it may return content.
+# Extract works keyless via the httpfetch backstop (pure HTTP fetch, no JS rendering).
+# Keyed Firecrawl/Tavily or local Scrapling improve fidelity but are not required.
+# In a no-key/free-first environment extract should return content from httpfetch or
+# a sanitized JSON error envelope if the source blocks keyless fetch.
 nole extract "https://example.com" --json
 ```
 
