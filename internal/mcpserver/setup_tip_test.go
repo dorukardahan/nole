@@ -178,6 +178,27 @@ func TestMCPSearchTipEmittedOncePerSession(t *testing.T) {
 	}
 }
 
+func TestMCPSearchTipFramesMissingKeysAsOptionalUpgrades(t *testing.T) {
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
+
+	resp := callSearch(t, srv, "what is mcp")
+	if resp.SetupTip == nil {
+		t.Fatal("first search response: expected setup_tip, got nil")
+	}
+	summary := resp.SetupTip.Summary
+	lower := strings.ToLower(summary)
+	for _, noisy := range []string{"disabled", "currently disabled", "built-in fallback", "built-in fallbacks"} {
+		if strings.Contains(lower, noisy) {
+			t.Fatalf("MCP setup_tip should frame zero-key baseline as working, not %q: %s", noisy, summary)
+		}
+	}
+	for _, want := range []string{"keyless", "already works", "improve"} {
+		if !strings.Contains(lower, want) {
+			t.Fatalf("MCP setup_tip should mention %q in upgrade framing: %s", want, summary)
+		}
+	}
+}
+
 // TestMCPSearchTipOmittedWhenAllBYOKConfigured verifies that setup_tip is
 // absent from the first search when all BYOK providers are considered
 // configured. We achieve this by registering mock providers whose names match

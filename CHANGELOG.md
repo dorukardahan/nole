@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MCP `setup_tip` now uses keyless-baseline wording.** In normal zero-key
+  sessions, the one-time tip says Nólë already works with keyless fallbacks and
+  frames missing provider keys as optional speed/fidelity upgrades. It no longer
+  implies core tools are disabled or that agents must fall back outside Nólë when
+  `httpfetch`/DDGS are already available.
 - **Firecrawl application-level failures are now explicit provider errors.** HTTP
   200 responses with `success:false` from Firecrawl search, Research Index paper
   search, or scrape now fail with a sanitized provider error instead of looking

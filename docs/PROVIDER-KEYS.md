@@ -440,4 +440,4 @@ The MCP surface adapts to which keys/runtimes are configured:
 
 If you add a key or run `nole setup --local-extract` mid-session, restart your AI tool (or its MCP connection) so the upgraded extract route is picked up.
 
-`provider_status` returns a `setup_suggestions` array listing every missing key, what configuring it would unlock, where to sign up, and an `impact` rating (`high` / `medium` / `low`) so AI tools can decide what to surface. The first `search` response of an MCP session also carries a compact `setup_tip` summarizing the same information; subsequent searches in the same session omit it to avoid nagging.
+`provider_status` returns a `setup_suggestions` array listing every missing key, what configuring it would unlock, where to sign up, and an `impact` rating (`high` / `medium` / `low`) so AI tools can decide what to surface. The first `search` response of an MCP session also carries a compact `setup_tip`; when keyless DDGS/`httpfetch` baselines already work, that tip is an optional speed/fidelity upgrade hint rather than a disabled-feature warning. Subsequent searches in the same session omit it to avoid nagging.
