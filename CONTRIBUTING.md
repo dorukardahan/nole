@@ -35,9 +35,9 @@ Quick smokes for the CLI surface:
 ./nole search "Go net/http Client Timeout documentation" --task docs --json
 ```
 
-`./nole extract <url>` requires a Tavily or Firecrawl key (the MCP server
-will not register the `extract` tool when neither is configured — that is
-intentional, see `docs/PROVIDER-KEYS.md`).
+`./nole extract <url>` works out of the box through the keyless `httpfetch`
+backstop. Tavily/Firecrawl keys or local Scrapling improve extraction fidelity,
+but are not required for the `extract` / `search_and_extract` tools to exist.
 
 ## Local audit gate (matches CI)
 
