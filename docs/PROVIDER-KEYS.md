@@ -404,7 +404,7 @@ Nólë exposes cost policy/status in `nole providers --json`, `nole doctor`, MCP
 
 Cost classes:
 
-- `keyless-free`: no provider key required; the DDGS search fallback, the Wikipedia and arXiv keyless search providers, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback are current examples.
+- `keyless-free`: no provider key required; Firecrawl keyless mode, the DDGS search fallback, the Wikipedia and arXiv keyless search providers, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback are current examples.
 - `free-tier-BYOK`: a user-keyed provider with a known local free quota tracked in the ledger. Default for keyed Brave / Tavily / Firecrawl.
 - `premium-capable`: a keyed provider that may incur paid usage depending on the user's account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost`: cost cannot be safely classified; fail closed except under explicit `quality-first`.
@@ -418,7 +418,7 @@ Policy modes:
 
 Quota refresh:
 
-- Free-tier-BYOK entries carry a `refresh_window` and `period_start` in the ledger. With `refresh_window=monthly`, `FreeRemaining` is automatically refilled to the hardcoded per-provider `FreeQuota` (1000 for Brave, 500 for Tavily/Firecrawl) at the start of each UTC calendar month, both on ledger reload and on the next `Record` call.
+- Free-tier-BYOK entries carry a `refresh_window` and `period_start` in the ledger. With `refresh_window=monthly`, `FreeRemaining` is automatically refilled to the hardcoded per-provider `FreeQuota` (1000 for Brave, 500 for Tavily, 250 for keyed Firecrawl) at the start of each UTC calendar month, both on ledger reload and on the next `Record` call.
 - The ledger uses schema version 2. v1 ledgers from prior nole versions are migrated forward on first load. Cost-class transitions (e.g. v1 BYOK keys that were premium-capable becoming free-tier-BYOK) use the seed's fresh `FreeRemaining` instead of the stale on-disk counter.
 
 Important: this is a conservative local policy model, not a live provider billing oracle. Check provider dashboards for real balances, plan limits and overage settings before live use.
