@@ -67,6 +67,11 @@ observability metadata for search/extract status, source-extraction skips such a
 PDF/Reddit sources, and sanitized errors; it is not answer synthesis, provider
 ranking, or a full route-trace dump.
 
+The Unreleased `search_and_extract` partial-error expansion intentionally adds
+optional `routing_insight` to each `extract_errors[]` item. The field is compact,
+sanitary extract-route observability for a failed URL; it does not expose full
+route traces or raw provider payloads.
+
 ### Configuration (environment variables)
 
 The committed (stable) env knobs — a stable variable keeps its name + meaning; the

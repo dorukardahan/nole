@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   caller override is supplied. Tavily and Firecrawl forward the supported subset
   (`country` plus freshness/time-window mapping). Unsupported providers safely ignore
   the extra controls rather than fabricating provider behavior.
+- **`search_and_extract` partial extract errors now carry `routing_insight`.**
+  Per-URL `extract_errors` remain non-fatal and sanitized, but now include the
+  compact extract insight from the failed URL (or a before-routing insight for URL
+  validation failures), so agents can explain partial results without full traces.
 - **Research reports now include compact `evidence_steps`.** The `research` JSON,
   MCP, and REST surfaces carry additive search/extract/skip receipts with status,
   provider, counts, and sanitized errors so agents can see evidence completeness

@@ -358,7 +358,11 @@ func (s *Service) SearchAndExtract(ctx context.Context, req SearchAndExtractRequ
 			if ctx.Err() != nil {
 				return out, ctx.Err()
 			}
-			out.ExtractErrors = append(out.ExtractErrors, ExtractError{URL: url, Error: safeerr.Message(eerr)})
+			out.ExtractErrors = append(out.ExtractErrors, ExtractError{
+				URL:            url,
+				Error:          safeerr.Message(eerr),
+				RoutingInsight: extractErrorRoutingInsight(er),
+			})
 		} else {
 			out.Extracts = append(out.Extracts, er)
 		}
@@ -368,6 +372,13 @@ func (s *Service) SearchAndExtract(ctx context.Context, req SearchAndExtractRequ
 		}
 	}
 	return out, nil
+}
+
+func extractErrorRoutingInsight(resp ExtractResponse) string {
+	if insight := strings.TrimSpace(resp.RoutingInsight); insight != "" {
+		return insight
+	}
+	return BuildErrorRoutingInsight("extract", resp.Route, resp.RouteTrace)
 }
 
 func cancelledExtractResponse(req ExtractRequest, route []string) ExtractResponse {

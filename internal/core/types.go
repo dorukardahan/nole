@@ -144,8 +144,9 @@ type SearchAndExtractResponse struct {
 
 // ExtractError is a sanitized per-URL extract failure inside SearchAndExtract.
 type ExtractError struct {
-	URL   string `json:"url"`
-	Error string `json:"error"`
+	URL            string `json:"url"`
+	Error          string `json:"error"`
+	RoutingInsight string `json:"routing_insight,omitempty"`
 }
 
 type RouteAttempt struct {
