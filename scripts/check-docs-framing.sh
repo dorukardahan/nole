@@ -165,6 +165,19 @@ grep -Fq "PATH and absolute binary discovery" docs/AGENT-INSTALL.md \
   || fail "agent install docs must explain PATH and absolute binary discovery"
 grep -Fq "Cost-aware environment template" docs/AGENT-INSTALL.md \
   || fail "agent install docs must include cost-aware env template"
+grep -Fq "## Tool decision recipe" docs/AGENT-INSTALL.md \
+  || fail "agent install docs must include a search/research tool decision recipe"
+grep -Fq 'Use `search` when' docs/AGENT-INSTALL.md \
+  || fail "agent install recipe must say when to use search"
+grep -Fq 'Use `search_and_extract` when' docs/AGENT-INSTALL.md \
+  || fail "agent install recipe must say when to use search_and_extract"
+grep -Fq 'Use `extract` when' docs/AGENT-INSTALL.md \
+  || fail "agent install recipe must say when to use extract"
+grep -Fq 'Use `research` when' docs/AGENT-INSTALL.md \
+  || fail "agent install recipe must say when to use research"
+if grep -Fq './nole extract <url>` requires a Tavily or Firecrawl key' CONTRIBUTING.md; then
+  fail "contributing docs must not claim extract requires Tavily/Firecrawl keys"
+fi
 grep -Fq "Client support matrix" docs/CLIENTS/README.md \
   || fail "client docs index must include support matrix"
 grep -Fq "Do not upgrade a status label without evidence" docs/CLIENTS/README.md \

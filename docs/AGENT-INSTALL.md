@@ -27,10 +27,21 @@ When an AI agent receives only the GitHub link and a user request to install Nó
 5. Configure provider key variable names only if the user already owns the matching provider accounts; never ask the user to paste real values into chat.
 6. Keep default `NOLE_COST_POLICY=free-first` unless the user explicitly accepts premium-capable provider risk.
 7. Configure the selected client with the setup writer and include `--local-extract` when possible, for example `nole setup --codex --local-extract` or `nole setup --hermes --local-extract`.
-8. Verify the client sees `search`, `provider_status`, `budget_status`, `extract` and `search_and_extract` — advertised out of the box via the keyless httpfetch backstop (zero keys); a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity rather than being required.
+8. Verify the client sees `search`, `research`, `provider_status`, `budget_status`, `extract` and `search_and_extract` — advertised out of the box via the keyless httpfetch backstop (zero keys); a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity rather than being required.
 9. Run one low-limit docs search and include only the compact `routing_insight` plus result URLs in the user-facing answer.
 10. Record unresolved client/env limitations truthfully; do not upgrade a client status label without real-client evidence.
 11. Scan changed configs/log snippets for key values, bearer tokens, auth headers, raw provider payloads, private paths and private URLs before sharing.
+
+## Tool decision recipe
+
+Use the smallest Nólë tool that gives the agent enough evidence. Nólë returns sources and routing context; the calling agent still decides, synthesizes and writes the final answer.
+
+- Use `search` when you need a source/result list for one intent: docs lookup, current news, pricing/status pages, people/company lookup, code/community search, or quick fact discovery. Prefer an explicit `task` when you know it (`docs`, `news`, `pricing`, `academic`, `factcheck`, `code`, `social`, `people`, `semantic`, `general`).
+- Use `search_and_extract` when you need the top search hit(s) read immediately. It is the right first move for “find the docs and quote the relevant page” or “search then summarize this top source.” Partial URL extraction failures are non-fatal and appear in `extract_errors` with sanitized `routing_insight`.
+- Use `extract` when the user already gave a URL and you only need that page read. It works with zero keys through the keyless `httpfetch` backstop; Scrapling, Tavily or Firecrawl can improve fidelity when configured.
+- Use `research` when the question needs several sources across one or more intents, deduped evidence, and per-step observability. `research` is for source discovery and evidence collection, not answer synthesis, ranking claims, or final prose.
+
+Practical default: start with `search` for a single clear lookup, `search_and_extract` for “find + read the top result,” and `research` only when the answer would otherwise need multiple searches or source cross-checking. If `research` returns `evidence_steps`, use it as a compact receipt for what was found, skipped or failed; do not treat it as a quality score.
 
 ## Agent copy/paste install block
 

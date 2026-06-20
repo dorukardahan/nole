@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- Added an agent-facing tool decision recipe that tells clients when to use
+  `search`, `search_and_extract`, `extract`, or `research`, while preserving the
+  boundary that Nólë returns evidence/routing context rather than final answers or
+  quality scores.
 - Cleaned up Firecrawl lineage docs after the keyless and `success:false` fixes:
   architecture notes now mark the resolved application-level failure guard as
   closed, provider quota refresh wording distinguishes Tavily's 500-call floor
