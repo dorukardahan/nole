@@ -331,7 +331,7 @@ Stable/core:
 
 Higher-level/aggregate:
 
-- `nole research <question>` runs a multi-step search + extract pass on top of the core routing layer and returns cited evidence (deduplicated sources + extracted content) for your agent to synthesize — Nólë returns evidence, not a composed answer.
+- `nole research <question>` runs a multi-step search + extract pass on top of the core routing layer and returns cited evidence (deduplicated sources + extracted content) for your agent to synthesize. JSON/MCP/REST output also includes compact `evidence_steps` receipts for search/extract status, source-extraction skips such as PDF/Reddit sources, and sanitized failures — Nólë returns evidence, not a composed answer.
 - `nole version` prints the binary's version, commit, and build date (stamped into release builds via `ldflags`; a development build reports `dev` for the version and `unknown` for the unstamped commit/date fields).
 - `nole self-update` downloads, verifies (mandatory SHA256 + additive `gh attestation verify`), and atomically replaces the running binary with the latest release. `--check-only` reports without installing; `--version <tag>` pins a target; `--verify auto|require|off` controls the attestation gate. Anonymous and explicit-invocation only — it never auto-updates.
 
