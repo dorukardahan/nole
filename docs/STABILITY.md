@@ -24,10 +24,10 @@ The **command set** is locked by a test (`internal/cli` surface lock) so it cann
 drift silently. Their primary flags (e.g. `--json`, `--task`, `--insight`,
 `doctor --mcp` / `--json` / `--check-updates`, `self-update --check-only` /
 `--version` / `--verify`) and the `--json` field names of `search`, `extract`,
-`classify`, `route-plan`, `providers`, `doctor`, `config dump`, `bench` are a
-**stability commitment** — additive-only in 1.x (new flags/fields may be added;
-existing ones are not removed/renamed) — upheld by the behaviour test suite and
-release review rather than a dedicated field-snapshot lock.
+`research`, `classify`, `route-plan`, `providers`, `doctor`, `config dump`,
+`bench` are a **stability commitment** — additive-only in 1.x (new flags/fields
+may be added; existing ones are not removed/renamed) — upheld by the behaviour
+test suite and release review rather than a dedicated field-snapshot lock.
 
 The Unreleased SearchOptions expansion is an intentional MINOR surface addition:
 `nole search` adds optional `--country`, `--search-lang`, `--ui-lang`,
@@ -60,6 +60,12 @@ The Unreleased SearchOptions expansion intentionally adds optional MCP params to
 `search` and `search_and_extract`: `country`, `search_lang`, `ui_lang`,
 `safesearch`, and `freshness`. The parameter lock was updated with this doc so
 future MCP parameter drift remains fail-closed and explicit.
+
+The Unreleased research evidence expansion intentionally adds the optional
+`evidence_steps` response field to `research` JSON/MCP/REST output. It is compact
+observability metadata for search/extract status, source-extraction skips such as
+PDF/Reddit sources, and sanitized errors; it is not answer synthesis, provider
+ranking, or a full route-trace dump.
 
 ### Configuration (environment variables)
 
