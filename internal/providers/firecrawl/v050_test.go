@@ -16,7 +16,7 @@ func TestFirecrawlFreshnessForRecencyTasks(t *testing.T) {
 		body = map[string]any{}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		_ = json.NewEncoder(w).Encode(firecrawlSearchResponse{
-			Success: true,
+			Success: boolPtr(true),
 			Data:    firecrawlSearchData{Web: []firecrawlSearchWebResult{{Title: "t", URL: "https://u", Description: "d"}}},
 		})
 	}))

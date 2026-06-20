@@ -73,7 +73,7 @@ type firecrawlSearchRequest struct {
 }
 
 type firecrawlSearchResponse struct {
-	Success bool                `json:"success"`
+	Success *bool               `json:"success"`
 	Data    firecrawlSearchData `json:"data"`
 }
 
@@ -89,7 +89,7 @@ type firecrawlSearchWebResult struct {
 }
 
 type firecrawlResearchPapersResponse struct {
-	Success bool                           `json:"success"`
+	Success *bool                          `json:"success"`
 	Results []firecrawlResearchPaperResult `json:"results"`
 }
 
@@ -104,6 +104,14 @@ type firecrawlResearchPaperResult struct {
 	PublishedAt     string              `json:"publishedAt"`
 	PublishedDate   string              `json:"publishedDate"`
 	PublicationDate string              `json:"publicationDate"`
+}
+
+// explicitSuccessFalse reports only an explicit provider-level failure. A nil
+// pointer means the success field was omitted, which Firecrawl-compatible mocks
+// and future response shapes may do on success; omission must not be treated as
+// failure.
+func explicitSuccessFalse(success *bool) bool {
+	return success != nil && !*success
 }
 
 func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.SearchResponse, error) {
@@ -169,6 +177,9 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxSearchResponseBytes, &fcresp); err != nil {
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: decode response: %w", err)
 	}
+	if explicitSuccessFalse(fcresp.Success) {
+		return core.SearchResponse{}, fmt.Errorf("firecrawl: search failed (provider returned success=false)")
+	}
 
 	// Firecrawl web-source results carry no relevance score or publication date,
 	// so Score stays nil and PublishedAt empty (never fabricated).
@@ -227,6 +238,9 @@ func (p Provider) searchResearchPapers(ctx context.Context, req core.SearchReque
 	var fcresp firecrawlResearchPapersResponse
 	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxSearchResponseBytes, &fcresp); err != nil {
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: decode research response: %w", err)
+	}
+	if explicitSuccessFalse(fcresp.Success) {
+		return core.SearchResponse{}, fmt.Errorf("firecrawl: research search failed (provider returned success=false)")
 	}
 
 	results := make([]core.SearchResult, 0, len(fcresp.Results))
@@ -300,7 +314,7 @@ type firecrawlScrapeRequest struct {
 }
 
 type firecrawlScrapeResponse struct {
-	Success bool                `json:"success"`
+	Success *bool               `json:"success"`
 	Data    firecrawlScrapeData `json:"data"`
 }
 
@@ -341,6 +355,9 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	var fcresp firecrawlScrapeResponse
 	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxExtractResponseBytes, &fcresp); err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("firecrawl: decode response: %w", err)
+	}
+	if explicitSuccessFalse(fcresp.Success) {
+		return core.ExtractResponse{}, fmt.Errorf("firecrawl: extract failed (provider returned success=false)")
 	}
 
 	metadata := make(map[string]string)
