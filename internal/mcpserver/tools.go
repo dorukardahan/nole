@@ -311,6 +311,11 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		mcp.WithDescription(researchToolDescription),
 		mcp.WithString("question", mcp.Required(), mcp.Description("The research question to investigate across multiple sources")),
 		mcp.WithNumber("max_steps", mcp.Description("Maximum search passes; also caps how many sources are extracted (default 3)")),
+		mcp.WithString("country", mcp.Description("Optional two-letter search country code for research search passes (for supported providers, e.g. us, tr)")),
+		mcp.WithString("search_lang", mcp.Description("Optional search result language code for supported research search passes (e.g. en)")),
+		mcp.WithString("ui_lang", mcp.Description("Optional provider UI locale/language code for research search passes (e.g. en-us)")),
+		mcp.WithString("safesearch", mcp.Description("Optional safe search setting for supported research search passes: off, moderate, or strict")),
+		mcp.WithString("freshness", mcp.Description("Optional freshness window for research search passes: pd/day, pw/week, pm/month, or py/year")),
 	)
 	s.AddTool(researchTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		question, err := req.RequireString("question")
@@ -318,7 +323,8 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		maxSteps := int(req.GetFloat("max_steps", 3))
-		report, err := svc.Research(ctx, question, maxSteps)
+		options := searchOptionsFromMCP(req)
+		report, err := svc.ResearchWithOptions(ctx, core.ResearchRequest{Question: question, MaxSteps: maxSteps, Options: options})
 		if err != nil {
 			// ResearchReport carries no route/trace, so the toolErrorJSON envelope
 			// (which requires them) does not apply; return a sanitized message.

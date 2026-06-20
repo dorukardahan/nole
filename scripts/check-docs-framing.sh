@@ -180,6 +180,14 @@ grep -Fq 'Use `extract` when' docs/AGENT-INSTALL.md \
   || fail "agent install recipe must say when to use extract"
 grep -Fq 'Use `research` when' docs/AGENT-INSTALL.md \
   || fail "agent install recipe must say when to use research"
+grep -Fq '`search`, `search_and_extract`, and `research` accept optional' CHANGELOG.md \
+  || fail "changelog must document research SearchOptions parity"
+grep -Fq 'and `/api/research`' README.md \
+  || fail "README search options docs must include REST research"
+grep -Fq '`search`, `search_and_extract`, and `research`' docs/STABILITY.md \
+  || fail "stability docs must include MCP research search options"
+grep -Fq 'For `research`, they apply to internal' docs/STABILITY.md \
+  || fail "stability docs must state research SearchOptions scope"
 if grep -Fq './nole extract <url>` requires a Tavily or Firecrawl key' CONTRIBUTING.md; then
   fail "contributing docs must not claim extract requires Tavily/Firecrawl keys"
 fi

@@ -11,6 +11,7 @@ type optionRecorderProvider struct {
 	name        string
 	calls       int
 	lastOptions SearchOptions
+	allOptions  []SearchOptions
 }
 
 func (p *optionRecorderProvider) Name() string { return p.name }
@@ -22,6 +23,7 @@ func (p *optionRecorderProvider) Capabilities() []Capability {
 func (p *optionRecorderProvider) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
 	p.calls++
 	p.lastOptions = req.Options
+	p.allOptions = append(p.allOptions, req.Options)
 	return SearchResponse{
 		Query:    req.Query,
 		Task:     req.Task,

@@ -322,8 +322,9 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var req struct {
-			Question string `json:"question"`
-			MaxSteps int    `json:"max_steps"`
+			Question string             `json:"question"`
+			MaxSteps int                `json:"max_steps"`
+			Options  core.SearchOptions `json:"options"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			h.writeHTTPDecodeError(w, "research", err)
@@ -332,7 +333,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		if req.MaxSteps == 0 {
 			req.MaxSteps = 3
 		}
-		report, err := h.svc.Research(r.Context(), req.Question, req.MaxSteps)
+		report, err := h.svc.ResearchWithOptions(r.Context(), core.ResearchRequest{Question: req.Question, MaxSteps: req.MaxSteps, Options: req.Options})
 		if err != nil {
 			// ResearchReport has no route/trace, so buildCLIError (which needs them)
 			// does not apply; return a minimal sanitized envelope (operation+error —

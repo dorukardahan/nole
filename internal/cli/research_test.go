@@ -36,3 +36,12 @@ func TestResearchHelpQualifiesCostPolicyInsteadOfClaimingNoPaidRequests(t *testi
 		}
 	}
 }
+
+func TestResearchCommandHasSearchOptionsFlags(t *testing.T) {
+	cmd := newResearchCommand()
+	for _, name := range []string{"country", "search-lang", "ui-lang", "safesearch", "freshness"} {
+		if flag := cmd.Flags().Lookup(name); flag == nil {
+			t.Fatalf("research command missing --%s flag", name)
+		}
+	}
+}

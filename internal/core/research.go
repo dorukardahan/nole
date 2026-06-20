@@ -17,6 +17,17 @@ import (
 // per-call extract count is min(unique sources, max_steps, this).
 const maxResearchExtracts = 5
 
+// ResearchRequest drives the multi-step research pipeline. SearchOptions are
+// caller hints for the search legs only; extract steps remain URL-only and keep
+// their existing routing. Options are prevalidated and canonicalized before the
+// first provider call so invalid values fail as caller-controlled request errors,
+// not as swallowed per-step research failures.
+type ResearchRequest struct {
+	Question string        `json:"question"`
+	MaxSteps int           `json:"max_steps"`
+	Options  SearchOptions `json:"options,omitempty"`
+}
+
 // ResearchReport is the full output of a research run: multi-source evidence for
 // the calling agent to synthesize. Nólë deliberately returns NO composed summary
 // or answer — the gateway hands over clean sources + extracts; the agent thinks.
@@ -65,6 +76,18 @@ type ResearchExtract struct {
 // the agent's job). A cancelled context (Ctrl-C / SIGTERM) is surfaced, not
 // swallowed into a partial report.
 func (s *Service) Research(ctx context.Context, question string, maxSteps int) (*ResearchReport, error) {
+	return s.ResearchWithOptions(ctx, ResearchRequest{Question: question, MaxSteps: maxSteps})
+}
+
+// ResearchWithOptions runs a multi-step search + extract pass over a question
+// with optional caller-controlled SearchOptions applied to every search leg.
+func (s *Service) ResearchWithOptions(ctx context.Context, req ResearchRequest) (*ResearchReport, error) {
+	options, err := normalizeSearchOptions(req.Options)
+	if err != nil {
+		return nil, err
+	}
+	question := req.Question
+	maxSteps := req.MaxSteps
 	report := &ResearchReport{Question: question}
 	providerSet := make(map[string]bool)
 
@@ -77,7 +100,7 @@ func (s *Service) Research(ctx context.Context, question string, maxSteps int) (
 		if i >= maxSteps {
 			break
 		}
-		resp, err := s.Search(ctx, SearchRequest{Query: question, Task: task, Limit: 5})
+		resp, err := s.Search(ctx, SearchRequest{Query: question, Task: task, Limit: 5, Options: options})
 		provider := researchEvidenceProvider(resp.Provider, resp.RouteTrace)
 		if err != nil {
 			// A cancelled/expired context is fatal: surface it instead of logging a

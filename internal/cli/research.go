@@ -12,6 +12,7 @@ import (
 func newResearchCommand() *cobra.Command {
 	var jsonOutput bool
 	var maxSteps int
+	var options core.SearchOptions
 
 	cmd := &cobra.Command{
 		Use:   "research <question>",
@@ -28,7 +29,7 @@ Defaults to free-first/no-hidden-paid-spend routing. Explicit cost policy settin
 			question := strings.Join(args, " ")
 			svc := defaultService()
 
-			report, err := svc.Research(cmd.Context(), question, maxSteps)
+			report, err := svc.ResearchWithOptions(cmd.Context(), core.ResearchRequest{Question: question, MaxSteps: maxSteps, Options: options})
 			if err != nil {
 				return err
 			}
@@ -44,6 +45,11 @@ Defaults to free-first/no-hidden-paid-spend routing. Explicit cost policy settin
 	}
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output as JSON")
 	cmd.Flags().IntVar(&maxSteps, "max-steps", 3, "maximum search passes; also caps how many sources are extracted")
+	cmd.Flags().StringVar(&options.Country, "country", "", "two-letter search country code for research search passes (e.g. us, tr)")
+	cmd.Flags().StringVar(&options.SearchLang, "search-lang", "", "search result language code for supported research search passes (e.g. en)")
+	cmd.Flags().StringVar(&options.UILang, "ui-lang", "", "provider UI locale/language code for research search passes (e.g. en-us)")
+	cmd.Flags().StringVar(&options.SafeSearch, "safesearch", "", "safe search setting for research search passes: off, moderate, or strict")
+	cmd.Flags().StringVar(&options.Freshness, "freshness", "", "freshness window for research search passes: pd/day, pw/week, pm/month, or py/year")
 	return cmd
 }
 
