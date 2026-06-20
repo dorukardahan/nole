@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -89,6 +90,9 @@ func TestSearchAndExtractSSRFBlockedNonFatalAndPreflightFirst(t *testing.T) {
 	if len(resp.ExtractErrors) != 1 || resp.ExtractErrors[0].URL != ssrfIP {
 		t.Fatalf("expected the blocked URL recorded in ExtractErrors, got %#v", resp.ExtractErrors)
 	}
+	if got := resp.ExtractErrors[0].RoutingInsight; !strings.Contains(got, "Nólë: extract failed before routing") {
+		t.Fatalf("blocked URL should carry before-routing insight, got %q", got)
+	}
 	if len(resp.Extracts) != 1 || resp.Extracts[0].URL != goodIP1 {
 		t.Fatalf("expected the next good URL extracted, got %#v", resp.Extracts)
 	}
@@ -108,6 +112,9 @@ func TestSearchAndExtractProviderErrorNonFatal(t *testing.T) {
 	}
 	if len(resp.ExtractErrors) != 1 || resp.ExtractErrors[0].URL != goodIP1 {
 		t.Fatalf("expected provider error recorded, got %#v", resp.ExtractErrors)
+	}
+	if got := resp.ExtractErrors[0].RoutingInsight; !strings.Contains(got, "Nólë: extract failed") {
+		t.Fatalf("provider extract error should carry routing insight, got %q", got)
 	}
 	if len(resp.Extracts) != 0 {
 		t.Fatalf("expected no successful extracts, got %#v", resp.Extracts)
@@ -178,9 +185,40 @@ func TestSearchAndExtractErrorIsSanitized(t *testing.T) {
 		t.Fatalf("expected one extract error, got %#v", resp.ExtractErrors)
 	}
 	msg := resp.ExtractErrors[0].Error
-	for _, bad := range []string{"Bearer ", "api_key", "Authorization"} {
+	insight := resp.ExtractErrors[0].RoutingInsight
+	for _, bad := range []string{"Bearer ", "api_key", "Authorization", ssrfIP} {
 		if strings.Contains(msg, bad) {
 			t.Fatalf("extract error leaked %q: %s", bad, msg)
 		}
+		if strings.Contains(insight, bad) {
+			t.Fatalf("extract routing insight leaked %q: %s", bad, insight)
+		}
+	}
+}
+
+func TestSearchAndExtractErrorJSONIncludesRoutingInsight(t *testing.T) {
+	p := &saeFake{fakeProvider: fakeProvider{name: "p"}, urls: []string{goodIP1}, failURL: goodIP1}
+	svc := newSAEService(p)
+	resp, err := svc.SearchAndExtract(context.Background(), SearchAndExtractRequest{Query: "jaguar", Task: TaskGeneral, ExtractTop: 1})
+	if err != nil {
+		t.Fatalf("provider extract error must be non-fatal, got %v", err)
+	}
+	body, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	var decoded struct {
+		ExtractErrors []struct {
+			RoutingInsight string `json:"routing_insight"`
+		} `json:"extract_errors"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(decoded.ExtractErrors) != 1 {
+		t.Fatalf("expected one JSON extract error, got %s", string(body))
+	}
+	if got := decoded.ExtractErrors[0].RoutingInsight; !strings.Contains(got, "Nólë: extract failed") {
+		t.Fatalf("JSON extract error missing routing_insight, got %q in %s", got, string(body))
 	}
 }
