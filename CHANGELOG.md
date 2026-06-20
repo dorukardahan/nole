@@ -37,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- Cleaned up Firecrawl lineage docs after the keyless and `success:false` fixes:
+  architecture notes now mark the resolved application-level failure guard as
+  closed, provider quota refresh wording distinguishes Tavily's 500-call floor
+  from keyed Firecrawl's 250-call floor, and the live benchmark template includes
+  Firecrawl keyless mode plus the always-on `httpfetch` extract backstop.
 - Documented the new search option surface in README, provider setup notes,
   architecture docs, and stability commitments. MCP parameter locks were updated so
   future additions/removals remain an explicit surface decision.

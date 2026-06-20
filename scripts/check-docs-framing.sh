@@ -124,6 +124,19 @@ grep -Fq "NOLE_DISABLE_ENV_FILE=1" scripts/verify-integration-evidence.sh \
 if grep -Fq "no keyless-free provider" docs/RELEASE-GATES.md; then
   fail "release gates must not claim extract has no keyless-free provider"
 fi
+if grep -Fq "firecrawl/tavily/brave check only StatusOK and ignore success:false" docs/ARCHITECTURE.md; then
+  fail "architecture docs must not list resolved Firecrawl success:false handling as open"
+fi
+if grep -Fq 'firecrawlSearchResponse`/`firecrawlScrapeResponse` carry a `Success bool`' docs/ARCHITECTURE.md; then
+  fail "architecture docs must not describe Firecrawl success as bool after pointer guard fix"
+fi
+if grep -Fq "500 for Tavily/Firecrawl" docs/PROVIDER-KEYS.md; then
+  fail "provider docs must not use stale Firecrawl 500-call quota wording"
+fi
+grep -Fq "Firecrawl | yes/no | present/absent/not checked | keyless-free/free-tier-BYOK/premium-capable" docs/LIVE-BENCHMARK-SUMMARY-TEMPLATE.md \
+  || fail "live benchmark template must include Firecrawl keyless-free cost class"
+grep -Fq "httpfetch | yes/no | not required | keyless-free extract backstop" docs/LIVE-BENCHMARK-SUMMARY-TEMPLATE.md \
+  || fail "live benchmark template must include httpfetch inventory row"
 grep -Fq 'keyless `httpfetch` backstop' docs/NEXT-STEPS.md \
   || fail "next-steps docs must mention the keyless httpfetch extract backstop"
 grep -Fq "Public repository visibility" docs/PUBLIC-RELEASE-CHECKLIST.md \
