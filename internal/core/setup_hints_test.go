@@ -3,6 +3,7 @@ package core
 import (
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -165,5 +166,54 @@ func TestBuildSetupTipPresenceMatchesSuggestions(t *testing.T) {
 	}
 	if tip.Summary == "" {
 		t.Error("tip.Summary is empty")
+	}
+}
+
+func TestBuildSetupTipFramesZeroKeyBaselineAsWorkingUpgradePath(t *testing.T) {
+	tip := BuildSetupTip(BuildSetupSuggestions(configuredSet(), true))
+	if tip == nil {
+		t.Fatal("expected setup_tip for missing medium-impact provider upgrades")
+	}
+	summary := tip.Summary
+	lower := strings.ToLower(summary)
+
+	for _, noisy := range []string{"disabled", "currently disabled", "built-in fallback", "built-in fallbacks"} {
+		if strings.Contains(lower, noisy) {
+			t.Fatalf("zero-key setup_tip should not use alarmist fallback copy %q: %s", noisy, summary)
+		}
+	}
+	for _, want := range []string{"keyless", "already works", "improve"} {
+		if !strings.Contains(lower, want) {
+			t.Fatalf("zero-key setup_tip should frame keys as optional upgrades and mention %q: %s", want, summary)
+		}
+	}
+	if !strings.Contains(summary, "can improve search speed or extract fidelity") {
+		t.Fatalf("zero-key setup_tip should use speed/fidelity upgrade copy: %s", summary)
+	}
+	for _, key := range []string{"BRAVE_API_KEY", "TAVILY_API_KEY", "FIRECRAWL_API_KEY"} {
+		if !strings.Contains(summary, key) {
+			t.Fatalf("setup_tip should still name missing key %s: %s", key, summary)
+		}
+	}
+	if tip.SeeAlso != "call provider_status for per-key signup links and env examples" {
+		t.Fatalf("unexpected see_also: %q", tip.SeeAlso)
+	}
+}
+
+func TestBuildSetupTipKeepsDisabledCopyForTrueHighImpactMissingFeature(t *testing.T) {
+	tip := BuildSetupTip(BuildSetupSuggestions(configuredSet(), false))
+	if tip == nil {
+		t.Fatal("expected setup_tip when extract is truly unavailable")
+	}
+	summary := tip.Summary
+	lower := strings.ToLower(summary)
+	if !strings.Contains(lower, "disabled") {
+		t.Fatalf("true high-impact missing feature should still use disabled wording: %s", summary)
+	}
+	if !strings.Contains(summary, "TAVILY_API_KEY") || !strings.Contains(summary, "FIRECRAWL_API_KEY") {
+		t.Fatalf("high-impact extract keys should be named: %s", summary)
+	}
+	if strings.Contains(lower, "built-in fallback") {
+		t.Fatalf("high-impact copy should not reintroduce AI-tool built-in fallback wording: %s", summary)
 	}
 }

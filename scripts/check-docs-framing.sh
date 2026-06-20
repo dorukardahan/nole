@@ -139,6 +139,11 @@ grep -Fq "httpfetch | yes/no | not required | keyless-free extract backstop" doc
   || fail "live benchmark template must include httpfetch inventory row"
 grep -Fq 'keyless `httpfetch` backstop' docs/NEXT-STEPS.md \
   || fail "next-steps docs must mention the keyless httpfetch extract backstop"
+grep -Fq "optional speed/fidelity upgrade hint" docs/PROVIDER-KEYS.md \
+  || fail "provider docs must frame setup_tip as an optional upgrade hint when keyless baselines work"
+if grep -R -Fq "Until then your AI tool will use its own built-in fallbacks where needed." README.md CHANGELOG.md docs; then
+  fail "public docs must not reintroduce stale setup_tip built-in-fallback wording"
+fi
 grep -Fq "Public repository visibility" docs/PUBLIC-RELEASE-CHECKLIST.md \
   || fail "public release checklist must gate repository visibility"
 grep -Fq "GitHub Release publication approved" docs/PUBLIC-RELEASE-CHECKLIST.md \

@@ -137,9 +137,16 @@ func BuildSetupTip(suggestions []SetupSuggestion) *SetupTip {
 		fmt.Fprintf(&b, "Some Nólë features are currently disabled. Set %s to enable them. ", joinOr(high))
 	}
 	if len(medium) > 0 {
-		fmt.Fprintf(&b, "Configuring %s would also improve search quality. ", joinOr(medium))
+		if len(high) == 0 {
+			b.WriteString("Nólë already works with keyless fallbacks. ")
+			fmt.Fprintf(&b, "Configuring %s can improve search speed or extract fidelity. ", joinOr(medium))
+		} else {
+			fmt.Fprintf(&b, "Configuring %s can also improve search speed or extract fidelity. ", joinOr(medium))
+		}
 	}
-	b.WriteString("Until then your AI tool will use its own built-in fallbacks where needed.")
+	if len(high) > 0 {
+		b.WriteString("Until then, Nólë will use keyless/provider fallbacks where available.")
+	}
 	return &SetupTip{
 		Summary: strings.TrimSpace(b.String()),
 		SeeAlso: "call provider_status for per-key signup links and env examples",
