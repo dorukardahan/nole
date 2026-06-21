@@ -29,7 +29,7 @@ drift silently. Their primary flags (e.g. `--json`, `--task`, `--insight`,
 may be added; existing ones are not removed/renamed) — upheld by the behaviour
 test suite and release review rather than a dedicated field-snapshot lock.
 
-The Unreleased SearchOptions expansion is an intentional MINOR surface addition:
+The v1.7.0 SearchOptions expansion is an intentional MINOR surface addition:
 `nole search` and `nole research` add optional `--country`, `--search-lang`,
 `--ui-lang`, `--safesearch`, and `--freshness` flags. These are caller hints,
 prevalidated/canonicalized by `core.Service`; existing search/research behavior
@@ -58,19 +58,19 @@ by the behaviour test suite and release review rather than a result-snapshot loc
 **MCP `stdout` carries JSON-RPC only** (logs go to stderr) — an invariant, not just
 a convention.
 
-The Unreleased SearchOptions expansion intentionally adds optional MCP params to
+The v1.7.0 SearchOptions expansion intentionally adds optional MCP params to
 `search`, `search_and_extract`, and `research`: `country`, `search_lang`,
 `ui_lang`, `safesearch`, and `freshness`. For `research`, they apply to internal
 search passes only. The parameter lock was updated with this doc so future MCP
 parameter drift remains fail-closed and explicit.
 
-The Unreleased research evidence expansion intentionally adds the optional
+The v1.7.0 research evidence expansion intentionally adds the optional
 `evidence_steps` response field to `research` JSON/MCP/REST output. It is compact
 observability metadata for search/extract status, source-extraction skips such as
 PDF/Reddit sources, and sanitized errors; it is not answer synthesis, provider
 ranking, or a full route-trace dump.
 
-The Unreleased `search_and_extract` partial-error expansion intentionally adds
+The v1.7.0 `search_and_extract` partial-error expansion intentionally adds
 optional `routing_insight` to each `extract_errors[]` item. The field is compact,
 sanitary extract-route observability for a failed URL; it does not expose full
 route traces or raw provider payloads.
@@ -122,7 +122,7 @@ the HTTP surface are a frozen 1.x contract:
 - **Route set** (locked by `TestStableRESTSurface`): `/health`, `/mcp`,
   `/api/search`, `/api/extract`, `/api/search_and_extract`, `/api/research`,
   `/api/providers`, `/api/budget`. Removing/renaming a route is breaking.
-- **Request-body fields are additive-only.** The Unreleased SearchOptions
+- **Request-body fields are additive-only.** The v1.7.0 SearchOptions
   expansion intentionally adds an optional `options` object to `/api/search`,
   `/api/search_and_extract`, and `/api/research` with `country`, `search_lang`,
   `ui_lang`, `safesearch`, and `freshness`. For `/api/research`, options apply to
