@@ -23,11 +23,12 @@ Use `nole doctor`, `nole providers --json` and MCP `provider_status`/`budget_sta
 
 ## Search option support
 
-SearchOptions are caller-controlled hints exposed consistently across CLI, REST
-and MCP search surfaces. Nólë validates and canonicalizes them once in
-`core.Service` before any provider call, and the search cache keys the canonical
+SearchOptions are caller-controlled hints exposed consistently across CLI, REST,
+and MCP search/research surfaces. Nólë prevalidates/canonicalizes them in
+`core.Service` before provider calls, and the search cache keys the canonical
 option set. Unsupported providers ignore unsupported options; they do not invent
-equivalent behavior.
+equivalent behavior. `research` applies the same options to its internal search
+passes only; extract steps remain URL-only.
 
 | Provider | Supported SearchOptions subset | Notes |
 | --- | --- | --- |

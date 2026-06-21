@@ -90,6 +90,84 @@ func TestResearchMaxStepsBoundsExtracts(t *testing.T) {
 	}
 }
 
+func TestResearchWithOptionsNormalizesBeforeSearchSteps(t *testing.T) {
+	provider := &optionRecorderProvider{name: "p"}
+	registry := NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	svc := NewService(registry, freeTierLedger("p", 10), RouteMatrix{TaskNews: {"p"}, TaskExtract: {"p"}})
+
+	_, err := svc.ResearchWithOptions(context.Background(), ResearchRequest{
+		Question: "latest ai news this week",
+		MaxSteps: 1,
+		Options:  SearchOptions{Country: " US ", SearchLang: " EN ", UILang: " en-US ", SafeSearch: "STRICT", Freshness: "week"},
+	})
+	if err != nil {
+		t.Fatalf("research with options failed: %v", err)
+	}
+	want := SearchOptions{Country: "us", SearchLang: "en", UILang: "en-us", SafeSearch: "strict", Freshness: "pw"}
+	if provider.lastOptions != want {
+		t.Fatalf("research search step saw options %#v, want normalized %#v", provider.lastOptions, want)
+	}
+}
+
+func TestResearchWithOptionsRejectsInvalidOptionsBeforeSearchSteps(t *testing.T) {
+	provider := &optionRecorderProvider{name: "p"}
+	registry := NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	svc := NewService(registry, freeTierLedger("p", 10), RouteMatrix{TaskNews: {"p"}})
+
+	_, err := svc.ResearchWithOptions(context.Background(), ResearchRequest{
+		Question: "latest ai news this week",
+		MaxSteps: 1,
+		Options:  SearchOptions{SafeSearch: "anything-goes"},
+	})
+	if err == nil {
+		t.Fatal("expected invalid research options error")
+	}
+	if !IsInvalidRequest(err) {
+		t.Fatalf("expected IsInvalidRequest, got %T %v", err, err)
+	}
+	if provider.calls != 0 {
+		t.Fatalf("invalid research options should fail before provider call; calls=%d", provider.calls)
+	}
+}
+
+func TestResearchWithOptionsAppliesCanonicalOptionsToEverySearchStep(t *testing.T) {
+	provider := &optionRecorderProvider{name: "p"}
+	registry := NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	svc := NewService(registry, freeTierLedger("p", 10), RouteMatrix{
+		TaskNews:     {"p"},
+		TaskGeneral:  {"p"},
+		TaskResearch: {"p"},
+		TaskExtract:  {"p"},
+	})
+
+	_, err := svc.ResearchWithOptions(context.Background(), ResearchRequest{
+		Question: "latest ai news this week",
+		MaxSteps: 3,
+		Options:  SearchOptions{Country: " TR ", SearchLang: " EN ", SafeSearch: "MODERATE", Freshness: "month"},
+	})
+	if err != nil {
+		t.Fatalf("research with options failed: %v", err)
+	}
+	want := SearchOptions{Country: "tr", SearchLang: "en", SafeSearch: "moderate", Freshness: "pm"}
+	if len(provider.allOptions) < 2 {
+		t.Fatalf("expected multiple research search steps, got %d options records (%#v)", len(provider.allOptions), provider.allOptions)
+	}
+	for i, got := range provider.allOptions {
+		if got != want {
+			t.Fatalf("search step %d saw options %#v, want %#v (all=%#v)", i+1, got, want, provider.allOptions)
+		}
+	}
+}
+
 // The research report returns evidence only — never a composed summary/answer.
 func TestResearchReportHasNoSummaryKey(t *testing.T) {
 	report := &ResearchReport{

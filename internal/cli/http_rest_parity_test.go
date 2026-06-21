@@ -129,11 +129,25 @@ func TestRESTResearchHappyPath(t *testing.T) {
 	}
 }
 
+func TestRESTResearchInvalidOptionsReturns400(t *testing.T) {
+	h := newTestHTTPHandler(t)
+	rec := doREST(t, h, http.MethodPost, "/api/research", []byte(`{"question":"hello","max_steps":1,"options":{"freshness":"forever"}}`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("POST /api/research invalid options = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("invalid research options Content-Type = %q, want application/json", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "freshness") {
+		t.Fatalf("expected invalid field in error body, got %s", rec.Body.String())
+	}
+}
+
 // Research's error body is intentionally a 2-field {operation,error} (its
 // ResearchReport carries no route/trace). Lock that documented divergence so it
-// can't silently grow/shrink. Research only returns an error on context
-// cancellation (research.go:67-68,110-111), so we force the 500 path with a
-// pre-cancelled request context.
+// can't silently grow/shrink. This test forces the 500 cancellation path with a
+// pre-cancelled request context; caller-controlled invalid options use the 400
+// invalid-request envelope tested separately above.
 func TestRESTResearchErrorEnvelopeDivergence(t *testing.T) {
 	h := newTestHTTPHandler(t)
 	ctx, cancel := context.WithCancel(context.Background())

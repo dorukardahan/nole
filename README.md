@@ -112,7 +112,7 @@ Search, extract, classify and route-plan JSON responses include a short `routing
 
 ### Search options
 
-The search surfaces expose one small typed option set for caller-controlled locale,
+The search and research surfaces expose one small typed option set for caller-controlled locale,
 safety and recency hints:
 
 | Field | CLI flag | Meaning |
@@ -123,11 +123,13 @@ safety and recency hints:
 | `safesearch` | `--safesearch` | `off`, `moderate`, or `strict` |
 | `freshness` | `--freshness` | `pd`/`day`, `pw`/`week`, `pm`/`month`, or `py`/`year` |
 
-REST accepts these under an optional `options` object on `/api/search` and
-`/api/search_and_extract`; MCP exposes the same semantic fields as optional
-top-level tool parameters on `search` and `search_and_extract`.
+REST accepts these under an optional `options` object on `/api/search`,
+`/api/search_and_extract`, and `/api/research`; MCP exposes the same semantic
+fields as optional top-level tool parameters on `search`, `search_and_extract`,
+and `research`. For research, options apply only to the internal search passes;
+extract steps remain URL-only.
 
-Nólë validates and normalizes options once in `core.Service` before routing.
+Nólë prevalidates/canonicalizes options in `core.Service` before routing.
 Invalid caller values fail as request errors; provider calls are not attempted.
 The response cache keys the canonical option set, so a localized/freshness/safe
 search request cannot collide with the same query using default options.

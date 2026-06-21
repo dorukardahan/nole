@@ -10,11 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **SearchOptions are now exposed across CLI, REST, and MCP search surfaces.**
-  `search` and `search_and_extract` accept optional `country`, `search_lang`,
-  `ui_lang`, `safesearch`, and `freshness` controls. Inputs are normalized once in
-  `core.Service`, invalid user values fail as request errors, and the search cache
-  keys the canonical option set so localized/safesearch/freshness queries cannot
-  collide with the same query using default options.
+  `search`, `search_and_extract`, and `research` accept optional `country`,
+  `search_lang`, `ui_lang`, `safesearch`, and `freshness` controls. Research applies
+  them to its internal search passes only; extract steps remain URL-only. Inputs are
+  prevalidated/canonicalized by `core.Service`, invalid user values fail as
+  request errors, and the search cache keys the canonical option set so
+  localized/safesearch/freshness queries cannot collide with the same query using
+  default options.
 - **Provider-aware option mapping for the first supported subset.** Brave forwards
   Search-plan Web/News options (`country`, `search_lang`, `ui_lang`, `safesearch`,
   `freshness`) while preserving the news/factcheck default `freshness=pm` when no

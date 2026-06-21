@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -91,6 +92,15 @@ func TestMCPResearchToolReturnsEvidenceNoSummary(t *testing.T) {
 		if _, ok := m[want]; !ok {
 			t.Fatalf("research output missing %q key: %s", want, txt)
 		}
+	}
+}
+
+func TestMCPResearchInvalidOptionsReturnToolError(t *testing.T) {
+	srv := newTestMCPServerWithProviders(t, mock.New("mock"))
+	txt := callToolText(t, srv, context.Background(), "research",
+		map[string]any{"question": "what is model context protocol", "max_steps": 1, "safesearch": "anything-goes"})
+	if !strings.Contains(txt, "invalid safesearch") {
+		t.Fatalf("research invalid options should return a sanitized tool error mentioning safesearch, got %q", txt)
 	}
 }
 

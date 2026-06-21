@@ -30,9 +30,11 @@ may be added; existing ones are not removed/renamed) — upheld by the behaviour
 test suite and release review rather than a dedicated field-snapshot lock.
 
 The Unreleased SearchOptions expansion is an intentional MINOR surface addition:
-`nole search` adds optional `--country`, `--search-lang`, `--ui-lang`,
-`--safesearch`, and `--freshness` flags. These are caller hints, normalized by
-`core.Service`; existing search behavior is unchanged when they are omitted.
+`nole search` and `nole research` add optional `--country`, `--search-lang`,
+`--ui-lang`, `--safesearch`, and `--freshness` flags. These are caller hints,
+prevalidated/canonicalized by `core.Service`; existing search/research behavior
+is unchanged when they are omitted. Research applies them only to its internal
+search passes.
 
 ### MCP tools
 
@@ -57,9 +59,10 @@ by the behaviour test suite and release review rather than a result-snapshot loc
 a convention.
 
 The Unreleased SearchOptions expansion intentionally adds optional MCP params to
-`search` and `search_and_extract`: `country`, `search_lang`, `ui_lang`,
-`safesearch`, and `freshness`. The parameter lock was updated with this doc so
-future MCP parameter drift remains fail-closed and explicit.
+`search`, `search_and_extract`, and `research`: `country`, `search_lang`,
+`ui_lang`, `safesearch`, and `freshness`. For `research`, they apply to internal
+search passes only. The parameter lock was updated with this doc so future MCP
+parameter drift remains fail-closed and explicit.
 
 The Unreleased research evidence expansion intentionally adds the optional
 `evidence_steps` response field to `research` JSON/MCP/REST output. It is compact
@@ -120,9 +123,10 @@ the HTTP surface are a frozen 1.x contract:
   `/api/search`, `/api/extract`, `/api/search_and_extract`, `/api/research`,
   `/api/providers`, `/api/budget`. Removing/renaming a route is breaking.
 - **Request-body fields are additive-only.** The Unreleased SearchOptions
-  expansion intentionally adds an optional `options` object to `/api/search` and
-  `/api/search_and_extract` with `country`, `search_lang`, `ui_lang`,
-  `safesearch`, and `freshness`. Invalid option values are caller-controlled
+  expansion intentionally adds an optional `options` object to `/api/search`,
+  `/api/search_and_extract`, and `/api/research` with `country`, `search_lang`,
+  `ui_lang`, `safesearch`, and `freshness`. For `/api/research`, options apply to
+  the internal search passes only. Invalid option values are caller-controlled
   request errors and return the standard `/api/*` 400 envelope.
 - **Error envelope shape** (frozen) — for `/api/*` request-decode (400), auth
   (401), and service errors (402/500): a JSON `{operation, error}` body, plus the
