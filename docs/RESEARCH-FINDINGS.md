@@ -122,9 +122,10 @@ prevents re-litigating settled points and documents one outright-wrong seed.
 - **`app.go:120` — redundant ledger branch:** real but pure style; `NewFileQuotaLedgerWithPolicy`
   always returns a non-nil ledger, so the branch is harmless dead code with no functional benefit.
   Not worth churn. **No change.**
-- **`router.go:41` / `service.go:259` — `Router.Select` dead in production / `routeFor` duplication:**
-  true, but `Router` and `Service` are the same package (legal internal access) and `Select` is
-  plausibly intended API; removing tested code is the taste refactor the constraints forbid. **No change.**
+- **`router.go` / `service.go` — `Router.Select` dead in production / `routeFor` duplication:**
+  originally deferred as a taste refactor; later resolved by adding `Router.Route` and
+  `Router.Candidate`, then making `Service.Search`/`Extract` consume the shared lazy
+  candidate path while keeping `Router.Select` as a compatibility wrapper. **Resolved after this scan.**
 - **`brave.go:140` `clampMin` misnomer, `bench.go:104` hand-rolled sort, `service.go:57` Search/Extract
   duplication, `research.go:151` magic numbers, `http.go:100` ignored encode errors, `search.go:26`
   insight ordering, `file_lock_windows.go:21` "non-blocking" lock, `safeerr.go:14/22` Redact scope:**

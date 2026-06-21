@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Router route gates are now shared with the Service runtime path.**
+  `Router.Route` centralizes task→route fallback, `Router.Candidate` carries
+  registration/capability/quota skip decisions one provider slot at a time, and
+  `Service.Search`/`Extract` consume those lazy candidates before provider
+  status/calls. This removes the old `s.router.matrix` bypass without changing
+  routing order, quota decision timing, quota debit timing, or response shapes.
 - **MCP `setup_tip` now uses keyless-baseline wording.** In normal zero-key
   sessions, the one-time tip says Nólë already works with keyless fallbacks and
   frames missing provider keys as optional speed/fidelity upgrades. It no longer

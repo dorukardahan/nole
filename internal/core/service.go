@@ -186,20 +186,17 @@ func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route [
 	// select, so the walk completes for the benefit of all coalesced callers and
 	// the cache, bounded by per-provider client timeouts.
 	for _, name := range route {
-		provider, ok := s.registry.Get(name)
-		if !ok {
-			trace = append(trace, skippedAttempt(name, "not_registered"))
+		candidate := s.router.Candidate(name, CapabilitySearch)
+		if candidate.SkipReason != "" {
+			trace = append(trace, skippedRouteCandidateAttempt(candidate))
 			continue
 		}
-		if !HasCapability(provider.Capabilities(), CapabilitySearch) {
-			trace = append(trace, skippedAttempt(name, "missing_search_capability"))
+		if !candidate.Routable {
+			trace = append(trace, skippedRouteCandidateAttempt(candidate))
 			continue
 		}
-		decision := s.ledger.Decide(name)
-		if !decision.Allowed {
-			trace = append(trace, skippedAttemptWithDecision(name, decision))
-			continue
-		}
+		provider := candidate.Provider
+		decision := candidate.Decision
 		if status := provider.Status(ctx); !status.Available {
 			reason := status.Reason
 			if reason == "" {
@@ -396,20 +393,17 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 	// See searchUncached: runs on a detached context; caller cancellation is
 	// handled at the Extract wrapper boundary.
 	for _, name := range route {
-		provider, ok := s.registry.Get(name)
-		if !ok {
-			trace = append(trace, skippedAttempt(name, "not_registered"))
+		candidate := s.router.Candidate(name, CapabilityExtract)
+		if candidate.SkipReason != "" {
+			trace = append(trace, skippedRouteCandidateAttempt(candidate))
 			continue
 		}
-		if !HasCapability(provider.Capabilities(), CapabilityExtract) {
-			trace = append(trace, skippedAttempt(name, "missing_extract_capability"))
+		if !candidate.Routable {
+			trace = append(trace, skippedRouteCandidateAttempt(candidate))
 			continue
 		}
-		decision := s.ledger.Decide(name)
-		if !decision.Allowed {
-			trace = append(trace, skippedAttemptWithDecision(name, decision))
-			continue
-		}
+		provider := candidate.Provider
+		decision := candidate.Decision
 		if status := provider.Status(ctx); !status.Available {
 			reason := status.Reason
 			if reason == "" {
@@ -540,11 +534,14 @@ func (s *Service) BudgetStatus() BudgetStatus {
 }
 
 func (s *Service) routeFor(task TaskType) []string {
-	route := s.router.matrix[task]
-	if len(route) == 0 {
-		route = s.router.matrix[TaskGeneral]
+	return s.router.Route(task)
+}
+
+func skippedRouteCandidateAttempt(candidate RouteCandidate) RouteAttempt {
+	if candidate.DecisionChecked {
+		return skippedAttemptWithReasonAndDecision(candidate.Name, candidate.SkipReason, candidate.Decision)
 	}
-	return route
+	return skippedAttempt(candidate.Name, candidate.SkipReason)
 }
 
 func skippedAttempt(provider, reason string) RouteAttempt {
