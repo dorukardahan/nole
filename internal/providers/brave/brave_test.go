@@ -53,6 +53,60 @@ func TestBraveSearchHappyPath(t *testing.T) {
 	}
 }
 
+func TestBraveSearchSurfacesMonthlyRateLimitUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-RateLimit-Limit", "1, 1000")
+		w.Header().Set("X-RateLimit-Policy", "1;w=1, 1000;w=2592000")
+		w.Header().Set("X-RateLimit-Remaining", "0, 0")
+		w.Header().Set("X-RateLimit-Reset", "1, 86400")
+		_ = json.NewEncoder(w).Encode(braveSearchResponse{Web: &braveWebResults{Results: []braveWebResult{{Title: "Result", URL: "https://example.com", Description: "snippet"}}}})
+	}))
+	defer srv.Close()
+
+	p := Provider{apiKey: "test-key", httpClient: &http.Client{Transport: newRedirectTransport(srv.URL)}}
+	resp, err := p.Search(context.Background(), core.SearchRequest{Query: "test", Task: core.TaskGeneral, Limit: 5})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if resp.RemoteUsage == nil {
+		t.Fatal("expected Brave monthly rate-limit headers to surface remote usage")
+	}
+	if resp.RemoteUsage.Provider != "brave" || resp.RemoteUsage.Source != "brave_rate_limit_headers" {
+		t.Fatalf("unexpected remote usage identity: %#v", resp.RemoteUsage)
+	}
+	if resp.RemoteUsage.RemainingCalls == nil || *resp.RemoteUsage.RemainingCalls != 0 {
+		t.Fatalf("remaining calls = %#v, want 0", resp.RemoteUsage.RemainingCalls)
+	}
+	if resp.RemoteUsage.LimitCalls == nil || *resp.RemoteUsage.LimitCalls != 1000 {
+		t.Fatalf("limit calls = %#v, want 1000", resp.RemoteUsage.LimitCalls)
+	}
+	if resp.RemoteUsage.ResetSeconds == nil || *resp.RemoteUsage.ResetSeconds != 86400 {
+		t.Fatalf("reset seconds = %#v, want 86400", resp.RemoteUsage.ResetSeconds)
+	}
+}
+
+func TestBraveSearchSurfacesMonthlyRateLimitUsageOn429(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-RateLimit-Limit", "1, 1000")
+		w.Header().Set("X-RateLimit-Policy", "1;w=1, 1000;w=2592000")
+		w.Header().Set("X-RateLimit-Remaining", "0, 0")
+		w.Header().Set("X-RateLimit-Reset", "1, 3600")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":"quota exhausted"}`))
+	}))
+	defer srv.Close()
+
+	p := Provider{apiKey: "test-key", httpClient: &http.Client{Transport: newRedirectTransport(srv.URL)}}
+	resp, err := p.Search(context.Background(), core.SearchRequest{Query: "test", Task: core.TaskGeneral, Limit: 5})
+	if err == nil {
+		t.Fatal("expected 429 error")
+	}
+	if resp.RemoteUsage == nil || resp.RemoteUsage.RemainingCalls == nil || *resp.RemoteUsage.RemainingCalls != 0 {
+		t.Fatalf("expected 429 response headers to surface exhausted remote usage, got %#v", resp.RemoteUsage)
+	}
+}
+
 func TestBraveSearchUsesNewsEndpointForRecencyTasks(t *testing.T) {
 	for _, tc := range []struct {
 		name string

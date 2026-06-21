@@ -36,6 +36,19 @@ prevalidated/canonicalized by `core.Service`; existing search/research behavior
 is unchanged when they are omitted. Research applies them only to its internal
 search passes.
 
+The post-v1.7.0 provider-usage expansion intentionally adds optional
+`providers --live-usage`. It queries provider usage APIs only where Nólë has a
+documented quota endpoint or response-header signal, emits sanitized usage fields,
+and may reconcile the local quota ledger to provider-reported usage before routed
+calls for free-tier BYOK providers. Premium/paid provider account usage is only
+queried through the explicit live-usage observability surface. Every provider
+status also carries
+additive `remote_usage_strategy` / `remote_usage_reason` fields, including
+explicit `not_applicable` for keyless/local providers and `disabled_no_key` for
+keyed providers without credentials. Plain `providers`, `doctor`, `config dump`,
+and `budget_status` remain local-status surfaces unless a live-usage
+flag/parameter is explicitly supplied.
+
 ### MCP tools
 
 The MCP tool surface is stable:
@@ -74,6 +87,14 @@ The v1.7.0 `search_and_extract` partial-error expansion intentionally adds
 optional `routing_insight` to each `extract_errors[]` item. The field is compact,
 sanitary extract-route observability for a failed URL; it does not expose full
 route traces or raw provider payloads.
+
+The post-v1.7.0 provider-usage expansion intentionally adds optional MCP param
+`live_usage` to `provider_status`. When true, Nólë queries supported provider
+usage APIs/header metadata, returns sanitized `remote_usage` / advisory
+`remote_usage_error`, and syncs the local quota ledger. The tool always reports
+the additive strategy/reason fields so agents can see each provider's quota-truth
+contract without making unsupported calls. When omitted, live account querying is
+not performed.
 
 ### Configuration (environment variables)
 

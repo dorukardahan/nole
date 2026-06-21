@@ -199,6 +199,58 @@ func (l *MemoryQuotaLedger) Set(entry QuotaEntry) {
 	}
 }
 
+func (l *MemoryQuotaLedger) SyncRemoteUsage(usage ProviderUsage) {
+	provider := strings.TrimSpace(usage.Provider)
+	if provider == "" || usage.RemainingCalls == nil {
+		return
+	}
+	remaining := *usage.RemainingCalls
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	apply := func() error {
+		if strings.TrimSpace(l.path) != "" {
+			if err := l.reloadFromDiskLocked(); err != nil {
+				return err
+			}
+		}
+		entry, ok := l.entries[provider]
+		if !ok {
+			return nil
+		}
+		entry = normalizeQuotaEntry(entry)
+		if entry.CostClass != CostClassFreeTierBYOK {
+			return nil
+		}
+		cap := entry.FreeQuota
+		if usage.LimitCalls != nil && *usage.LimitCalls >= 0 && (cap == 0 || *usage.LimitCalls < cap) {
+			cap = *usage.LimitCalls
+			entry.FreeQuota = cap
+		}
+		if cap > 0 && remaining > cap {
+			remaining = cap
+		}
+		entry.FreeRemaining = remaining
+		if strings.TrimSpace(entry.PeriodStart) == "" {
+			entry.PeriodStart = CurrentMonthISO()
+		}
+		l.entries[provider] = entry
+		return l.persistLocked()
+	}
+	var err error
+	if strings.TrimSpace(l.path) != "" {
+		err = l.withFileLockLocked(apply)
+	} else {
+		err = apply()
+	}
+	if err != nil {
+		l.markUnavailableLocked(err)
+	}
+}
+
 func (l *MemoryQuotaLedger) Allow(provider string) bool {
 	return l.Decide(provider).Allowed
 }

@@ -107,6 +107,7 @@ type SearchResponse struct {
 	RoutingInsight string         `json:"routing_insight,omitempty"`
 	RouteTrace     []RouteAttempt `json:"route_trace,omitempty"`
 	SetupTip       *SetupTip      `json:"setup_tip,omitempty"`
+	RemoteUsage    *ProviderUsage `json:"remote_usage,omitempty"`
 	// TaskSource reports how Task was chosen (supplied/detected/default), so the
 	// agent can see whether it drove the route or Nólë's planner inferred it.
 	TaskSource TaskSource `json:"task_source,omitempty"`
@@ -216,7 +217,36 @@ type ProviderStatus struct {
 	BreakerOpenedAt    string `json:"breaker_opened_at,omitempty"` // RFC3339 UTC
 	// DriftWarning is present when a recent (<24h) drift signal exists for this
 	// provider — i.e. it returned 429 while the local counter showed room.
-	DriftWarning string `json:"drift_warning,omitempty"`
+	DriftWarning     string         `json:"drift_warning,omitempty"`
+	RemoteUsage      *ProviderUsage `json:"remote_usage,omitempty"`
+	RemoteUsageError string         `json:"remote_usage_error,omitempty"`
+	// RemoteUsageStrategy states how Nólë can learn provider-account usage for
+	// this provider. It is populated for every provider status so agents can tell
+	// the difference between "queried", "header-only", "keyless/not applicable",
+	// and "disabled/no key" instead of guessing from missing remote_usage fields.
+	RemoteUsageStrategy string `json:"remote_usage_strategy,omitempty"`
+	RemoteUsageReason   string `json:"remote_usage_reason,omitempty"`
+}
+
+// ProviderUsage is sanitized provider-account usage metadata. It never carries
+// provider keys, auth headers or raw provider payloads. RemainingCalls/LimitCalls
+// are Nólë's conservative route-gating unit (calls). NativeRemaining/NativeLimit
+// preserve the provider's own unit (for example credits) for operator context.
+type ProviderUsage struct {
+	Provider        string `json:"provider"`
+	Source          string `json:"source"`
+	RemainingCalls  *int   `json:"remaining_calls,omitempty"`
+	LimitCalls      *int   `json:"limit_calls,omitempty"`
+	NativeRemaining *int   `json:"native_remaining,omitempty"`
+	NativeLimit     *int   `json:"native_limit,omitempty"`
+	NativeUnit      string `json:"native_unit,omitempty"`
+	PeriodStart     string `json:"period_start,omitempty"`
+	PeriodEnd       string `json:"period_end,omitempty"`
+	ResetSeconds    *int   `json:"reset_seconds,omitempty"`
+}
+
+type UsageProvider interface {
+	Usage(ctx context.Context) (ProviderUsage, error)
 }
 
 type BudgetStatus struct {

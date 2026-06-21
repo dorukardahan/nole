@@ -36,7 +36,7 @@ var (
 		"extract":            {"url", "format", "include_trace"},
 		"search_and_extract": {"query", "task", "limit", "extract_top", "country", "search_lang", "ui_lang", "safesearch", "freshness", "include_trace"},
 		"research":           {"question", "max_steps", "country", "search_lang", "ui_lang", "safesearch", "freshness"},
-		"provider_status":    {},
+		"provider_status":    {"live_usage"},
 		"budget_status":      {},
 	}
 

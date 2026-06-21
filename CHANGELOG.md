@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Provider-account usage sync for quota-tracked BYOK providers.** Tavily now
+  reads `GET /usage` and Firecrawl reads `GET /team/credit-usage` to convert
+  provider-native credits into Nólë's conservative call floor. Free-tier BYOK
+  providers can sync before routing, so exhausted dashboards can block the
+  provider before a search/extract call; premium/paid usage remains an explicit
+  observability path. Brave has no separate non-consuming account-usage endpoint
+  in the public Search API; Nólë now reads Brave's `X-RateLimit-*` response
+  headers (including 429s) and syncs the local ledger from the monthly remaining
+  value after the provider response.
+- **Live usage observability.** `nole providers --live-usage --json` and MCP
+  `provider_status(live_usage=true)` surface sanitized `remote_usage` metadata
+  and sync the local quota ledger. Every provider reports a
+  `remote_usage_strategy` (`account_usage_endpoint`, `response_headers`,
+  `not_applicable`, or `disabled_no_key`) so keyless/local providers are covered
+  explicitly without noisy account-usage errors. Key values, auth headers and raw
+  provider payloads are never emitted.
+
 ## [1.7.0] - 2026-06-21
 
 ### Added
