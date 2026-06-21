@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-06-21
+
 ### Added
 
 - **SearchOptions are now exposed across CLI, REST, and MCP search surfaces.**
@@ -1389,7 +1391,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/dorukardahan/nole/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/dorukardahan/nole/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/dorukardahan/nole/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/dorukardahan/nole/compare/v1.5.1...v1.6.0
