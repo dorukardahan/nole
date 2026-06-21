@@ -49,11 +49,27 @@ type Router struct {
 	matrix   RouteMatrix
 }
 
+// RouteCandidate is one provider slot in a task route after static routing gates
+// have been evaluated. Service still owns provider Status(), provider calls,
+// quota Record(), cache, and rich runtime tracing; the router owns route
+// fallback plus registration/capability/quota eligibility so Select and Service
+// cannot drift on those gates.
+type RouteCandidate struct {
+	Name            string
+	Provider        Provider
+	Decision        QuotaDecision
+	DecisionChecked bool
+	Routable        bool
+	SkipReason      string
+}
+
 func NewRouter(registry *Registry, ledger QuotaLedger, matrix RouteMatrix) *Router {
 	return &Router{registry: registry, ledger: ledger, matrix: matrix}
 }
 
-func (r *Router) Select(task TaskType, capability Capability) (Provider, []string, error) {
+// Route returns the configured route for a task, falling back to TaskGeneral.
+// The returned slice is a defensive copy so callers cannot mutate the matrix.
+func (r *Router) Route(task TaskType) []string {
 	if task == "" {
 		task = TaskGeneral
 	}
@@ -61,20 +77,70 @@ func (r *Router) Select(task TaskType, capability Capability) (Provider, []strin
 	if len(route) == 0 {
 		route = r.matrix[TaskGeneral]
 	}
-	seen := make([]string, 0, len(route))
+	return append([]string(nil), route...)
+}
+
+// Candidates returns the task route annotated with registration, capability, and
+// quota-policy gate results. It deliberately does not call Provider.Status() or
+// execute provider requests; those are runtime concerns handled by Service.
+func (r *Router) Candidates(task TaskType, capability Capability) []RouteCandidate {
+	route := r.Route(task)
+	candidates := make([]RouteCandidate, 0, len(route))
 	for _, name := range route {
-		seen = append(seen, name)
-		provider, ok := r.registry.Get(name)
-		if !ok {
-			continue
-		}
-		if !HasCapability(provider.Capabilities(), capability) {
-			continue
-		}
-		if !r.ledger.Decide(name).Allowed {
-			continue
-		}
-		return provider, append([]string(nil), route...), nil
+		candidates = append(candidates, r.Candidate(name, capability))
 	}
-	return nil, append([]string(nil), route...), NoFreeQuotaError{Task: task, Provider: seen}
+	return candidates
+}
+
+// Candidate evaluates one provider slot. It is intentionally single-slot so
+// Service and Select can preserve the old lazy behavior: quota decisions are made
+// only for providers actually reached before a success/fatal exit.
+func (r *Router) Candidate(name string, capability Capability) RouteCandidate {
+	candidate := RouteCandidate{Name: name}
+	provider, ok := r.registry.Get(name)
+	if !ok {
+		candidate.SkipReason = "not_registered"
+		return candidate
+	}
+	candidate.Provider = provider
+	if !HasCapability(provider.Capabilities(), capability) {
+		candidate.SkipReason = missingCapabilityReason(capability)
+		return candidate
+	}
+	decision := r.ledger.Decide(name)
+	candidate.Decision = decision
+	candidate.DecisionChecked = true
+	if !decision.Allowed {
+		candidate.SkipReason = decision.Reason
+		return candidate
+	}
+	candidate.Routable = true
+	return candidate
+}
+
+func (r *Router) Select(task TaskType, capability Capability) (Provider, []string, error) {
+	if task == "" {
+		task = TaskGeneral
+	}
+	route := r.Route(task)
+	for _, name := range route {
+		candidate := r.Candidate(name, capability)
+		if candidate.Routable {
+			return candidate.Provider, route, nil
+		}
+	}
+	return nil, route, NoFreeQuotaError{Task: task, Provider: route}
+}
+
+func missingCapabilityReason(capability Capability) string {
+	switch capability {
+	case CapabilitySearch:
+		return "missing_search_capability"
+	case CapabilityExtract:
+		return "missing_extract_capability"
+	case CapabilityStatus:
+		return "missing_status_capability"
+	default:
+		return "missing_capability"
+	}
 }

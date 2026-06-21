@@ -188,6 +188,23 @@ grep -Fq '`search`, `search_and_extract`, and `research`' docs/STABILITY.md \
   || fail "stability docs must include MCP research search options"
 grep -Fq 'For `research`, they apply to internal' docs/STABILITY.md \
   || fail "stability docs must state research SearchOptions scope"
+grep -Fq 'Router.Candidate' docs/ARCHITECTURE.md \
+  || fail "architecture docs must describe the shared Router.Candidate runtime path"
+if grep -Fq 'Only exercised by tests — `service.go` reimplements this loop' docs/ARCHITECTURE.md; then
+  fail "architecture docs must not claim Router.Select is test-only after route candidate refactor"
+fi
+if grep -Fqi 'service reimplements the loop' docs/ARCHITECTURE.md; then
+  fail "architecture docs must not claim service reimplements the route loop after route candidate refactor"
+fi
+if grep -Fqi 'Router.Select' docs/ARCHITECTURE.md && grep -Fqi 'NOT on this path' docs/ARCHITECTURE.md; then
+  fail "architecture docs must not claim Router.Select is absent from the shared route candidate path"
+fi
+if grep -Fq 'Service.routeFor` reaches into `s.router.matrix`' docs/ARCHITECTURE.md; then
+  fail "architecture docs must not claim Service.routeFor bypasses Router"
+fi
+if grep -Fq 'reads `s.router.matrix' docs/ARCHITECTURE.md; then
+  fail "architecture docs must not claim routeFor reads the router matrix directly"
+fi
 if grep -Fq './nole extract <url>` requires a Tavily or Firecrawl key' CONTRIBUTING.md; then
   fail "contributing docs must not claim extract requires Tavily/Firecrawl keys"
 fi
