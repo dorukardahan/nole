@@ -17,9 +17,22 @@ Default policy is `free-first`. Brave and Tavily remain BYOK-gated and are class
 | Scrapling | `NOLE_SCRAPLING_PYTHON` | Local keyless extraction fallback, no counter | n/a | Prefer `nole setup --local-extract`, which creates an isolated venv and writes this variable locally. Nólë validates public URLs before calling it, but website terms and robots.txt remain the user's responsibility. |
 | httpfetch | none | Keyless pure-Go extraction backstop, no counter | n/a | Always available, no setup. Last-resort `extract` fallback (after Scrapling and the keyed remotes). Pure stdlib HTTP fetch + HTML-to-text; runs **no JavaScript**, so it is weaker than Scrapling/Firecrawl on SPA/JS-rendered pages. SSRF-preflighted on every redirect hop. Keyless does not mean guaranteed availability or unlimited use. |
 
-The free-tier numbers above are conservative anchors verified 2026-06 against each provider's published pricing. Tavily and keyed Firecrawl meter in variable credits while the ledger debits 1 per call, so each floor is credits ÷ the priciest call Nólë can issue: Tavily 1000 ÷ 2 (advanced search/extract) = 500; keyed Firecrawl 1000 ÷ 4 (a 20-result search at 2 credits per 10 results) = 250. Firecrawl keyless mode is treated like other keyless-free providers: allowed under `free-first`, with upstream 429s surfaced through normal route errors/drift warnings rather than a fabricated local balance. This avoids over-reading remaining headroom; undercounting is the safe direction and the drift signal catches the rest. The BYOK floors are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
+The free-tier numbers above are conservative anchors verified 2026-06 against each provider's published pricing. Tavily and keyed Firecrawl meter in variable credits while the ledger debits 1 per call, so each floor is credits ÷ the priciest call Nólë can issue: Tavily 1000 ÷ 2 (advanced search/extract) = 500; keyed Firecrawl 1000 ÷ 4 (a 20-result search at 2 credits per 10 results) = 250. Firecrawl keyless mode is treated like other keyless-free providers: allowed under `free-first`, with upstream 429s surfaced through normal route errors/drift warnings rather than a fabricated local balance. This avoids over-reading remaining headroom; undercounting is the safe direction and the drift signal catches the rest. Tavily and Firecrawl also expose account usage endpoints, so Nólë can query sanitized remote usage and reconcile the local free-tier BYOK ledger to provider-reported usage before routed calls. Premium/paid provider usage is explicit observability only unless a separate paid-usage ledger policy is added. Brave Search exposes monthly remaining quota through `X-RateLimit-*` response headers rather than a separate non-consuming usage endpoint, so Nólë syncs Brave after a Brave response (including 429s). The BYOK floors are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
 
-Use `nole doctor`, `nole providers --json` and MCP `provider_status`/`budget_status` to inspect status safely. These surfaces should report presence/status and local policy decisions, never key values.
+Use `nole doctor`, `nole providers --json` and MCP `provider_status`/`budget_status` to inspect local status safely. Use `nole providers --live-usage --json` or MCP `provider_status` with `live_usage=true` when you explicitly want Nólë to query supported provider usage APIs/header metadata and sync the local ledger. These surfaces should report presence/status and sanitized usage only, never key values. Every provider status also carries a `remote_usage_strategy` so agents do not infer meaning from missing usage fields:
+
+| Provider | `remote_usage_strategy` | Live query behavior |
+| --- | --- | --- |
+| Brave Search API | `response_headers` when keyed | No separate non-consuming usage endpoint is documented; Nólë syncs from Brave `X-RateLimit-*` headers after real Brave responses/429s. |
+| Tavily | `account_usage_endpoint` when keyed | `--live-usage` / MCP `live_usage=true` calls `GET /usage` and converts credits to conservative call units. |
+| Firecrawl | `account_usage_endpoint` when keyed; `not_applicable` in keyless mode | Keyed mode calls `GET /team/credit-usage`; keyless mode is anonymous/shared and is not queried for account usage. |
+| DDGS | `not_applicable` | Keyless fallback; no provider-account quota endpoint is available to Nólë. |
+| Wikipedia/MediaWiki | `not_applicable` | Keyless public API; no provider-account quota endpoint is available to Nólë. |
+| arXiv | `not_applicable` | Keyless public API; no provider-account quota endpoint is available to Nólë. |
+| Scrapling | `not_applicable` | Local runtime; no remote provider account exists. |
+| httpfetch | `not_applicable` | Local direct HTTP fetch; no remote provider account exists. |
+
+When a keyed provider is disabled because its key is absent, the strategy is `disabled_no_key` and Nólë does not attempt account-usage calls.
 
 ## Search option support
 
@@ -88,7 +101,7 @@ export NOLE_TAVILY_ESTIMATED_COST_CENTS=""
 export NOLE_FIRECRAWL_ESTIMATED_COST_CENTS=""
 ```
 
-Do not set `quality-first` or non-zero cost estimates unless you intentionally accept the provider-account cost risk. Nólë does not know your provider dashboard's exact real-time balance in v0.1; when `NOLE_QUOTA_LEDGER_PATH` is configured it persists only local quota counters and estimated spend across process restarts.
+Do not set `quality-first` or non-zero cost estimates unless you intentionally accept the provider-account cost risk. Nólë's default ledger remains local accounting, but live usage sync can read supported provider usage metadata: Tavily `/usage`, Firecrawl `/team/credit-usage`, and Brave Search `X-RateLimit-*` headers on actual Brave responses. Providers can still meter differently or change surfaces, so dashboards remain the final account truth.
 
 Optional local state controls:
 

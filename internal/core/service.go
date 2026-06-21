@@ -44,6 +44,19 @@ type Service struct {
 
 type ServiceOption func(*Service)
 
+type ProviderStatusOptions struct {
+	LiveUsage  bool
+	SyncLedger bool
+}
+
+const (
+	RemoteUsageStrategyAccountEndpoint = "account_usage_endpoint"
+	RemoteUsageStrategyResponseHeaders = "response_headers"
+	RemoteUsageStrategyNotApplicable   = "not_applicable"
+	RemoteUsageStrategyDisabledNoKey   = "disabled_no_key"
+	RemoteUsageStrategyUnsupported     = "unsupported"
+)
+
 func WithResponseCache(cache ResponseCache) ServiceOption {
 	return func(s *Service) {
 		s.cache = cache
@@ -186,6 +199,12 @@ func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route [
 	// select, so the walk completes for the benefit of all coalesced callers and
 	// the cache, bounded by per-provider client timeouts.
 	for _, name := range route {
+		if provider, ok := s.registry.Get(name); ok && HasCapability(provider.Capabilities(), CapabilitySearch) {
+			entry, found := s.ledger.Get(name)
+			if canAutoSyncProviderUsage(provider, entry, found) {
+				_, _ = s.syncProviderUsage(ctx, provider)
+			}
+		}
 		candidate := s.router.Candidate(name, CapabilitySearch)
 		if candidate.SkipReason != "" {
 			trace = append(trace, skippedRouteCandidateAttempt(candidate))
@@ -209,6 +228,7 @@ func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route [
 		resp, err := provider.Search(ctx, req)
 		latency := time.Since(start).Milliseconds()
 		if err != nil {
+			s.syncRemoteUsage(resp.RemoteUsage)
 			lastErr = err
 			// Drift: the provider rejected this as over-quota (429) while our
 			// local counter still showed room. Record an advisory signal (no
@@ -259,6 +279,7 @@ func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route [
 			}
 			traceReason = "success_" + suffix
 		}
+		s.syncRemoteUsage(resp.RemoteUsage)
 		trace = append(trace, attemptWithDecision(name, "success", traceReason, decision, latency, len(resp.Results)))
 		resp.RouteTrace = trace
 		resp.RoutingInsight = BuildSearchRoutingInsight(resp)
@@ -393,6 +414,12 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 	// See searchUncached: runs on a detached context; caller cancellation is
 	// handled at the Extract wrapper boundary.
 	for _, name := range route {
+		if provider, ok := s.registry.Get(name); ok && HasCapability(provider.Capabilities(), CapabilityExtract) {
+			entry, found := s.ledger.Get(name)
+			if canAutoSyncProviderUsage(provider, entry, found) {
+				_, _ = s.syncProviderUsage(ctx, provider)
+			}
+		}
 		candidate := s.router.Candidate(name, CapabilityExtract)
 		if candidate.SkipReason != "" {
 			trace = append(trace, skippedRouteCandidateAttempt(candidate))
@@ -463,6 +490,10 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 }
 
 func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
+	return s.ProviderStatusWithOptions(ctx, ProviderStatusOptions{})
+}
+
+func (s *Service) ProviderStatusWithOptions(ctx context.Context, opts ProviderStatusOptions) ProviderStatusResponse {
 	providers := s.registry.List()
 	statuses := make([]ProviderStatus, 0, len(providers))
 	configured := make(map[string]bool)
@@ -487,6 +518,21 @@ func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 	extractAvailable := false
 	for _, provider := range providers {
 		status := provider.Status(ctx) // called once per provider
+		decision := s.ledger.Decide(provider.Name())
+		strategy, reason, canQueryUsage := providerUsageStrategy(provider, decision)
+		status.RemoteUsageStrategy = strategy
+		status.RemoteUsageReason = reason
+		if opts.LiveUsage && canQueryUsage {
+			usage, err := s.providerUsage(ctx, provider)
+			if err != nil {
+				status.RemoteUsageError = safeerr.Message(err)
+			} else {
+				status.RemoteUsage = &usage
+				if opts.SyncLedger {
+					s.syncRemoteUsage(&usage)
+				}
+			}
+		}
 		if byokNames[provider.Name()] {
 			configured[provider.Name()] = status.Available
 		}
@@ -503,6 +549,98 @@ func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 	return ProviderStatusResponse{
 		Providers:        statuses,
 		SetupSuggestions: suggestions,
+	}
+}
+
+type remoteUsageSyncer interface {
+	SyncRemoteUsage(ProviderUsage)
+}
+
+func providerUsageStrategy(provider Provider, decision QuotaDecision) (strategy, reason string, canQuery bool) {
+	if provider == nil {
+		return RemoteUsageStrategyUnsupported, "provider is not registered", false
+	}
+	switch decision.CostClass {
+	case CostClassDisabledNoKey:
+		return RemoteUsageStrategyDisabledNoKey, "provider account usage requires configured credentials", false
+	case CostClassKeylessFree:
+		return RemoteUsageStrategyNotApplicable, "keyless/local provider has no provider-account quota for Nólë to query", false
+	}
+	entry := QuotaEntry{Provider: decision.Provider, CostClass: decision.CostClass}
+	canQuery = canQueryProviderUsage(provider, entry, true)
+	if canQuery {
+		switch provider.Name() {
+		case "tavily":
+			return RemoteUsageStrategyAccountEndpoint, "Tavily account usage endpoint: GET /usage", true
+		case "firecrawl":
+			return RemoteUsageStrategyAccountEndpoint, "Firecrawl account credit endpoint: GET /team/credit-usage", true
+		default:
+			return RemoteUsageStrategyAccountEndpoint, "provider exposes a sanitized account usage endpoint", true
+		}
+	}
+	if provider.Name() == "brave" {
+		return RemoteUsageStrategyResponseHeaders, "Brave Search exposes quota via X-RateLimit-* response headers; no separate non-consuming usage endpoint is documented", false
+	}
+	return RemoteUsageStrategyUnsupported, "no documented provider-account usage endpoint is implemented", false
+}
+
+func canQueryProviderUsage(provider Provider, entry QuotaEntry, found bool) bool {
+	if provider == nil || !found {
+		return false
+	}
+	if _, ok := provider.(UsageProvider); !ok {
+		return false
+	}
+	entry = normalizeQuotaEntry(entry)
+	switch entry.CostClass {
+	case CostClassFreeTierBYOK, CostClassPremiumCapable:
+		return true
+	default:
+		return false
+	}
+}
+
+func canAutoSyncProviderUsage(provider Provider, entry QuotaEntry, found bool) bool {
+	if !canQueryProviderUsage(provider, entry, found) {
+		return false
+	}
+	entry = normalizeQuotaEntry(entry)
+	return entry.CostClass == CostClassFreeTierBYOK
+}
+
+func (s *Service) syncProviderUsage(ctx context.Context, provider Provider) (ProviderUsage, error) {
+	if _, ok := provider.(UsageProvider); !ok {
+		return ProviderUsage{}, nil
+	}
+	usage, err := s.providerUsage(ctx, provider)
+	if err != nil {
+		return ProviderUsage{}, err
+	}
+	s.syncRemoteUsage(&usage)
+	return usage, nil
+}
+
+func (s *Service) providerUsage(ctx context.Context, provider Provider) (ProviderUsage, error) {
+	usageProvider, ok := provider.(UsageProvider)
+	if !ok {
+		return ProviderUsage{}, fmt.Errorf("%s: remote usage unsupported", provider.Name())
+	}
+	usage, err := usageProvider.Usage(ctx)
+	if err != nil {
+		return ProviderUsage{}, err
+	}
+	if usage.Provider == "" {
+		usage.Provider = provider.Name()
+	}
+	return usage, nil
+}
+
+func (s *Service) syncRemoteUsage(usage *ProviderUsage) {
+	if usage == nil {
+		return
+	}
+	if syncer, ok := s.ledger.(remoteUsageSyncer); ok {
+		syncer.SyncRemoteUsage(*usage)
 	}
 }
 

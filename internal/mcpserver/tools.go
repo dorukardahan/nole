@@ -285,9 +285,14 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 		})
 	}
 
-	statusTool := mcp.NewTool("provider_status", mcp.WithDescription("Show configured provider health plus sanitized cost policy/class status"))
+	statusTool := mcp.NewTool(
+		"provider_status",
+		mcp.WithDescription("Show configured provider health plus sanitized cost policy/class status"),
+		mcp.WithBoolean("live_usage", mcp.Description("When true, query provider usage APIs where available and sync the local quota ledger. Does not send secret values.")),
+	)
 	s.AddTool(statusTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		b, err := json.MarshalIndent(svc.ProviderStatus(ctx), "", "  ")
+		liveUsage := req.GetBool("live_usage", false)
+		b, err := json.MarshalIndent(svc.ProviderStatusWithOptions(ctx, core.ProviderStatusOptions{LiveUsage: liveUsage, SyncLedger: liveUsage}), "", "  ")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

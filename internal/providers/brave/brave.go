@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -125,10 +127,11 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		return core.SearchResponse{}, fmt.Errorf("brave: search request failed: %w", err)
 	}
 	defer resp.Body.Close()
+	remoteUsage := braveUsageFromRateLimitHeaders(resp.Header)
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxSearchResponseBytes)
-		return core.SearchResponse{}, providerhttp.NewHTTPStatusError("brave", "search", resp.StatusCode, respBody)
+		return core.SearchResponse{Provider: "brave", RemoteUsage: remoteUsage}, providerhttp.NewHTTPStatusError("brave", "search", resp.StatusCode, respBody)
 	}
 
 	var bresp braveSearchResponse
@@ -161,12 +164,92 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 
 	return core.SearchResponse{
-		Query:    req.Query,
-		Task:     req.Task,
-		Provider: "brave",
-		Results:  results,
+		Query:       req.Query,
+		Task:        req.Task,
+		Provider:    "brave",
+		Results:     results,
+		RemoteUsage: remoteUsage,
 	}, nil
 }
+
+func braveUsageFromRateLimitHeaders(h http.Header) *core.ProviderUsage {
+	remaining := parseCSVInts(h.Get("X-RateLimit-Remaining"))
+	if len(remaining) == 0 {
+		return nil
+	}
+	idx := braveMonthlyRateLimitIndex(h.Get("X-RateLimit-Policy"), len(remaining))
+	if idx < 0 || idx >= len(remaining) {
+		return nil
+	}
+	rem := remaining[idx]
+	usage := core.ProviderUsage{
+		Provider:        "brave",
+		Source:          "brave_rate_limit_headers",
+		RemainingCalls:  intPtr(rem),
+		NativeRemaining: intPtr(rem),
+		NativeUnit:      "requests",
+	}
+	if limits := parseCSVInts(h.Get("X-RateLimit-Limit")); idx < len(limits) {
+		usage.LimitCalls = intPtr(limits[idx])
+		usage.NativeLimit = intPtr(limits[idx])
+	}
+	if resets := parseCSVInts(h.Get("X-RateLimit-Reset")); idx < len(resets) {
+		usage.ResetSeconds = intPtr(resets[idx])
+	}
+	return &usage
+}
+
+func braveMonthlyRateLimitIndex(policy string, valueCount int) int {
+	parts := strings.Split(policy, ",")
+	bestIdx := -1
+	bestWindow := -1
+	for i, part := range parts {
+		if i >= valueCount {
+			break
+		}
+		part = strings.TrimSpace(part)
+		for _, segment := range strings.Split(part, ";") {
+			segment = strings.TrimSpace(segment)
+			if !strings.HasPrefix(segment, "w=") {
+				continue
+			}
+			window, err := strconv.Atoi(strings.TrimPrefix(segment, "w="))
+			if err == nil && window > bestWindow {
+				bestWindow = window
+				bestIdx = i
+			}
+		}
+	}
+	if bestIdx >= 0 && bestWindow > 1 {
+		return bestIdx
+	}
+	if valueCount > 1 {
+		return valueCount - 1
+	}
+	return -1
+}
+
+func parseCSVInts(raw string) []int {
+	parts := strings.Split(raw, ",")
+	out := make([]int, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		v, err := strconv.Atoi(part)
+		if err != nil {
+			continue
+		}
+		if v < 0 {
+			v = 0
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+func intPtr(v int) *int { return &v }
 
 func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
 	return core.ExtractResponse{}, fmt.Errorf("brave: extract not supported; use tavily or firecrawl")

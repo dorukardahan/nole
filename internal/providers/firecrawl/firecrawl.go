@@ -323,6 +323,16 @@ type firecrawlScrapeData struct {
 	Metadata map[string]interface{} `json:"metadata"`
 }
 
+type firecrawlCreditUsageResponse struct {
+	Success *bool `json:"success"`
+	Data    struct {
+		RemainingCredits   int    `json:"remainingCredits"`
+		PlanCredits        int    `json:"planCredits"`
+		BillingPeriodStart string `json:"billingPeriodStart"`
+		BillingPeriodEnd   string `json:"billingPeriodEnd"`
+	} `json:"data"`
+}
+
 func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
 	body := firecrawlScrapeRequest{
 		URL: req.URL,
@@ -394,3 +404,64 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 	}
 	return status
 }
+
+func (p Provider) Usage(ctx context.Context) (core.ProviderUsage, error) {
+	if p.apiKey == "" {
+		return core.ProviderUsage{}, fmt.Errorf("firecrawl: FIRECRAWL_API_KEY not set")
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(p.baseURL, "/")+"/team/credit-usage", nil)
+	if err != nil {
+		return core.ProviderUsage{}, fmt.Errorf("firecrawl: create usage request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	httpReq.Header.Set("Accept", "application/json")
+
+	resp, err := providerhttp.DoWithRetry(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions())
+	if err != nil {
+		return core.ProviderUsage{}, fmt.Errorf("firecrawl: usage request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := providerhttp.ReadAllLimited(resp.Body, providerhttp.MaxSearchResponseBytes)
+		return core.ProviderUsage{}, providerhttp.NewHTTPStatusError("firecrawl", "usage", resp.StatusCode, respBody)
+	}
+
+	var usageResp firecrawlCreditUsageResponse
+	if err := providerhttp.DecodeJSONLimited(resp.Body, providerhttp.MaxSearchResponseBytes, &usageResp); err != nil {
+		return core.ProviderUsage{}, fmt.Errorf("firecrawl: decode usage response: %w", err)
+	}
+	if explicitSuccessFalse(usageResp.Success) {
+		return core.ProviderUsage{}, fmt.Errorf("firecrawl: usage failed (provider returned success=false)")
+	}
+	remaining := clampNonNegative(usageResp.Data.RemainingCredits)
+	limit := clampNonNegative(usageResp.Data.PlanCredits)
+	remainingCalls := firecrawlCreditsToCalls(remaining)
+	limitCalls := firecrawlCreditsToCalls(limit)
+	return core.ProviderUsage{
+		Provider:        "firecrawl",
+		Source:          "firecrawl_team_credit_usage",
+		RemainingCalls:  intPtr(remainingCalls),
+		LimitCalls:      intPtr(limitCalls),
+		NativeRemaining: intPtr(remaining),
+		NativeLimit:     intPtr(limit),
+		NativeUnit:      "credits",
+		PeriodStart:     usageResp.Data.BillingPeriodStart,
+		PeriodEnd:       usageResp.Data.BillingPeriodEnd,
+	}, nil
+}
+
+func firecrawlCreditsToCalls(credits int) int {
+	if credits <= 0 {
+		return 0
+	}
+	return credits / 4
+}
+
+func clampNonNegative(v int) int {
+	if v < 0 {
+		return 0
+	}
+	return v
+}
+
+func intPtr(v int) *int { return &v }

@@ -237,6 +237,7 @@ func cloneSearchResponse(resp SearchResponse) SearchResponse {
 	resp.Results = append([]SearchResult(nil), resp.Results...)
 	resp.Route = append([]string(nil), resp.Route...)
 	resp.RouteTrace = append([]RouteAttempt(nil), resp.RouteTrace...)
+	resp.RemoteUsage = cloneProviderUsage(resp.RemoteUsage)
 	return resp
 }
 
@@ -251,4 +252,25 @@ func cloneExtractResponse(resp ExtractResponse) ExtractResponse {
 	resp.Route = append([]string(nil), resp.Route...)
 	resp.RouteTrace = append([]RouteAttempt(nil), resp.RouteTrace...)
 	return resp
+}
+
+func cloneProviderUsage(usage *ProviderUsage) *ProviderUsage {
+	if usage == nil {
+		return nil
+	}
+	clone := *usage
+	clone.RemainingCalls = cloneIntPtr(usage.RemainingCalls)
+	clone.LimitCalls = cloneIntPtr(usage.LimitCalls)
+	clone.NativeRemaining = cloneIntPtr(usage.NativeRemaining)
+	clone.NativeLimit = cloneIntPtr(usage.NativeLimit)
+	clone.ResetSeconds = cloneIntPtr(usage.ResetSeconds)
+	return &clone
+}
+
+func cloneIntPtr(v *int) *int {
+	if v == nil {
+		return nil
+	}
+	copy := *v
+	return &copy
 }

@@ -290,11 +290,22 @@ configured to do without spending any quota:
 nole config dump          # cost policy, env, provider cost classes, quota floors
 nole config dump --json   # same, machine-readable
 nole doctor --json        # the full doctor report as JSON
+nole providers --live-usage --json  # query supported provider usage APIs/header metadata and sync local ledger
 ```
 
 `config dump` reports configured secrets as **set/unset only** — never their
 value — and reads only the local ledger state, so it never issues a provider
-call or debits the free-tier counter.
+call or debits the free-tier counter. `providers --live-usage` is the explicit
+live path: Tavily/Firecrawl usage endpoints are queried without printing keys;
+free-tier BYOK providers may also reconcile to provider-reported usage before
+routing. Premium/paid usage stays explicit observability unless a separate
+paid-usage ledger policy is added. Brave has no separate non-consuming usage
+endpoint, so Nólë syncs Brave from `X-RateLimit-*` headers on actual Brave
+responses (including 429s). All
+providers report a `remote_usage_strategy`: account endpoints for keyed
+Tavily/Firecrawl, response headers for keyed Brave, `not_applicable` for
+keyless/local providers (DDGS, Wikipedia, arXiv, Scrapling, httpfetch, Firecrawl
+keyless), and `disabled_no_key` for keyed providers whose credentials are absent.
 
 Nólë's quota ledger is **file-backed by default** at `$XDG_STATE_HOME/nole/quota-ledger.json` (or `~/.local/state/nole/quota-ledger.json` when `XDG_STATE_HOME` is unset). Durability is required for the monthly free-tier cap to be meaningful: an in-memory ledger resets to the full free quota on every process restart, which defeats the cap when nole is spawned per session (the typical MCP client pattern). Set `NOLE_QUOTA_LEDGER_PATH` to override the default location, or to `memory`/`off`/`none` to explicitly disable file persistence — only do that if you understand the per-restart reset implication. The ledger stores provider names, cost classes, local free-quota counters and local estimated spend; it does not store provider keys or raw provider payloads. If a configured ledger is corrupt, Nólë backs it up and fails closed for paid/quota-tracked providers while still allowing keyless-free providers. `NOLE_CACHE_TTL` enables an in-memory TTL cache for normalized search/extract responses inside a running process, such as `nole mcp`; cache hit/miss status appears in `route_trace` and compact `routing_insight`.
 
