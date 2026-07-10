@@ -198,18 +198,27 @@ func TestWriteAntigravityConfigRejectsNonObjectNoleWithoutBackup(t *testing.T) {
 
 func TestWriteAntigravityConfigRejectsNullObjectsWithoutBackup(t *testing.T) {
 	for name, existing := range map[string]string{
+		"root":    `null`,
 		"servers": `{"mcpServers":null}`,
 		"nole":    `{"mcpServers":{"nole":null}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "mcp_config.json")
-			if err := os.WriteFile(path, []byte(existing), 0600); err != nil {
+			if err := os.WriteFile(path, []byte(existing), 0640); err != nil {
 				t.Fatal(err)
 			}
 			err := writeAntigravityConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"})
 			if err == nil || !strings.Contains(err.Error(), "must be an object") {
 				t.Fatalf("expected null object error, got %v", err)
 			}
+			got, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(got) != existing {
+				t.Fatalf("null config was modified: %s", got)
+			}
+			assertFileMode(t, path, 0640)
 			if _, statErr := os.Stat(path + ".bak"); !os.IsNotExist(statErr) {
 				t.Fatalf("invalid config should not be backed up/written, stat err=%v", statErr)
 			}

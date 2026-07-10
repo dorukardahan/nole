@@ -456,6 +456,9 @@ func writeAntigravityConfigPath(path string, spec launchSpec) error {
 	if err != nil {
 		return err
 	}
+	if root == nil {
+		return fmt.Errorf("parse existing antigravity config: root must be an object, got null")
+	}
 	servers := map[string]json.RawMessage{}
 	if raw, ok := root["mcpServers"]; ok && len(raw) > 0 {
 		if err := json.Unmarshal(raw, &servers); err != nil {
