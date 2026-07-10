@@ -189,18 +189,18 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 |---|---|---|---|
 | `newSetupCommand` | func | `internal/cli/setup.go:39` | Builds `setup`; parses agent flags, resolves binary path, builds launchSpec, runs local-extract first, dispatches per-agent writers, prints count + key hints. |
 | `launchSpec` | type | `internal/cli/setup.go:20` | `{Binary, Wrapper}`; `command()`/`args()` (25,32) return wrapper alone or bare binary + `[mcp]`. |
-| `printClaudeInstructions` | func | `internal/cli/setup.go:204` | Claude is instruction-only: NO file; prints `claude mcp add nole -s user -- ...`. |
-| `writeHermesConfigPath` | func | `internal/cli/setup.go:253` | YAML-node writer; backs up, preserves comments, upserts `mcp_servers.nole`, atomic-write preserving mode. |
-| `upsertHermesNoleServer` | func | `internal/cli/setup.go:314` | Sets command+args, adds default timeout=120/connect_timeout=60 if missing, ensures tools policy. |
-| `yamlMappingUpsert` | func | `internal/cli/setup.go:369` | Replace/append key in yaml.Node mapping, carrying Head/Line/Foot comments — comment-preserving idempotency core. |
-| `writeMCPJSONConfig` | func | `internal/cli/setup.go:740` | Shared Cursor/Windsurf/Antigravity/Gemini writer; preserves unknown server fields via RawMessage map, replaces only `nole`. |
-| `writeCodexConfigPath` | func | `internal/cli/setup.go:472` | TOML writer via `upsertCodexTomlTable`; block by `codexMCPServerBlock` (489) embedding `/bin/sh -lc 'set -a; . .env; exec nole mcp'` unless wrapper set. |
-| `upsertCodexTomlTable` | func | `internal/cli/setup.go:508` | Hand-rolled TOML table replacement; strips preceding comment/blank lines so marker doesn't accumulate. |
-| `writeOpenCodeConfigPath` | func | `internal/cli/setup.go:566` | Merges into `mcp` JSON key with `{type:local, command:[bin,mcp], enabled, environment}` (591). |
-| `writeKimiConfigPath` | func | `internal/cli/setup.go:639` | Merges into `mcpServers`; `{command}` in wrapper mode or `{command,args}` bare (663). |
-| `atomicWriteFile` | func | `internal/cli/setup.go:768` | Durability primitive: temp file same dir, chmod, sync, close, rename, re-chmod; default mode 0600. |
-| `configWriteMode` | func | `internal/cli/setup.go:759` | Preserves existing perms on rewrite, else 0600 (no widening secret configs). |
-| `readExistingFileWithMode` | func | `internal/cli/setup.go:737` | Stat+read returning (bytes, exists, perm, err); ENOENT → exists=false. |
+| `printClaudeInstructions` | func | `internal/cli/setup.go:221` | Claude is instruction-only: NO file; prints `claude mcp add nole -s user -- ...`. |
+| `writeHermesConfigPath` | func | `internal/cli/setup.go:270` | YAML-node writer; backs up, preserves comments, upserts `mcp_servers.nole`, atomic-write preserving mode. |
+| `upsertHermesNoleServer` | func | `internal/cli/setup.go:331` | Sets command+args, adds default timeout=120/connect_timeout=60 if missing, ensures tools policy. |
+| `yamlMappingUpsert` | func | `internal/cli/setup.go:386` | Replace/append key in yaml.Node mapping, carrying Head/Line/Foot comments — comment-preserving idempotency core. |
+| `writeMCPJSONConfig` | func | `internal/cli/setup.go:813` | Shared Cursor/Windsurf/Gemini writer; preserves unknown root fields and sibling servers while replacing only `nole`. Antigravity uses a policy-preserving specialized JSON upsert. |
+| `writeCodexConfigPath` | func | `internal/cli/setup.go:847` | TOML writer via `upsertCodexTomlTable`; block by `codexMCPServerBlock` embedding `/bin/sh -lc 'set -a; . .env; exec nole mcp'` unless wrapper set. |
+| `upsertCodexTomlTable` | func | `internal/cli/setup.go:917` | Hand-rolled TOML table replacement; strips preceding comment/blank lines so marker doesn't accumulate. |
+| `writeOpenCodeConfigPath` | func | `internal/cli/setup.go:974` | Merges into `mcp` JSON key with `{type:local, command:[bin,mcp], enabled, environment}`. |
+| `writeKimiConfigPath` | func | `internal/cli/setup.go:1047` | Merges into `mcpServers`; `{command}` in wrapper mode or `{command,args}` bare. |
+| `atomicWriteFile` | func | `internal/cli/setup.go:1176` | Durability primitive: temp file same dir, chmod, sync, close, rename, re-chmod; default mode 0600. |
+| `configWriteMode` | func | `internal/cli/setup.go:1167` | Preserves existing perms on rewrite, else 0600 (no widening secret configs). |
+| `readExistingFileWithMode` | func | `internal/cli/setup.go:1145` | Stat+read returning (bytes, exists, perm, err); ENOENT → exists=false. |
 | `setupLocalExtract` | func | `internal/cli/setup_local_extract.go:26` | Bootstraps Scrapling runtime: resolve venv+python, gate >=3.10, create venv, verify-or-pip-install, persist `NOLE_SCRAPLING_PYTHON`. |
 | `resolveSetupPython` | func | `internal/cli/setup_local_extract.go:92` | `--python` value or LookPath-probes `python3.13..3.10, python3, python`. |
 | `upsertShellEnvAssignment` | func | `internal/cli/setup_local_extract.go:171` | Idempotent `KEY=value` upsert into `.env`; values shell-quoted. |
@@ -208,7 +208,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `shellQuote` | func | `internal/cli/setup_local_extract.go:229` | Single-quote shell escaping for env values + wrapper binary path. |
 | `venvPythonPath` | func | `internal/cli/setup_local_extract.go:133` | `Scripts/python.exe` on Windows, `bin/python` elsewhere. |
 
-**Data flow.** `root.go` → `AddCommand(newSetupCommand)`. RunE (`setup.go:60`): `--all` sets all bools; reject if none + no `--local-extract`; `os.Executable` → `filepath.Abs` → `launchSpec`; validate wrapper absolute (78). If `--local-extract`: `setupLocalExtract` → resolve venv/python/version → venv create → verify-or-install Scrapling → `writeNoleEnvValue(NOLE_SCRAPLING_PYTHON)`; then default wrapper to `~/.local/bin/nole-mcp` + `writeMCPWrapper` (97-107). Per-agent dispatch: claude→`printClaudeInstructions` (no file, not counted); cursor/windsurf→`writeMCPJSONConfig`; codex→`writeCodexConfigPath`; opencode→`writeOpenCodeConfigPath`; kimi→`writeKimiConfigPath`; hermes→`writeHermesConfigPath`. Each: resolve home → native path → read existing → backup → merge nole entry preserving unknowns/comments → `atomicWriteFile` w/ `configWriteMode`. Writer errors go to stderr and skip the `configured++` increment (119-166).
+**Data flow.** `root.go` → `AddCommand(newSetupCommand)`. `RunE`: `--all` sets every client bool; reject if none + no `--local-extract`; `os.Executable` → `filepath.Abs` → `launchSpec`; validate that a supplied wrapper is absolute. If `--local-extract`: `setupLocalExtract` → resolve venv/python/version → venv create → verify-or-install Scrapling → `writeNoleEnvValue(NOLE_SCRAPLING_PYTHON)`; then default wrapper to `~/.local/bin/nole-mcp` + `writeMCPWrapper`. Per-agent dispatch: Claude → instructions only; Cursor/Windsurf/Gemini → shared MCP JSON writer; Antigravity → policy-preserving MCP JSON upsert; Codex → TOML writer; OpenCode/Kimi/Grok → native JSON writers; Grok Build → TOML writer; Hermes → YAML writer. Each file writer resolves home, reads and validates existing config before backup, merges the Nólë entry while preserving its documented unknown fields/options, then atomically writes with the prior mode. Writer errors go to stderr, skip `configured++`, and make setup exit non-zero.
 
 ### Area: mcp — MCP server surface (stdio + HTTP) and tool registration (`internal/cli/{mcp.go,serve.go}` + `internal/mcpserver/*`)
 
@@ -357,17 +357,17 @@ Tracing a search request end to end (extract follows the same shape with an extr
 
 | Platform | Config path family | Serialization | Writer anchor | Notes |
 |---|---|---|---|---|
-| Claude | Managed by Claude Code CLI (no file written) | n/a (CLI command printed) | `printClaudeInstructions` `internal/cli/setup.go:215` | Instruction-only; prints `claude mcp add nole -s user -- ...`; not counted in configured total. |
-| Cursor | Cursor user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:740` | Shared with Windsurf/Antigravity/Gemini; preserves unknown server fields via RawMessage map, replaces only `nole`. |
-| Windsurf | Windsurf user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:740` | Same shared JSON writer as Cursor. |
-| Codex | Codex TOML config | TOML | `writeCodexConfigPath` `internal/cli/setup.go:774` | Hand-rolled `[mcp_servers.nole]` table via `upsertCodexTomlTable`/`codexMCPServerBlock`; embeds `/bin/sh -lc 'set -a; . .env; exec nole mcp'` unless wrapper set. |
-| OpenCode | OpenCode JSON config (`mcp` key) | JSON | `writeOpenCodeConfigPath` `internal/cli/setup.go:901` | `{type:local, command:[bin,mcp], enabled, environment}` shape (`openCodeEntry`). |
-| Kimi | Kimi JSON config (`mcpServers` key) | JSON | `writeKimiConfigPath` `internal/cli/setup.go:974` | `{command}` in wrapper mode or `{command,args}` bare (`kimiEntryRaw`), matching `kimi mcp add` output. |
-| Hermes | Hermes YAML config (`mcp_servers.nole`) | YAML (`yaml.Node` tree) | `writeHermesConfigPath` `internal/cli/setup.go:264` | Comment-preserving via `yamlMappingUpsert`; `upsertHermesNoleServer` sets command/args + default timeout=120/connect_timeout=60 + tools policy. |
-| Antigravity | `~/.gemini/config/mcp_config.json` (`mcpServers` object keyed by name) | JSON | `writeAntigravityConfig` `internal/cli/setup.go:440` | `--antigravity`; delegates to `writeMCPJSONConfig`, writes a local stdio entry only, preserves sibling remote `serverUrl` entries. Status `repo-tested`; see `docs/CLIENTS/antigravity.md`. |
-| Gemini | `~/.gemini/settings.json` (`mcpServers` object keyed by name) | JSON | `writeGeminiConfig` `internal/cli/setup.go:459` | `--gemini`; preserved for Gemini CLI Standard/Enterprise/Cloud/paid API-key users. Delegates to `writeMCPJSONConfig` (same shape as Cursor). Status `repo-tested`; see `docs/CLIENTS/gemini.md`. |
-| Grok (superagent) | `~/.grok/user-settings.json` (`mcp.servers` array keyed by `id`) | JSON | `writeGrokConfig` `internal/cli/setup.go:461` | `--grok`; targets `superagent-ai/grok-cli`. Array upsert-by-`id` via `upsertGrokNoleServer`, preserving other servers + unknown fields. Status `repo-tested`; see `docs/CLIENTS/grok.md`. |
-| Grok Build (xAI) | `~/.grok/config.toml` (`[mcp_servers.nole]`) | TOML | `writeGrokBuildConfig` `internal/cli/setup.go:590` | `--grok-build`; targets xAI's Grok Build TUI (a different product from the superagent row). Reuses `upsertCodexTomlTable` via `grokBuildMCPServerBlock`; preserves a user-set `enabled=false`; refuses to overwrite a customized entry (sub-table / extra key). Status `verified`; see `docs/CLIENTS/grok.md`. |
+| Claude | Managed by Claude Code CLI (no file written) | n/a (CLI command printed) | `printClaudeInstructions` `internal/cli/setup.go:221` | Instruction-only; prints `claude mcp add nole -s user -- ...`; not counted in configured total. |
+| Cursor | Cursor user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:813` | Shared with Windsurf/Gemini; preserves unknown root fields and sibling servers, replaces only `nole`. |
+| Windsurf | Windsurf user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:813` | Same shared JSON writer as Cursor. |
+| Codex | Codex TOML config | TOML | `writeCodexConfigPath` `internal/cli/setup.go:847` | Hand-rolled `[mcp_servers.nole]` table via `upsertCodexTomlTable`/`codexMCPServerBlock`; embeds `/bin/sh -lc 'set -a; . .env; exec nole mcp'` unless wrapper set. |
+| OpenCode | OpenCode JSON config (`mcp` key) | JSON | `writeOpenCodeConfigPath` `internal/cli/setup.go:974` | `{type:local, command:[bin,mcp], enabled, environment}` shape (`openCodeEntry`). |
+| Kimi | Kimi JSON config (`mcpServers` key) | JSON | `writeKimiConfigPath` `internal/cli/setup.go:1047` | `{command}` in wrapper mode or `{command,args}` bare (`kimiEntryRaw`), matching `kimi mcp add` output. |
+| Hermes | Hermes YAML config (`mcp_servers.nole`) | YAML (`yaml.Node` tree) | `writeHermesConfigPath` `internal/cli/setup.go:270` | Comment-preserving via `yamlMappingUpsert`; `upsertHermesNoleServer` sets command/args + default timeout=120/connect_timeout=60 + tools policy. |
+| Antigravity | `~/.gemini/config/mcp_config.json` (`mcpServers` object keyed by name) | JSON | `writeAntigravityConfig` `internal/cli/setup.go:445` | `--antigravity`; writes a local stdio entry, updating only `command`/`args` while preserving existing Nólë policy/options, sibling servers, and remote `serverUrl` entries. Status `repo-tested`; see `docs/CLIENTS/antigravity.md`. |
+| Gemini | `~/.gemini/settings.json` (`mcpServers` object keyed by name) | JSON | `writeGeminiConfig` `internal/cli/setup.go:513` | `--gemini`; preserved for Gemini CLI Standard/Enterprise/Cloud/paid API-key users. Delegates to `writeMCPJSONConfig` (same shape as Cursor). Status `repo-tested`; see `docs/CLIENTS/gemini.md`. |
+| Grok (superagent) | `~/.grok/user-settings.json` (`mcp.servers` array keyed by `id`) | JSON | `writeGrokConfig` `internal/cli/setup.go:534` | `--grok`; targets `superagent-ai/grok-cli`. Array upsert-by-`id` via `upsertGrokNoleServer`, preserving other servers + unknown fields. Status `repo-tested`; see `docs/CLIENTS/grok.md`. |
+| Grok Build (xAI) | `~/.grok/config.toml` (`[mcp_servers.nole]`) | TOML | `writeGrokBuildConfig` `internal/cli/setup.go:663` | `--grok-build`; targets xAI's Grok Build TUI (a different product from the superagent row). Reuses `upsertCodexTomlTable` via `grokBuildMCPServerBlock`; preserves a user-set `enabled=false`; refuses to overwrite a customized entry (sub-table / extra key). Status `verified`; see `docs/CLIENTS/grok.md`. |
 
 > **Map maintenance note.** This is a point-in-time Phase-1 map. Per-symbol file:line anchors drift as code changes (re-verify before relying on them — see the note at the top of this doc). The setup-writer roster above was last reconciled when `--antigravity` was added alongside the existing Gemini CLI writer, and `--gemini` remained scoped to Gemini CLI Standard/Enterprise/Cloud/paid API-key users. See `docs/CLIENTS/` and the CHANGELOG for current client status.
 
@@ -412,7 +412,7 @@ Optional `--local-extract` (`setupLocalExtract` `setup_local_extract.go:26`) pro
 | `github.com/wk8/go-ordered-map/v2` | v2.1.8 (indirect) | Transitive (jsonschema ordered maps). |
 | `github.com/yosida95/uritemplate/v3` | v3.0.2 (indirect) | Transitive (mcp-go URI templates). |
 
-Build toolchain: `go 1.25.12`. CI also invokes `golang.org/x/vuln/cmd/govulncheck` (pinned in `ci.yml`/`release.yml`), the `gh` CLI, and `python3` (for `secret-scan.sh` and the orphaned `cmd/bench/main.py`).
+Build toolchain: `go 1.25.11`. CI also invokes `golang.org/x/vuln/cmd/govulncheck` (pinned in `ci.yml`/`release.yml`), the `gh` CLI, and `python3` (for `secret-scan.sh` and the orphaned `cmd/bench/main.py`).
 
 ---
 

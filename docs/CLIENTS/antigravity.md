@@ -7,7 +7,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. An
 ## What is repo-tested
 
 - `nole setup --antigravity` writes Antigravity's global MCP config at `~/.gemini/config/mcp_config.json`.
-- The writer upserts only `mcpServers.nole` and preserves sibling servers, remote-server fields such as `serverUrl`, unknown root keys, file permissions, and `.bak` backups (`internal/cli/setup_antigravity_test.go`).
+- The writer upserts only the launch-critical `command` and `args` fields in `mcpServers.nole`. It preserves existing Nólë options (for example `env`, `cwd`, `disabled`, `disabledTools`, and timeouts), sibling servers, remote-server fields such as `serverUrl`, unknown root keys, file permissions, and `.bak` backups (`internal/cli/setup_antigravity_test.go`).
 - The Nólë entry is local stdio only: `{ "command": "/absolute/path/to/nole", "args": ["mcp"] }`. No provider credentials are embedded.
 - Wrapper mode writes `{ "command": "/absolute/path/to/nole-mcp", "args": [] }` so GUI/service-like launches can source `~/.config/nole/.env` through the wrapper.
 - Official Antigravity docs identify `agy` as the native CLI and document MCP configuration/verification flows. See `https://antigravity.google/docs/cli/install`, `https://antigravity.google/docs/cli/gcli-migration`, and `https://antigravity.google/docs/mcp`.

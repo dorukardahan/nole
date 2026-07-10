@@ -24,6 +24,9 @@ func TestSetupAntigravityFlagWritesGlobalMCPConfig(t *testing.T) {
 	if !strings.Contains(out.String(), "antigravity: configured") {
 		t.Fatalf("expected antigravity configured log, got:\n%s", out.String())
 	}
+	if !strings.Contains(out.String(), "1 agent(s) configured") {
+		t.Fatalf("expected antigravity in setup summary, got:\n%s", out.String())
+	}
 	path := filepath.Join(home, ".gemini", "config", "mcp_config.json")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("antigravity setup did not create %s: %v", path, err)
@@ -40,6 +43,29 @@ func TestSetupAntigravityFlagWritesGlobalMCPConfig(t *testing.T) {
 	}
 	if len(args) != 1 || args[0] != "mcp" {
 		t.Fatalf("nole.args = %#v, want [mcp]", args)
+	}
+}
+
+func TestSetupAntigravityAppearsInHelpAndSelectionValidation(t *testing.T) {
+	helpCmd := NewRootCommand()
+	var help bytes.Buffer
+	helpCmd.SetOut(&help)
+	helpCmd.SetErr(&help)
+	helpCmd.SetArgs([]string{"setup", "--help"})
+	if err := helpCmd.Execute(); err != nil {
+		t.Fatalf("setup --help: %v", err)
+	}
+	for _, want := range []string{"--antigravity", "~/.gemini/config/mcp_config.json", "--gemini"} {
+		if !strings.Contains(help.String(), want) {
+			t.Fatalf("setup help missing %q:\n%s", want, help.String())
+		}
+	}
+
+	validationCmd := NewRootCommand()
+	validationCmd.SetArgs([]string{"setup"})
+	err := validationCmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--antigravity") {
+		t.Fatalf("setup selection error should list --antigravity, got %v", err)
 	}
 }
 
@@ -69,7 +95,7 @@ func TestWriteAntigravityConfigFreshFile(t *testing.T) {
 
 func TestWriteAntigravityConfigPreservesMergeShapeAndBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mcp_config.json")
-	existing := `{"mcpServers":{"remote":{"serverUrl":"https://mcp.example.test/sse","headers":{"X-Example":"redacted"},"timeout":30},"nole":{"command":"old","args":["old"],"env":{"OLD_VALUE":"keep-out"}}},"unknownRoot":{"keep":true}}`
+	existing := `{"mcpServers":{"remote":{"serverUrl":"https://mcp.example.test/sse","headers":{"X-Example":"redacted"},"timeout":30},"nole":{"command":"old","args":["old"],"env":{"EXISTING_VALUE":"preserve"},"cwd":"/existing/workspace","disabled":true,"disabledTools":["search"],"timeout":45}},"unknownRoot":{"keep":true}}`
 	if err := os.WriteFile(path, []byte(existing), 0640); err != nil {
 		t.Fatal(err)
 	}
@@ -104,8 +130,53 @@ func TestWriteAntigravityConfigPreservesMergeShapeAndBackup(t *testing.T) {
 	if got := strings.Trim(string(nole["command"]), `"`); got != "/usr/local/bin/nole" {
 		t.Fatalf("nole.command = %q, want /usr/local/bin/nole", got)
 	}
-	if _, hasEnv := nole["env"]; hasEnv {
-		t.Fatalf("old nole env should be replaced, not preserved into launch entry: %s", string(servers["nole"]))
+	for _, want := range []string{"env", "cwd", "disabled", "disabledTools", "timeout"} {
+		if _, ok := nole[want]; !ok {
+			t.Fatalf("existing antigravity nole field %q lost: %s", want, string(servers["nole"]))
+		}
+	}
+}
+
+func TestWriteAntigravityConfigRejectsNonObjectNoleWithoutBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp_config.json")
+	existing := `{"mcpServers":{"nole":false}}`
+	if err := os.WriteFile(path, []byte(existing), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := writeAntigravityConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"})
+	if err == nil || !strings.Contains(err.Error(), "mcpServers.nole") {
+		t.Fatalf("expected non-object nole error, got %v", err)
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != existing {
+		t.Fatalf("invalid config was modified: %s", got)
+	}
+	if _, statErr := os.Stat(path + ".bak"); !os.IsNotExist(statErr) {
+		t.Fatalf("invalid config should not be backed up/written, stat err=%v", statErr)
+	}
+}
+
+func TestWriteAntigravityConfigRejectsNullObjectsWithoutBackup(t *testing.T) {
+	for name, existing := range map[string]string{
+		"servers": `{"mcpServers":null}`,
+		"nole":    `{"mcpServers":{"nole":null}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "mcp_config.json")
+			if err := os.WriteFile(path, []byte(existing), 0600); err != nil {
+				t.Fatal(err)
+			}
+			err := writeAntigravityConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"})
+			if err == nil || !strings.Contains(err.Error(), "must be an object") {
+				t.Fatalf("expected null object error, got %v", err)
+			}
+			if _, statErr := os.Stat(path + ".bak"); !os.IsNotExist(statErr) {
+				t.Fatalf("invalid config should not be backed up/written, stat err=%v", statErr)
+			}
+		})
 	}
 }
 

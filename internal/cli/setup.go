@@ -452,7 +452,55 @@ func writeAntigravityConfig(spec launchSpec) error {
 }
 
 func writeAntigravityConfigPath(path string, spec launchSpec) error {
-	return writeMCPJSONConfig(path, spec)
+	root, err := readJSONObject(path)
+	if err != nil {
+		return err
+	}
+	servers := map[string]json.RawMessage{}
+	if raw, ok := root["mcpServers"]; ok && len(raw) > 0 {
+		if err := json.Unmarshal(raw, &servers); err != nil {
+			return fmt.Errorf("parse existing antigravity mcpServers (must be an object): %w", err)
+		}
+		if servers == nil {
+			return fmt.Errorf("parse existing antigravity mcpServers: must be an object, got null")
+		}
+	}
+
+	// Antigravity stores user policy and launch options in the server object
+	// itself (for example disabled, disabledTools, env, cwd and timeouts). Keep
+	// every existing field and update only the launch-critical command and args.
+	// A fresh entry therefore embeds no environment values or credentials, while
+	// a user's pre-existing local configuration remains intact on re-run.
+	nole := map[string]json.RawMessage{}
+	if raw, ok := servers["nole"]; ok && len(raw) > 0 {
+		if err := json.Unmarshal(raw, &nole); err != nil {
+			return fmt.Errorf("parse existing antigravity mcpServers.nole (must be an object): %w", err)
+		}
+		if nole == nil {
+			return fmt.Errorf("parse existing antigravity mcpServers.nole: must be an object, got null")
+		}
+	}
+	command, err := json.Marshal(spec.command())
+	if err != nil {
+		return fmt.Errorf("marshal antigravity nole.command: %w", err)
+	}
+	args, err := json.Marshal(spec.args())
+	if err != nil {
+		return fmt.Errorf("marshal antigravity nole.args: %w", err)
+	}
+	nole["command"] = command
+	nole["args"] = args
+	encodedNole, err := json.Marshal(nole)
+	if err != nil {
+		return fmt.Errorf("marshal antigravity nole entry: %w", err)
+	}
+	servers["nole"] = encodedNole
+	encodedServers, err := json.Marshal(servers)
+	if err != nil {
+		return fmt.Errorf("marshal antigravity mcpServers: %w", err)
+	}
+	root["mcpServers"] = encodedServers
+	return writeJSONConfig(path, root)
 }
 
 // writeGeminiConfig writes Nólë's MCP entry to Gemini CLI's user-scope config.
