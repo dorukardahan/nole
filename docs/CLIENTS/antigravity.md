@@ -8,7 +8,7 @@ Nólë is a free, local web search router for AI agents and coding CLI tools. An
 
 - `nole setup --antigravity` writes Antigravity's global MCP config at `~/.gemini/config/mcp_config.json`.
 - For an existing local `mcpServers.nole`, the writer upserts only the launch-critical `command` and `args` fields. It preserves existing Nólë options (for example `env`, `cwd`, `disabled`, `disabledTools`, and timeouts), sibling servers (including their remote `serverUrl` fields), unknown root keys, file permissions, and `.bak` backups (`internal/cli/setup_antigravity_test.go`).
-- If `mcpServers.nole` itself is already a remote `serverUrl` entry, setup stops without writing or backing up the file. Rename or remove that entry explicitly before asking Nólë to configure the same name as local stdio; setup will not create an ambiguous mixed transport or silently discard remote connection fields.
+- If `mcpServers.nole` itself already has a known Antigravity/Gemini remote transport key (`serverUrl`, `serverURL`, `url`, or legacy `httpUrl`), setup stops without writing or backing up the file. Rename or remove that entry explicitly before asking Nólë to configure the same name as local stdio; setup will not create an ambiguous mixed transport or silently discard remote connection fields. Unrelated URL-valued metadata does not trigger this check.
 - The Nólë entry is local stdio only: `{ "command": "/absolute/path/to/nole", "args": ["mcp"] }`. No provider credentials are embedded.
 - Wrapper mode writes `{ "command": "/absolute/path/to/nole-mcp", "args": [] }` so GUI/service-like launches can source `~/.config/nole/.env` through the wrapper.
 - Official Antigravity docs identify `agy` as the native CLI and document MCP configuration/verification flows. See `https://antigravity.google/docs/cli/install`, `https://antigravity.google/docs/cli/gcli-migration`, and `https://antigravity.google/docs/mcp`.
@@ -84,7 +84,7 @@ Local stdio Nólë entry:
 }
 ```
 
-Remote MCP entries may use `serverUrl`, but Nólë's writer does not create a remote entry. It preserves remote sibling servers while upserting the local `nole` server. If the existing `nole` entry itself has `serverUrl`, setup refuses the conversion and leaves the file unchanged.
+Remote MCP entries may use `serverUrl`/`serverURL` or Gemini migration forms `url`/`httpUrl`, but Nólë's writer does not create a remote entry. It preserves remote sibling servers while upserting the local `nole` server. If the existing `nole` entry itself has one of those transport keys, setup refuses the conversion and leaves the file unchanged.
 
 Workspace-scoped Antigravity MCP config can also be represented at:
 

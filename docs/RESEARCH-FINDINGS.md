@@ -35,7 +35,7 @@ The Gemini and Grok schemas were confirmed at high confidence by an independent 
   ```json
   { "mcpServers": { "nole": { "command": "/absolute/path/to/nole", "args": ["mcp"] } } }
   ```
-- **Remote MCP entries:** require `serverUrl`; Nólë's setup writer is intentionally local stdio only and must preserve existing remote sibling entries.
+- **Remote MCP entries:** Antigravity uses `serverUrl`/`serverURL`; migrated Gemini entries can retain current `url` or legacy `httpUrl`. Nólë's setup writer is intentionally local stdio only, preserves remote sibling entries, and refuses those keys on `mcpServers.nole` before writing.
 - **Verification:** install via the official `agy` installer, then verify with Antigravity `/mcp` or an authenticated `agy -p` smoke. This run did not authenticate and did not observe tool visibility.
 - **Implication:** the root schema is structurally compatible with the shared MCP JSON path, but Antigravity uses a specialized merge so existing per-server policy/options survive while only `command` and `args` are updated. It also needs its own flag and target path so Gemini CLI support is preserved separately.
 - **Primary sources:** official Antigravity docs `https://antigravity.google/docs/cli/gcli-migration`, `https://antigravity.google/docs/cli/install`, `https://antigravity.google/docs/mcp`; local unauthenticated `agy 1.1.1` reported `--version` and `--help` successfully.

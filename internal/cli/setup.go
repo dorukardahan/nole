@@ -471,9 +471,12 @@ func writeAntigravityConfigPath(path string, spec launchSpec) error {
 	// every existing local-server field and update only the launch-critical
 	// command and args. A fresh entry therefore embeds no environment values or
 	// credentials, while a user's pre-existing local configuration remains intact
-	// on re-run. Refuse to convert a remote Nólë entry: retaining serverUrl would
-	// create an ambiguous mixed transport, while deleting it could discard remote
-	// connection policy or credentials without the user's intent.
+	// on re-run. Refuse to convert a remote Nólë entry: retaining a remote
+	// transport key would create an ambiguous mixed transport, while deleting it
+	// could discard remote connection policy or credentials without the user's
+	// intent. The exact key list covers Antigravity's serverUrl/serverURL forms and
+	// the url/httpUrl forms that can remain after migration from Gemini CLI. Do not
+	// infer transport from unrelated URL-valued metadata.
 	nole := map[string]json.RawMessage{}
 	if raw, ok := servers["nole"]; ok && len(raw) > 0 {
 		if err := json.Unmarshal(raw, &nole); err != nil {
@@ -482,8 +485,10 @@ func writeAntigravityConfigPath(path string, spec launchSpec) error {
 		if nole == nil {
 			return fmt.Errorf("parse existing antigravity mcpServers.nole: must be an object, got null")
 		}
-		if _, remote := nole["serverUrl"]; remote {
-			return fmt.Errorf("existing antigravity mcpServers.nole is remote (has serverUrl); remove or rename it before configuring Nólë as local stdio")
+		for _, remoteKey := range []string{"serverUrl", "serverURL", "url", "httpUrl"} {
+			if _, remote := nole[remoteKey]; remote {
+				return fmt.Errorf("existing antigravity mcpServers.nole is remote (has %s); remove or rename it before configuring Nólë as local stdio", remoteKey)
+			}
 		}
 	}
 	command, err := json.Marshal(spec.command())

@@ -95,7 +95,7 @@ func TestWriteAntigravityConfigFreshFile(t *testing.T) {
 
 func TestWriteAntigravityConfigPreservesMergeShapeAndBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mcp_config.json")
-	existing := `{"mcpServers":{"remote":{"serverUrl":"https://mcp.example.test/sse","headers":{"X-Example":"redacted"},"timeout":30},"nole":{"command":"old","args":["old"],"env":{"EXISTING_VALUE":"preserve"},"cwd":"/existing/workspace","disabled":true,"disabledTools":["search"],"timeout":45}},"unknownRoot":{"keep":true}}`
+	existing := `{"mcpServers":{"remote":{"serverUrl":"https://mcp.example.test/sse","headers":{"X-Example":"redacted"},"timeout":30},"migrated":{"url":"https://mcp.example.test/mcp"},"legacy":{"httpUrl":"https://mcp.example.test/legacy"},"nole":{"command":"old","args":["old"],"env":{"EXISTING_VALUE":"preserve"},"cwd":"/existing/workspace","disabled":true,"disabledTools":["search"],"timeout":45,"documentationUrl":"https://docs.example.test/nole"}},"unknownRoot":{"keep":true}}`
 	if err := os.WriteFile(path, []byte(existing), 0640); err != nil {
 		t.Fatal(err)
 	}
@@ -126,11 +126,17 @@ func TestWriteAntigravityConfigPreservesMergeShapeAndBackup(t *testing.T) {
 			t.Fatalf("unknown antigravity server field %q lost: %s", want, string(servers["remote"]))
 		}
 	}
+	for serverName, remoteKey := range map[string]string{"migrated": "url", "legacy": "httpUrl"} {
+		sibling := readRawObject(t, servers[serverName])
+		if _, ok := sibling[remoteKey]; !ok {
+			t.Fatalf("remote sibling %q field %q lost: %s", serverName, remoteKey, string(servers[serverName]))
+		}
+	}
 	nole := readRawObject(t, servers["nole"])
 	if got := strings.Trim(string(nole["command"]), `"`); got != "/usr/local/bin/nole" {
 		t.Fatalf("nole.command = %q, want /usr/local/bin/nole", got)
 	}
-	for _, want := range []string{"env", "cwd", "disabled", "disabledTools", "timeout"} {
+	for _, want := range []string{"env", "cwd", "disabled", "disabledTools", "timeout", "documentationUrl"} {
 		if _, ok := nole[want]; !ok {
 			t.Fatalf("existing antigravity nole field %q lost: %s", want, string(servers["nole"]))
 		}
@@ -138,29 +144,33 @@ func TestWriteAntigravityConfigPreservesMergeShapeAndBackup(t *testing.T) {
 }
 
 func TestWriteAntigravityConfigRejectsExistingRemoteNoleWithoutBackup(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mcp_config.json")
-	existing := `{"mcpServers":{"nole":{"serverUrl":"https://mcp.example.test/sse","headers":{"Authorization":"preserve"},"disabled":true}}}`
-	if err := os.WriteFile(path, []byte(existing), 0640); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(path, 0640); err != nil {
-		t.Fatal(err)
-	}
+	for _, remoteKey := range []string{"serverUrl", "serverURL", "url", "httpUrl"} {
+		t.Run(remoteKey, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "mcp_config.json")
+			existing := `{"mcpServers":{"nole":{"` + remoteKey + `":"https://mcp.example.test/transport","headers":{"Authorization":"preserve"},"disabled":true}}}`
+			if err := os.WriteFile(path, []byte(existing), 0640); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, 0640); err != nil {
+				t.Fatal(err)
+			}
 
-	err := writeAntigravityConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"})
-	if err == nil || !strings.Contains(err.Error(), "serverUrl") || !strings.Contains(err.Error(), "local stdio") {
-		t.Fatalf("expected remote Nólë entry conflict, got %v", err)
-	}
-	got, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if string(got) != existing {
-		t.Fatalf("remote Nólë config was modified: %s", got)
-	}
-	assertFileMode(t, path, 0640)
-	if _, statErr := os.Stat(path + ".bak"); !os.IsNotExist(statErr) {
-		t.Fatalf("remote conflict should not be backed up/written, stat err=%v", statErr)
+			err := writeAntigravityConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"})
+			if err == nil || !strings.Contains(err.Error(), remoteKey) || !strings.Contains(err.Error(), "local stdio") {
+				t.Fatalf("expected %s remote Nólë entry conflict, got %v", remoteKey, err)
+			}
+			got, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(got) != existing {
+				t.Fatalf("remote Nólë config was modified: %s", got)
+			}
+			assertFileMode(t, path, 0640)
+			if _, statErr := os.Stat(path + ".bak"); !os.IsNotExist(statErr) {
+				t.Fatalf("remote conflict should not be backed up/written, stat err=%v", statErr)
+			}
+		})
 	}
 }
 
