@@ -92,6 +92,8 @@ When available, use built-in setup writers:
 nole setup --claude
 nole setup --codex
 nole setup --opencode
+nole setup --hermes
+nole setup --antigravity
 nole setup --gemini
 nole setup --grok
 ```
@@ -119,6 +121,7 @@ Client docs:
 - `docs/CLIENTS/hermes.md`
 - `docs/CLIENTS/cursor.md`
 - `docs/CLIENTS/kimi.md`
+- `docs/CLIENTS/antigravity.md`
 - `docs/CLIENTS/gemini.md`
 - `docs/CLIENTS/grok.md`
 - `docs/CLIENTS/generic-mcp.md`

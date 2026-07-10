@@ -300,6 +300,8 @@ func TestSetupWritersIdempotent(t *testing.T) {
 		{name: "opencode-wrapper", ext: "json", spec: launchSpec{Binary: "/usr/local/bin/nole", Wrapper: "/usr/local/bin/nole-mcp"}, fn: writeOpenCodeConfigPath},
 		{name: "cursor-bare", ext: "json", spec: launchSpec{Binary: "/usr/local/bin/nole"}, fn: writeMCPJSONConfig},
 		{name: "cursor-wrapper", ext: "json", spec: launchSpec{Binary: "/usr/local/bin/nole", Wrapper: "/usr/local/bin/nole-mcp"}, fn: writeMCPJSONConfig},
+		{name: "antigravity-bare", ext: "json", spec: launchSpec{Binary: "/usr/local/bin/nole"}, fn: writeAntigravityConfigPath},
+		{name: "antigravity-wrapper", ext: "json", spec: launchSpec{Binary: "/usr/local/bin/nole", Wrapper: "/usr/local/bin/nole-mcp"}, fn: writeAntigravityConfigPath},
 		{name: "codex-bare", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole"}, fn: writeCodexConfigPath},
 		{name: "codex-wrapper", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole", Wrapper: "/usr/local/bin/nole-mcp"}, fn: writeCodexConfigPath},
 		{name: "grok-build-bare", ext: "toml", spec: launchSpec{Binary: "/usr/local/bin/nole"}, fn: writeGrokBuildConfigPath},

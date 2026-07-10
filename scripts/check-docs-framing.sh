@@ -29,6 +29,7 @@ required=(
   docs/CLIENTS/generic-mcp.md
   docs/CLIENTS/cursor.md
   docs/CLIENTS/kimi.md
+  docs/CLIENTS/antigravity.md
   docs/CLIENTS/gemini.md
   docs/CLIENTS/grok.md
   docs/CLIENTS/LIVE-VERIFICATION.md

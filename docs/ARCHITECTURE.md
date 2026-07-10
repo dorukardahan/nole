@@ -30,7 +30,7 @@ Subcommands (registered `internal/cli/root.go:14-27`):
 | `config` | `newConfigCommand` | `internal/cli/config.go:111` | Read-only config/budget/key-presence dump; reports secret status as set/unset only. |
 | `mcp` | `newMCPCommand` | `internal/cli/mcp.go:9` | stdio MCP transport: `server.ServeStdio(mcpserver.New(...))`. |
 | `serve` | `newServeCommand` | `internal/cli/serve.go:9` | HTTP server (requires `--mcp`); exposes `/mcp` JSON-RPC + REST + `/health`. |
-| `setup` | `newSetupCommand` | `internal/cli/setup.go:39` | Writes MCP client configs for 9 platforms (8 file writers + Claude instruction-only) + optional local Scrapling bootstrap. |
+| `setup` | `newSetupCommand` | `internal/cli/setup.go:39` | Writes MCP client configs for 11 platforms (10 file writers + Claude instruction-only) + optional local Scrapling bootstrap. |
 | `version` | `newVersionCommand` | `internal/cli/version.go` | Prints `version.Version`/`Commit`/`Date`; the runtime consumer for build-stamped identity. |
 | `self-update` | `newSelfUpdateCommand` | `internal/cli/selfupdate.go` | Checks for and installs signed/checksummed release assets for the current platform. |
 
@@ -183,7 +183,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 
 ### Area: cli-setup — `nole setup` MCP client config writers + local-extract Scrapling bootstrap
 
-**Purpose.** Implements `nole setup`, registering Nole as an MCP server across nine AI coding agents (Claude, Cursor, Codex, OpenCode, Kimi, Windsurf, Hermes, Gemini, Grok) and optionally bootstrapping an isolated local Scrapling runtime. Each agent has a bespoke writer that merges Nole's entry into the agent's native user-scope config (JSON/TOML/YAML) preserving unknown fields, file permissions, a `.bak` backup, and writing atomically. `--local-extract` provisions a Python venv, installs `scrapling[fetchers]`, persists `NOLE_SCRAPLING_PYTHON` to `~/.config/nole/.env`, and emits an env-sourcing shell wrapper.
+**Purpose.** Implements `nole setup`, registering Nole as an MCP server across eleven AI coding agents (Claude, Cursor, Codex, OpenCode, Kimi, Windsurf, Hermes, Antigravity, Gemini, Grok superagent, Grok Build) and optionally bootstrapping an isolated local Scrapling runtime. Each file-writing agent has a bespoke or shared writer that merges Nole's entry into the agent's native user-scope config (JSON/TOML/YAML) preserving unknown fields, file permissions, a `.bak` backup, and writing atomically. `--local-extract` provisions a Python venv, installs `scrapling[fetchers]`, persists `NOLE_SCRAPLING_PYTHON` to `~/.config/nole/.env`, and emits an env-sourcing shell wrapper.
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|
@@ -193,7 +193,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `writeHermesConfigPath` | func | `internal/cli/setup.go:253` | YAML-node writer; backs up, preserves comments, upserts `mcp_servers.nole`, atomic-write preserving mode. |
 | `upsertHermesNoleServer` | func | `internal/cli/setup.go:314` | Sets command+args, adds default timeout=120/connect_timeout=60 if missing, ensures tools policy. |
 | `yamlMappingUpsert` | func | `internal/cli/setup.go:369` | Replace/append key in yaml.Node mapping, carrying Head/Line/Foot comments — comment-preserving idempotency core. |
-| `writeMCPJSONConfig` | func | `internal/cli/setup.go:438` | Shared Cursor/Windsurf writer; preserves unknown server fields via RawMessage map, replaces only `nole`. |
+| `writeMCPJSONConfig` | func | `internal/cli/setup.go:740` | Shared Cursor/Windsurf/Antigravity/Gemini writer; preserves unknown server fields via RawMessage map, replaces only `nole`. |
 | `writeCodexConfigPath` | func | `internal/cli/setup.go:472` | TOML writer via `upsertCodexTomlTable`; block by `codexMCPServerBlock` (489) embedding `/bin/sh -lc 'set -a; . .env; exec nole mcp'` unless wrapper set. |
 | `upsertCodexTomlTable` | func | `internal/cli/setup.go:508` | Hand-rolled TOML table replacement; strips preceding comment/blank lines so marker doesn't accumulate. |
 | `writeOpenCodeConfigPath` | func | `internal/cli/setup.go:566` | Merges into `mcp` JSON key with `{type:local, command:[bin,mcp], enabled, environment}` (591). |
@@ -353,22 +353,23 @@ Tracing a search request end to end (extract follows the same shape with an extr
 
 ## Setup-writer subsystem
 
-`nole setup` (`setup.go:39`) registers Nole as an MCP server across ten platforms (Claude is instruction-only, so nine write a file). A `configure(name, fn)` helper runs each file-writer, reporting success/failure; a failed requested agent makes the command exit non-zero. Each writer merges only the `nole` entry into the agent's native user-scope config, preserving unknown sibling fields/comments, writing atomically via `atomicWriteFile` (`setup.go:1103`) with a `.bak` backup and `configWriteMode` (`setup.go:1094`) permission preservation.
+`nole setup` (`setup.go:39`) registers Nole as an MCP server across eleven platforms (Claude is instruction-only, so ten write a file). A `configure(name, fn)` helper runs each file-writer, reporting success/failure; a failed requested agent makes the command exit non-zero. Each writer merges only the `nole` entry into the agent's native user-scope config, preserving unknown sibling fields/comments, writing atomically via `atomicWriteFile` (`setup.go:1103`) with a `.bak` backup and `configWriteMode` (`setup.go:1094`) preserving existing permissions. `launchSpec` centralizes bare-binary vs wrapper launch semantics: bare mode emits `command=/absolute/path/to/nole, args=["mcp"]`; wrapper mode emits `command=/absolute/path/to/nole-mcp, args=[]`.
 
 | Platform | Config path family | Serialization | Writer anchor | Notes |
 |---|---|---|---|---|
 | Claude | Managed by Claude Code CLI (no file written) | n/a (CLI command printed) | `printClaudeInstructions` `internal/cli/setup.go:215` | Instruction-only; prints `claude mcp add nole -s user -- ...`; not counted in configured total. |
-| Cursor | Cursor user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:740` | Shared with Windsurf/Gemini; preserves unknown server fields via RawMessage map, replaces only `nole`. |
+| Cursor | Cursor user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:740` | Shared with Windsurf/Antigravity/Gemini; preserves unknown server fields via RawMessage map, replaces only `nole`. |
 | Windsurf | Windsurf user MCP config | JSON | `writeMCPJSONConfig` `internal/cli/setup.go:740` | Same shared JSON writer as Cursor. |
 | Codex | Codex TOML config | TOML | `writeCodexConfigPath` `internal/cli/setup.go:774` | Hand-rolled `[mcp_servers.nole]` table via `upsertCodexTomlTable`/`codexMCPServerBlock`; embeds `/bin/sh -lc 'set -a; . .env; exec nole mcp'` unless wrapper set. |
 | OpenCode | OpenCode JSON config (`mcp` key) | JSON | `writeOpenCodeConfigPath` `internal/cli/setup.go:901` | `{type:local, command:[bin,mcp], enabled, environment}` shape (`openCodeEntry`). |
 | Kimi | Kimi JSON config (`mcpServers` key) | JSON | `writeKimiConfigPath` `internal/cli/setup.go:974` | `{command}` in wrapper mode or `{command,args}` bare (`kimiEntryRaw`), matching `kimi mcp add` output. |
 | Hermes | Hermes YAML config (`mcp_servers.nole`) | YAML (`yaml.Node` tree) | `writeHermesConfigPath` `internal/cli/setup.go:264` | Comment-preserving via `yamlMappingUpsert`; `upsertHermesNoleServer` sets command/args + default timeout=120/connect_timeout=60 + tools policy. |
-| Gemini | `~/.gemini/settings.json` (`mcpServers` object keyed by name) | JSON | `writeGeminiConfig` `internal/cli/setup.go:440` | Delegates to `writeMCPJSONConfig` (same shape as Cursor). Status `repo-tested`; see `docs/CLIENTS/gemini.md`. |
+| Antigravity | `~/.gemini/config/mcp_config.json` (`mcpServers` object keyed by name) | JSON | `writeAntigravityConfig` `internal/cli/setup.go:440` | `--antigravity`; delegates to `writeMCPJSONConfig`, writes a local stdio entry only, preserves sibling remote `serverUrl` entries. Status `repo-tested`; see `docs/CLIENTS/antigravity.md`. |
+| Gemini | `~/.gemini/settings.json` (`mcpServers` object keyed by name) | JSON | `writeGeminiConfig` `internal/cli/setup.go:459` | `--gemini`; preserved for Gemini CLI Standard/Enterprise/Cloud/paid API-key users. Delegates to `writeMCPJSONConfig` (same shape as Cursor). Status `repo-tested`; see `docs/CLIENTS/gemini.md`. |
 | Grok (superagent) | `~/.grok/user-settings.json` (`mcp.servers` array keyed by `id`) | JSON | `writeGrokConfig` `internal/cli/setup.go:461` | `--grok`; targets `superagent-ai/grok-cli`. Array upsert-by-`id` via `upsertGrokNoleServer`, preserving other servers + unknown fields. Status `repo-tested`; see `docs/CLIENTS/grok.md`. |
 | Grok Build (xAI) | `~/.grok/config.toml` (`[mcp_servers.nole]`) | TOML | `writeGrokBuildConfig` `internal/cli/setup.go:590` | `--grok-build`; targets xAI's Grok Build TUI (a different product from the superagent row). Reuses `upsertCodexTomlTable` via `grokBuildMCPServerBlock`; preserves a user-set `enabled=false`; refuses to overwrite a customized entry (sub-table / extra key). Status `verified`; see `docs/CLIENTS/grok.md`. |
 
-> **Map maintenance note.** This is a point-in-time Phase-1 map. Per-symbol file:line anchors drift as code changes (re-verify before relying on them — see the note at the top of this doc). The setup-writer roster above was last reconciled at v1.6.1, when `--grok-build` (xAI Grok Build TUI) was added alongside the existing `--grok` (superagent). See `docs/CLIENTS/` and the CHANGELOG for current client status.
+> **Map maintenance note.** This is a point-in-time Phase-1 map. Per-symbol file:line anchors drift as code changes (re-verify before relying on them — see the note at the top of this doc). The setup-writer roster above was last reconciled when `--antigravity` was added alongside the existing Gemini CLI writer, and `--gemini` remained scoped to Gemini CLI Standard/Enterprise/Cloud/paid API-key users. See `docs/CLIENTS/` and the CHANGELOG for current client status.
 
 Optional `--local-extract` (`setupLocalExtract` `setup_local_extract.go:26`) provisions an isolated Python venv, installs `scrapling[fetchers]`, persists `NOLE_SCRAPLING_PYTHON` to `~/.config/nole/.env`, and emits a 0700 POSIX `/bin/sh` env-sourcing wrapper (`writeMCPWrapper` `setup_local_extract.go:195`) so MCP clients that do not inherit shell env still find provider keys.
 

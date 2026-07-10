@@ -273,6 +273,8 @@ nole setup --kimi       # writes ~/.kimi/mcp.json
 nole setup --cursor     # writes ~/.cursor/mcp.json
 nole setup --windsurf   # writes ~/.codeium/windsurf/mcp_config.json
 nole setup --hermes     # writes ~/.hermes/config.yaml
+nole setup --antigravity # writes ~/.gemini/config/mcp_config.json for Antigravity CLI (agy)
+nole setup --gemini      # writes ~/.gemini/settings.json for Gemini CLI Standard/Enterprise/Cloud/paid API-key users
 nole setup --local-extract          # prepares local Scrapling and ~/.local/bin/nole-mcp
 nole setup --codex --local-extract  # does both in one command
 nole setup --hermes --local-extract # does both in one command
@@ -284,6 +286,7 @@ When `--local-extract` is present and no custom wrapper is provided, setup write
 ```bash
 nole setup --opencode --mcp-wrapper /absolute/path/to/nole-mcp
 nole setup --kimi     --mcp-wrapper /absolute/path/to/nole-mcp
+nole setup --antigravity --mcp-wrapper /absolute/path/to/nole-mcp
 nole setup --cursor   --mcp-wrapper /absolute/path/to/nole-mcp
 nole setup --claude   --mcp-wrapper /absolute/path/to/nole-mcp   # prints the matching claude mcp add
 ```

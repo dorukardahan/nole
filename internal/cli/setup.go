@@ -45,6 +45,7 @@ func newSetupCommand() *cobra.Command {
 	var windsurf bool
 	var kimi bool
 	var hermes bool
+	var antigravity bool
 	var gemini bool
 	var grok bool
 	var grokBuild bool
@@ -57,16 +58,17 @@ func newSetupCommand() *cobra.Command {
 		Use:   "setup",
 		Short: "Configure AI agents to use nole as MCP server",
 		Long: "Writes MCP server configuration files for supported AI coding agents.\n" +
-			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --gemini, --grok, --grok-build, or --all.\n" +
+			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --antigravity, --gemini, --grok, --grok-build, or --all.\n" +
+			"Note: --antigravity targets Google's Antigravity CLI native config (~/.gemini/config/mcp_config.json); --gemini remains for Gemini CLI Standard/Enterprise/Cloud/paid API-key users (~/.gemini/settings.json).\n" +
 			"Note: --grok targets superagent-ai/grok-cli (~/.grok/user-settings.json, JSON); --grok-build targets xAI's Grok Build TUI (~/.grok/config.toml, TOML). They are different products — pick the one whose `grok` you have installed.\n" +
 			"Use --local-extract to install an isolated Scrapling runtime and write NOLE_SCRAPLING_PYTHON.\n" +
 			"Use --mcp-wrapper /absolute/path/to/nole-mcp to register an env-sourcing wrapper instead of the bare binary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
-				claude, cursor, codex, opencode, kimi, windsurf, hermes, gemini, grok, grokBuild = true, true, true, true, true, true, true, true, true, true
+				claude, cursor, codex, opencode, kimi, windsurf, hermes, antigravity, gemini, grok, grokBuild = true, true, true, true, true, true, true, true, true, true, true
 			}
-			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !gemini && !grok && !grokBuild && !localExtract {
-				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --gemini, --grok, --grok-build, --local-extract, or --all")
+			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !antigravity && !gemini && !grok && !grokBuild && !localExtract {
+				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --antigravity, --gemini, --grok, --grok-build, --local-extract, or --all")
 			}
 
 			binary, err := os.Executable()
@@ -154,6 +156,9 @@ func newSetupCommand() *cobra.Command {
 			if hermes {
 				configure("hermes", writeHermesConfig)
 			}
+			if antigravity {
+				configure("antigravity", writeAntigravityConfig)
+			}
 			if gemini {
 				configure("gemini", writeGeminiConfig)
 			}
@@ -198,7 +203,8 @@ func newSetupCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&kimi, "kimi", false, "configure Kimi CLI")
 	cmd.Flags().BoolVar(&windsurf, "windsurf", false, "configure Windsurf")
 	cmd.Flags().BoolVar(&hermes, "hermes", false, "configure Hermes Agent")
-	cmd.Flags().BoolVar(&gemini, "gemini", false, "configure Gemini CLI")
+	cmd.Flags().BoolVar(&antigravity, "antigravity", false, "configure Antigravity CLI (agy; ~/.gemini/config/mcp_config.json)")
+	cmd.Flags().BoolVar(&gemini, "gemini", false, "configure Gemini CLI (Standard/Enterprise/Cloud/paid API-key users; ~/.gemini/settings.json)")
 	cmd.Flags().BoolVar(&grok, "grok", false, "configure Grok CLI (superagent-ai/grok-cli; ~/.grok/user-settings.json)")
 	cmd.Flags().BoolVar(&grokBuild, "grok-build", false, "configure xAI Grok Build TUI (~/.grok/config.toml; distinct from --grok)")
 	cmd.Flags().BoolVar(&localExtract, "local-extract", false, "install an isolated local Scrapling extract runtime and write NOLE_SCRAPLING_PYTHON")
@@ -431,8 +437,27 @@ func writeWindsurfConfig(spec launchSpec) error {
 	return writeMCPJSONConfig(path, spec)
 }
 
+// writeAntigravityConfig writes Nólë's local stdio MCP entry to Antigravity
+// CLI's user-scope MCP config. Antigravity CLI (native Go binary `agy`) uses
+// ~/.gemini/config/mcp_config.json for global MCP servers and accepts the same
+// mcpServers.<name>.{command,args,env} local stdio shape as Gemini-style MCP
+// JSON configs. Nólë writes only a local stdio entry; no credentials are embedded.
+func writeAntigravityConfig(spec launchSpec) error {
+	home, err := resolveHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".gemini", "config", "mcp_config.json")
+	return writeAntigravityConfigPath(path, spec)
+}
+
+func writeAntigravityConfigPath(path string, spec launchSpec) error {
+	return writeMCPJSONConfig(path, spec)
+}
+
 // writeGeminiConfig writes Nólë's MCP entry to Gemini CLI's user-scope config.
-// Gemini CLI (google-gemini/gemini-cli) reads ~/.gemini/settings.json with a
+// Gemini CLI (google-gemini/gemini-cli; still supported for Standard,
+// Enterprise/Cloud and paid API-key users) reads ~/.gemini/settings.json with a
 // top-level "mcpServers" object keyed by server name (object-keyed-by-name,
 // shallow-merged) — structurally identical to Cursor/Windsurf — so the shared
 // JSON writer applies directly and preserves unknown root keys and sibling
