@@ -11,21 +11,34 @@ drives the Phase 3 plan and Phase 4 execution.
 > correctness / coverage / platform — **not** risky taste refactors), proposing a minimal
 > fix + verification method; **(2) adversarial refute** — a second agent tried to refute the
 > verdict (is the bug real? would the fix break a test or invariant? is the code intentional?).
-> Platform research (Gemini, Grok) was pinned to **primary sources only** (official docs +
+> Platform research (Gemini, Grok, Antigravity) was pinned to **primary sources only** (official docs +
 > repository source via `gh api`), then independently re-derived by a skeptic. Cheat sheets and
 > blog posts were explicitly rejected as sole evidence.
 >
 > **Honesty rules respected:** no fabricated platform support or benchmark numbers; the real
-> Gemini/Grok clients were **not** launched in this environment, so their honest status is
+> Gemini/Grok clients were **not** launched in this environment; Antigravity was checked only with unauthenticated `agy --version/--help`, so their honest status is
 > `repo-tested`, never `verified`. Verified facts and proposed/deferred work are separated below.
 
 ---
 
-## 1. Platform coverage — Gemini and Grok (verified config formats)
+## 1. Platform coverage — Gemini, Grok, and Antigravity (verified config formats)
 
-Both schemas were confirmed at high confidence by an independent adversarial re-derivation
-(researcher and skeptic agree). Neither real client was launched here, so the honest support
-status for both is **`repo-tested`** (setup writer + config merge covered by Go tests).
+The Gemini and Grok schemas were confirmed at high confidence by an independent adversarial re-derivation
+(researcher and skeptic agree). Antigravity facts were added later from Google's official Antigravity docs and an unauthenticated local `agy 1.1.1 --version/--help` check. Authenticated tool visibility was not observed here, so the honest support status is **`repo-tested`** (setup writer + config merge covered by Go tests).
+
+### Antigravity CLI (`agy`, native Go CLI)
+
+- **Global MCP config path:** `~/.gemini/config/mcp_config.json`
+- **Workspace MCP config path:** `.agents/mcp_config.json`
+- **Structure:** top-level **`mcpServers` object keyed by server name** (`$.mcpServers.<name>`).
+- **Local stdio entry Nólë must write:**
+  ```json
+  { "mcpServers": { "nole": { "command": "/absolute/path/to/nole", "args": ["mcp"] } } }
+  ```
+- **Remote MCP entries:** Antigravity uses `serverUrl`/`serverURL`; migrated Gemini entries can retain current `url` or legacy `httpUrl`. Nólë's setup writer is intentionally local stdio only, preserves remote sibling entries, and refuses those keys on `mcpServers.nole` before writing.
+- **Verification:** install via the official `agy` installer, then verify with Antigravity `/mcp` or an authenticated `agy -p` smoke. This run did not authenticate and did not observe tool visibility.
+- **Implication:** the root schema is structurally compatible with the shared MCP JSON path, but Antigravity uses a specialized merge so existing per-server policy/options survive while only `command` and `args` are updated. It also needs its own flag and target path so Gemini CLI support is preserved separately.
+- **Primary sources:** official Antigravity docs `https://antigravity.google/docs/cli/gcli-migration`, `https://antigravity.google/docs/cli/install`, `https://antigravity.google/docs/mcp`; local unauthenticated `agy 1.1.1` reported `--version` and `--help` successfully.
 
 ### Gemini CLI (`@google/gemini-cli`, repo `google-gemini/gemini-cli`)
 

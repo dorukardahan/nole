@@ -24,7 +24,7 @@ go build -o nole .
 ./nole doctor --mcp
 ```
 
-If `go` is missing, install Go 1.25+ (matches the `go 1.25.11` directive in `go.mod`) using the user's normal package manager or a user-local toolchain. Do not commit downloaded toolchains or build artifacts.
+If `go` is missing, install Go 1.25+ (matches the `go 1.25.12` directive in `go.mod`) using the user's normal package manager or a user-local toolchain. Do not commit downloaded toolchains or build artifacts.
 
 ## Install binary
 
@@ -92,6 +92,8 @@ When available, use built-in setup writers:
 nole setup --claude
 nole setup --codex
 nole setup --opencode
+nole setup --hermes
+nole setup --antigravity
 nole setup --gemini
 nole setup --grok
 ```
@@ -119,6 +121,7 @@ Client docs:
 - `docs/CLIENTS/hermes.md`
 - `docs/CLIENTS/cursor.md`
 - `docs/CLIENTS/kimi.md`
+- `docs/CLIENTS/antigravity.md`
 - `docs/CLIENTS/gemini.md`
 - `docs/CLIENTS/grok.md`
 - `docs/CLIENTS/generic-mcp.md`

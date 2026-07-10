@@ -51,7 +51,8 @@ Priority v0.1 agent targets:
 | OpenClaw | Verified on OpenClaw 2026.5.18 via the Gateway/agent MCP path; compatibility re-checked on OpenClaw 2026.5.27 with the wrapper-backed MCP registry; see `docs/CLIENTS/LIVE-VERIFICATION.md` | Run `nole setup --local-extract`, then configure OpenClaw with `openclaw mcp set` and the generated env-sourcing wrapper. |
 | Hermes Agent | Verified on Hermes Agent v0.14.0 via disposable profile MCP path and chat-agent dispatch; v2026.5.28 / v0.15.0 source compatibility reviewed; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --hermes --local-extract` writes `~/.hermes/config.yaml`, prepares local Scrapling, uses the env-sourcing wrapper and preserves unrelated config. |
 | Cursor | Verified on macOS Cursor 3.4.20 via GUI MCP path and chat-agent dispatch; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --cursor --local-extract` preserves unrelated MCP servers and emits wrapper-direct config through the generated wrapper. |
-| Gemini CLI | Repo-tested: the `nole setup --gemini` writer and config merge are covered by repo tests; the real Gemini CLI was not launched here, so live tool visibility is unobserved. See `docs/CLIENTS/gemini.md` | `nole setup --gemini` writes `~/.gemini/settings.json` with an object-keyed `mcpServers` entry, merging only the `nole` server and preserving sibling servers and unknown root keys. |
+| Antigravity CLI | Repo-tested: the `nole setup --antigravity` writer and config merge are covered by repo tests; authenticated `agy` tool visibility was not observed here. See `docs/CLIENTS/antigravity.md` | `nole setup --antigravity` writes `~/.gemini/config/mcp_config.json` with an object-keyed `mcpServers.nole` local stdio entry, preserving sibling servers, remote `serverUrl` entries and unknown fields. |
+| Gemini CLI | Repo-tested: the `nole setup --gemini` writer and config merge are covered by repo tests for Gemini CLI Standard/Enterprise/Cloud/paid API-key users; live tool visibility remains unobserved. See `docs/CLIENTS/gemini.md` | `nole setup --gemini` writes `~/.gemini/settings.json` with an object-keyed `mcpServers` entry, merging only the `nole` server and preserving sibling servers and unknown root keys. |
 | Grok CLI | Repo-tested: the `nole setup --grok` writer and array upsert-by-`id` are covered by repo tests; the real Grok CLI was not launched here, so live tool visibility is unobserved. See `docs/CLIENTS/grok.md` | `nole setup --grok` writes `~/.grok/user-settings.json` with an `mcp.servers` array, upserting the `id == "nole"` entry in place (or appending) and preserving other servers and unknown root keys. |
 
 A client is only called verified after config path, tool visibility and `doctor --mcp` behavior are checked without printing credentials.
@@ -79,7 +80,7 @@ See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 
 Prerequisites:
 
-- Go 1.25+ for building from source (matches the `go 1.25.11` directive in `go.mod`).
+- Go 1.25+ for building from source (matches the `go 1.25.12` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily and Firecrawl.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
 - No provider key is required for the deterministic benchmark, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback.
@@ -205,9 +206,10 @@ nole setup --claude
 nole setup --codex
 nole setup --hermes
 nole setup --opencode
+nole setup --antigravity
 nole setup --codex --local-extract
 nole setup --hermes --local-extract
-# see `nole setup --help` for the full client list (cursor, kimi, windsurf, gemini, grok, etc.)
+# see `nole setup --help` for the full client list (cursor, kimi, windsurf, antigravity, gemini, grok, etc.)
 ```
 
 For unverified or generic clients, use the MCP command template:
