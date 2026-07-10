@@ -137,6 +137,33 @@ func TestWriteAntigravityConfigPreservesMergeShapeAndBackup(t *testing.T) {
 	}
 }
 
+func TestWriteAntigravityConfigRejectsExistingRemoteNoleWithoutBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp_config.json")
+	existing := `{"mcpServers":{"nole":{"serverUrl":"https://mcp.example.test/sse","headers":{"Authorization":"preserve"},"disabled":true}}}`
+	if err := os.WriteFile(path, []byte(existing), 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0640); err != nil {
+		t.Fatal(err)
+	}
+
+	err := writeAntigravityConfigPath(path, launchSpec{Binary: "/usr/local/bin/nole"})
+	if err == nil || !strings.Contains(err.Error(), "serverUrl") || !strings.Contains(err.Error(), "local stdio") {
+		t.Fatalf("expected remote Nólë entry conflict, got %v", err)
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != existing {
+		t.Fatalf("remote Nólë config was modified: %s", got)
+	}
+	assertFileMode(t, path, 0640)
+	if _, statErr := os.Stat(path + ".bak"); !os.IsNotExist(statErr) {
+		t.Fatalf("remote conflict should not be backed up/written, stat err=%v", statErr)
+	}
+}
+
 func TestWriteAntigravityConfigRejectsNonObjectNoleWithoutBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mcp_config.json")
 	existing := `{"mcpServers":{"nole":false}}`

@@ -468,9 +468,12 @@ func writeAntigravityConfigPath(path string, spec launchSpec) error {
 
 	// Antigravity stores user policy and launch options in the server object
 	// itself (for example disabled, disabledTools, env, cwd and timeouts). Keep
-	// every existing field and update only the launch-critical command and args.
-	// A fresh entry therefore embeds no environment values or credentials, while
-	// a user's pre-existing local configuration remains intact on re-run.
+	// every existing local-server field and update only the launch-critical
+	// command and args. A fresh entry therefore embeds no environment values or
+	// credentials, while a user's pre-existing local configuration remains intact
+	// on re-run. Refuse to convert a remote Nólë entry: retaining serverUrl would
+	// create an ambiguous mixed transport, while deleting it could discard remote
+	// connection policy or credentials without the user's intent.
 	nole := map[string]json.RawMessage{}
 	if raw, ok := servers["nole"]; ok && len(raw) > 0 {
 		if err := json.Unmarshal(raw, &nole); err != nil {
@@ -478,6 +481,9 @@ func writeAntigravityConfigPath(path string, spec launchSpec) error {
 		}
 		if nole == nil {
 			return fmt.Errorf("parse existing antigravity mcpServers.nole: must be an object, got null")
+		}
+		if _, remote := nole["serverUrl"]; remote {
+			return fmt.Errorf("existing antigravity mcpServers.nole is remote (has serverUrl); remove or rename it before configuring Nólë as local stdio")
 		}
 	}
 	command, err := json.Marshal(spec.command())
