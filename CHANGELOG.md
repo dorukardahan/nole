@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-11
+
 ### Added
 
 - **Provider-account usage sync for quota-tracked BYOK providers.** Tavily now
@@ -25,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `not_applicable`, or `disabled_no_key`) so keyless/local providers are covered
   explicitly without noisy account-usage errors. Key values, auth headers and raw
   provider payloads are never emitted.
+- **Antigravity CLI MCP setup writer.** `nole setup --antigravity` writes or
+  safely merges Nólë's local stdio entry in Antigravity's global
+  `~/.gemini/config/mcp_config.json`, preserving sibling servers, unknown fields,
+  existing Nólë options, permissions, and backups. It refuses to overwrite an
+  existing `nole` entry that uses a known remote transport key rather than
+  creating an ambiguous mixed transport, and it never embeds provider
+  credentials. The integration remains **repo-tested**: authenticated Antigravity
+  tool visibility has not been verified.
 
 ## [1.7.0] - 2026-06-21
 
@@ -1410,7 +1420,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/dorukardahan/nole/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/dorukardahan/nole/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/dorukardahan/nole/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/dorukardahan/nole/compare/v1.6.0...v1.6.1
