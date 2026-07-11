@@ -8,6 +8,10 @@ import (
 )
 
 func newExtractCommand() *cobra.Command {
+	return newExtractCommandWithService(defaultService)
+}
+
+func newExtractCommandWithService(service func() *core.Service) *cobra.Command {
 	var format string
 	var jsonOut bool
 	var insightRaw string
@@ -20,7 +24,7 @@ func newExtractCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := defaultService().Extract(cmd.Context(), core.ExtractRequest{URL: args[0], Format: format})
+			resp, err := service().Extract(cmd.Context(), core.ExtractRequest{URL: args[0], Format: format})
 			resp = applyExtractInsightMode(resp, insightMode)
 			if err != nil {
 				if jsonOut {
