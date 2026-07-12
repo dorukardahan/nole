@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -150,6 +151,34 @@ func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
 		if s.SignupURL == "" {
 			t.Errorf("suggestion for %q has empty signup_url", s.MissingKey)
 		}
+	}
+}
+
+func TestProviderHumanReasonSurfacesSanitizedLiveUsageFailure(t *testing.T) {
+	status := core.ProviderStatus{
+		Reason:           "",
+		RemoteUsageError: "tavily: usage HTTP 401: Bearer should-never-be-printed",
+	}
+
+	got := providerHumanReason(status, true)
+	if got != "remote_usage_error" {
+		t.Fatalf("live usage reason = %q, want remote_usage_error", got)
+	}
+	if strings.Contains(got, "Bearer") || strings.Contains(got, "should-never-be-printed") {
+		t.Fatalf("live usage reason leaked provider detail: %q", got)
+	}
+}
+
+func TestProviderHumanReasonPreservesNormalAndExistingReasons(t *testing.T) {
+	status := core.ProviderStatus{
+		Reason:           "circuit_open",
+		RemoteUsageError: "private provider detail",
+	}
+	if got := providerHumanReason(status, false); got != "circuit_open" {
+		t.Fatalf("non-live reason = %q, want circuit_open", got)
+	}
+	if got := providerHumanReason(status, true); got != "circuit_open; remote_usage_error" {
+		t.Fatalf("live reason = %q, want combined marker", got)
 	}
 }
 
