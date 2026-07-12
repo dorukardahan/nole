@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-07-12
+
+### Fixed
+
+- **Visible live-usage sync failures in human-readable provider status.**
+  `nole providers --live-usage` now appends a compact
+  `remote_usage_error` marker when an account-backed usage query fails, while
+  keeping the provider available because usage synchronization remains advisory.
+  Raw provider error details are not printed in the human-readable output; the
+  existing JSON contract, routing, and quota behavior are unchanged.
+
 ## [1.8.0] - 2026-07-11
 
 ### Added
@@ -1420,7 +1431,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/dorukardahan/nole/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/dorukardahan/nole/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/dorukardahan/nole/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/dorukardahan/nole/compare/v1.6.1...v1.6.2
