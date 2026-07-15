@@ -249,6 +249,32 @@ func TestScanRawHTMLContentSafetyFlagsHeadWithInstruction(t *testing.T) {
 	}
 }
 
+func TestScanRawHTMLContentSafetyFlagsOnlyEffectiveVisibilityHiddenText(t *testing.T) {
+	for name, tc := range map[string]struct {
+		raw        []byte
+		wantSignal bool
+	}{
+		"empty-wrapper": {
+			raw: []byte(`<div style="visibility:hidden"></div>`),
+		},
+		"visible-override-only": {
+			raw: []byte(`<div style="visibility:hidden"><span style="visibility:visible">visible</span></div>`),
+		},
+		"hidden-text": {
+			raw:        []byte(`<div style="visibility:hidden">hidden text</div>`),
+			wantSignal: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			report := ScanRawHTMLContentSafety(tc.raw)
+			got := hasSafetySignal(report, "css_visibility_hidden")
+			if got != tc.wantSignal {
+				t.Fatalf("visibility signal mismatch: want=%v report=%#v", tc.wantSignal, report)
+			}
+		})
+	}
+}
+
 func TestScanRawHTMLContentSafetyDoesNotFlagEmptyHiddenScaffolding(t *testing.T) {
 	for name, raw := range map[string][]byte{
 		"display-none": []byte(`<div style="display:none"></div>`),

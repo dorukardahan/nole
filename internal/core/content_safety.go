@@ -329,10 +329,18 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 			return
 		}
 		if node.Type == xhtml.TextNode {
-			if zeroFont && strings.TrimSpace(node.Data) != "" {
-				acc.add("css_hidden_content", ContentRiskCaution, 1)
-				if subtreeHasInstruction(node) {
-					acc.add("css_hidden_content_instruction", ContentRiskHigh, 1)
+			if strings.TrimSpace(node.Data) != "" {
+				if zeroFont {
+					acc.add("css_hidden_content", ContentRiskCaution, 1)
+					if subtreeHasInstruction(node) {
+						acc.add("css_hidden_content_instruction", ContentRiskHigh, 1)
+					}
+				}
+				if visHidden {
+					acc.add("css_visibility_hidden", ContentRiskCaution, 1)
+					if subtreeHasInstruction(node) {
+						acc.add("css_visibility_hidden_instruction", ContentRiskHigh, 1)
+					}
 				}
 			}
 			return
@@ -359,14 +367,7 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 			return
 		}
 		zeroFont = HTMLNodeZeroFontSize(node, zeroFont)
-		inheritedVisHidden := visHidden
 		visHidden = HTMLNodeVisibilityHidden(node, visHidden)
-		if visHidden && !inheritedVisHidden {
-			acc.add("css_visibility_hidden", ContentRiskCaution, 1)
-			if subtreeHasInstruction(node) {
-				acc.add("css_visibility_hidden_instruction", ContentRiskHigh, 1)
-			}
-		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
 			walk(child, zeroFont, visHidden, depth+1)
 		}
