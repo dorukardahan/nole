@@ -176,7 +176,7 @@ func sanitizeInvisibleControls(input string) (cleaned string, suspiciousZeroWidt
 			suspicious = offset != 0
 		case r == '\u00ad':
 			remove = true
-		case r == '\u034f' || r == '\u180e' || r == '\u200b' || r == '\u2060' || (r >= '\u2061' && r <= '\u2064') || (r >= '\u206a' && r <= '\u206f'):
+		case r == '\u034f' || r == '\u180e' || r == '\u200b' || r == '\u2060' || (r >= '\u2061' && r <= '\u2064') || (r >= '\u206a' && r <= '\u206f') || (r >= '\ufe00' && r <= '\ufe0f') || (r >= 0xe0100 && r <= 0xe01ef):
 			remove = true
 			suspicious = true
 		case r == '\u061c' || (r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069') || r == '\u200e' || r == '\u200f':
@@ -382,9 +382,17 @@ func HTMLNodeHiddenKind(node *xhtml.Node) string {
 	if node == nil || node.Type != xhtml.ElementNode {
 		return ""
 	}
-	switch strings.ToLower(node.Data) {
+	tag := strings.ToLower(node.Data)
+	switch tag {
 	case "head", "script", "style", "noscript", "template", "svg", "title":
 		return "nonvisible_html"
+	}
+	if tag == "input" {
+		for _, attr := range node.Attr {
+			if strings.EqualFold(strings.TrimSpace(attr.Key), "type") && strings.EqualFold(strings.TrimSpace(attr.Val), "hidden") {
+				return "hidden_html"
+			}
+		}
 	}
 	for _, attr := range node.Attr {
 		name := strings.ToLower(strings.TrimSpace(attr.Key))
