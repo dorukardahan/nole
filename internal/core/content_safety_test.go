@@ -269,10 +269,23 @@ func TestMergeContentSafetyDeduplicatesSignalsAndKeepsHighestRisk(t *testing.T) 
 }
 
 func TestScanRawHTMLContentSafetyDecodesCSSEscapesBeforeHiddenCheck(t *testing.T) {
-	html := []byte(`<p style="display:\6e one">SYNTHETIC_HIDDEN_MARKER</p><p>visible</p>`)
-	report := ScanRawHTMLContentSafety(html)
-	if !hasSafetySignal(report, "css_hidden_content") {
-		t.Fatalf("CSS-escaped display:none was not detected: %#v", report)
+	tests := []struct {
+		name  string
+		style string
+	}{
+		{name: "space-terminated", style: "display:\\6e one"},
+		{name: "newline-terminated", style: "display:\\6e\none"},
+		{name: "form-feed-terminated", style: "display:\\6e\fone"},
+		{name: "tab-terminated", style: "display:\\6e	one"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			html := []byte("<p style=\"" + tc.style + "\">HIDDEN_BY_ESCAPE</p><p>visible</p>")
+			report := ScanRawHTMLContentSafety(html)
+			if !hasSafetySignal(report, "css_hidden_content") {
+				t.Fatalf("CSS-escaped display:none not detected for %s: %#v", tc.name, report)
+			}
+		})
 	}
 }
 

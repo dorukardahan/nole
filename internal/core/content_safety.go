@@ -479,7 +479,9 @@ func splitCSSDeclarations(style string) []string {
 
 // decodeCSSIdent resolves CSS escape sequences like \6e one → none so that
 // hidden-style checks are not bypassed by escaped identifiers or values.
-var cssEscapePattern = regexp.MustCompile(`\\([0-9a-fA-F]{1,6})\s?|\\(.)`)
+// CSS hex escapes can be terminated by any CSS whitespace: space, tab, newline,
+// carriage return, or form feed.
+var cssEscapePattern = regexp.MustCompile(`\\([0-9a-fA-F]{1,6})[	\n\r\f ]?|\\(.)`)
 
 func decodeCSSIdent(s string) string {
 	return cssEscapePattern.ReplaceAllStringFunc(s, func(match string) string {
@@ -489,9 +491,10 @@ func decodeCSSIdent(s string) string {
 		if len(match) == 2 {
 			return string(match[1])
 		}
-		// Hex escape: \6e → 'n'
-		hex := strings.TrimPrefix(match, "\\")
-		hex = strings.TrimRight(hex, " \t")
+		// Hex escape: \6e → 'n'. Strip the leading backslash and any
+		// trailing whitespace (space/tab/nl/cr/ff) from the captured group.
+		hex := match[1:]
+		hex = strings.TrimRight(hex, "	\n\r\f ")
 		n, err := strconv.ParseInt(hex, 16, 32)
 		if err != nil {
 			return match
