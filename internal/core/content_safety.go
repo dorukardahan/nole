@@ -338,21 +338,22 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 			return
 		}
 		if kind := HTMLNodeHiddenKind(node); kind != "" {
-			if !subtreeHasContent(node) {
+			hasInstruction := subtreeHasInstruction(node)
+			if !subtreeHasContent(node) && !hasInstruction {
 				return
 			}
 			// Boilerplate head/title elements exist on every well-formed page.
 			// Only escalate when they contain injection-like content; a clean
 			// head must not produce a caution signal or change the risk level.
 			if kind == "nonvisible_html" {
-				if subtreeHasInstruction(node) {
+				if hasInstruction {
 					acc.add(kind, ContentRiskCaution, 1)
 					acc.add(kind+"_instruction", ContentRiskHigh, 1)
 				}
 				return
 			}
 			acc.add(kind, ContentRiskCaution, 1)
-			if subtreeHasInstruction(node) {
+			if hasInstruction {
 				acc.add(kind+"_instruction", ContentRiskHigh, 1)
 			}
 			return
@@ -411,8 +412,8 @@ func inlineStyleWinners(style string) map[string]cssWinningDeclaration {
 		if len(parts) != 2 {
 			continue
 		}
-		property := decodeCSSIdent(strings.ToLower(strings.TrimSpace(parts[0])))
-		value := decodeCSSIdent(strings.ToLower(strings.TrimSpace(parts[1])))
+		property := strings.ToLower(decodeCSSIdent(strings.TrimSpace(parts[0])))
+		value := strings.ToLower(decodeCSSIdent(strings.TrimSpace(parts[1])))
 		important := cssImportantPattern.MatchString(value)
 		value = strings.TrimSpace(cssImportantPattern.ReplaceAllString(value, ""))
 		switch property {
@@ -648,13 +649,6 @@ func subtreeHasContentDepth(node *xhtml.Node, depth int) bool {
 	}
 	if (node.Type == xhtml.TextNode || node.Type == xhtml.CommentNode) && strings.TrimSpace(node.Data) != "" {
 		return true
-	}
-	if node.Type == xhtml.ElementNode {
-		for _, attr := range node.Attr {
-			if strings.TrimSpace(attr.Val) != "" {
-				return true
-			}
-		}
 	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		if subtreeHasContentDepth(child, depth+1) {
