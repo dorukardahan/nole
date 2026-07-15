@@ -222,6 +222,19 @@ func sanitizeInvisibleControls(input string) (cleaned string, suspiciousZeroWidt
 				offset = runEnd
 				continue
 			}
+			// Joiners adjacent to Latin text/whitespace can split word boundaries
+			// and still render as normal text. Treat them as suspicious too.
+			if (latinLetter(previous) || isLatinSpace(previous)) && (latinLetter(afterRun) || isLatinSpace(afterRun)) {
+				if !secondDirty {
+					secondDirty = true
+					second.Grow(len(normalized))
+					second.WriteString(normalized[:offset])
+				}
+				suspiciousZeroWidth += runCount
+				removed += runCount
+				offset = runEnd
+				continue
+			}
 			// A legitimate/non-Latin joiner run is preserved, but consume the
 			// whole run at once so attacker-controlled runs remain linear-time.
 			if secondDirty {
@@ -245,6 +258,11 @@ func sanitizeInvisibleControls(input string) (cleaned string, suspiciousZeroWidt
 
 func latinLetter(r rune) bool {
 	return unicode.IsLetter(r) && unicode.In(r, unicode.Latin)
+}
+
+// isLatinSpace returns true for ASCII spaces and tabs that border Latin text.
+func isLatinSpace(r rune) bool {
+	return r == ' ' || r == '	' || r == '\n' || r == '\r'
 }
 
 func normalizeCommonCyrillicConfusables(text string) string {
@@ -289,7 +307,9 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 	var walk func(*xhtml.Node)
 	walk = func(node *xhtml.Node) {
 		if node.Type == xhtml.CommentNode {
-			if instructionOverridePattern.MatchString(node.Data) || sensitiveDataRequestPattern.MatchString(node.Data) || toolRequestPattern.MatchString(node.Data) {
+			cleaned, _, _, _, _, _ := sanitizeInvisibleControls(node.Data)
+			normalized := normalizeCommonCyrillicConfusables(cleaned)
+			if instructionOverridePattern.MatchString(normalized) || sensitiveDataRequestPattern.MatchString(normalized) || toolRequestPattern.MatchString(normalized) {
 				acc.add("html_comment_instruction", ContentRiskHigh, 1)
 			}
 			return
@@ -486,8 +506,14 @@ func subtreeHasInstruction(node *xhtml.Node) bool {
 	if node == nil {
 		return false
 	}
-	if (node.Type == xhtml.TextNode || node.Type == xhtml.CommentNode) && (instructionOverridePattern.MatchString(node.Data) || sensitiveDataRequestPattern.MatchString(node.Data) || toolRequestPattern.MatchString(node.Data)) {
-		return true
+	if node.Type == xhtml.TextNode || node.Type == xhtml.CommentNode {
+		// Sanitize invisible controls before matching so obfuscated
+		// instructions inside hidden nodes are still detected.
+		cleaned, _, _, _, _, _ := sanitizeInvisibleControls(node.Data)
+		normalized := normalizeCommonCyrillicConfusables(cleaned)
+		if instructionOverridePattern.MatchString(normalized) || sensitiveDataRequestPattern.MatchString(normalized) || toolRequestPattern.MatchString(normalized) {
+			return true
+		}
 	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		if subtreeHasInstruction(child) {
