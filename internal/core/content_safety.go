@@ -433,8 +433,8 @@ func inlineStyleHidesContent(style string) bool {
 
 // HTMLNodeVisibilityHidden returns the effective visibility:hidden state after
 // applying a node's winning inline visibility declaration. visibility is
-// inherited and overridable: a descendant with visibility:visible renders
-// normally even under a hidden ancestor.
+// inherited and overridable: a descendant with visibility:visible or
+// visibility:initial renders normally even under a hidden ancestor.
 func HTMLNodeVisibilityHidden(node *xhtml.Node, inheritedHidden bool) bool {
 	if node == nil || node.Type != xhtml.ElementNode {
 		return inheritedHidden
@@ -450,7 +450,7 @@ func HTMLNodeVisibilityHidden(node *xhtml.Node, inheritedHidden bool) bool {
 		if declaration.value == "hidden" || declaration.value == "collapse" {
 			return true
 		}
-		if declaration.value == "visible" {
+		if declaration.value == "visible" || declaration.value == "initial" {
 			return false
 		}
 		return inheritedHidden
@@ -714,6 +714,18 @@ func contentSafetyInitialized(report ContentSafetyReport) bool {
 	return report.Untrusted && report.Risk != ""
 }
 
+func instructionLikeContentSafety(report ContentSafetyReport) bool {
+	if report.Risk == ContentRiskHigh {
+		return true
+	}
+	for _, signal := range report.Signals {
+		if signal.Type == "tool_execution_request" {
+			return true
+		}
+	}
+	return false
+}
+
 func protectExtractMetadata(metadata map[string]string) ContentSafetyReport {
 	if len(metadata) == 0 {
 		return ContentSafetyReport{Untrusted: true, Risk: ContentRiskNoIndicators}
@@ -733,6 +745,8 @@ func protectExtractMetadata(metadata map[string]string) ContentSafetyReport {
 		base := cleanedKey
 		if keyReport.Risk == ContentRiskHigh {
 			base = "_content_safety_high_risk_key"
+		} else if instructionLikeContentSafety(keyReport) {
+			base = "_content_safety_instruction_key"
 		}
 		if base == "" {
 			base = "_metadata_key"
@@ -745,11 +759,12 @@ func protectExtractMetadata(metadata map[string]string) ContentSafetyReport {
 			collisions++
 			candidate = base + "__duplicate_" + strconv.Itoa(duplicate)
 		}
-		// If the metadata value itself contains a high-risk instruction,
-		// replace it with a safe placeholder rather than preserving the
-		// suspect payload in the JSON metadata object.
+		// Keep instruction-like provider payloads out of metadata regardless
+		// of whether the deterministic indicator is caution or high risk.
 		if valueReport.Risk == ContentRiskHigh {
 			cleanedValue = "[content_safety: high-risk metadata value omitted]"
+		} else if instructionLikeContentSafety(valueReport) {
+			cleanedValue = "[content_safety: instruction-like metadata value omitted]"
 		}
 		rebuilt[candidate] = cleanedValue
 		merged = MergeContentSafety(merged, keyReport, valueReport)

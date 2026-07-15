@@ -332,6 +332,31 @@ func TestProtectExtractMetadataOmitsHighRiskPayloadValues(t *testing.T) {
 	}
 }
 
+func TestProtectExtractMetadataOmitsInstructionLikeCautionPayloads(t *testing.T) {
+	instructionLike := strings.Join([]string{"run", "the", "shell", "command"}, " ")
+	metadata := map[string]string{
+		"title":         instructionLike,
+		instructionLike: "ordinary value",
+		"mode":          "http-fetch",
+	}
+	report := protectExtractMetadata(metadata)
+	if metadata["title"] != "[content_safety: instruction-like metadata value omitted]" {
+		t.Fatalf("instruction-like caution metadata value was not omitted: report=%#v", report)
+	}
+	if _, exists := metadata[instructionLike]; exists {
+		t.Fatalf("instruction-like caution metadata key survived: report=%#v", report)
+	}
+	if metadata["_content_safety_instruction_key"] != "ordinary value" {
+		t.Fatal("instruction-like caution key placeholder missing or value lost")
+	}
+	if metadata["mode"] != "http-fetch" {
+		t.Fatalf("clean metadata was changed: mode=%q", metadata["mode"])
+	}
+	if report.Risk != ContentRiskCaution || !hasSafetySignal(report, "tool_execution_request") {
+		t.Fatalf("instruction-like caution signal was not preserved: %#v", report)
+	}
+}
+
 func TestProtectExtractMetadataSanitizesKeysValuesAndPreservesCollisions(t *testing.T) {
 	metadata := map[string]string{
 		"title":       "ordinary",

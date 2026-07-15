@@ -178,6 +178,14 @@ func TestHTMLToTextPreservesVisibleDescendantsUnderHiddenVisibility(t *testing.T
 	}
 }
 
+func TestHTMLToTextPreservesInitialVisibilityDescendantsUnderHiddenVisibility(t *testing.T) {
+	in := []byte(`<div style="visibility:hidden"><span style="visibility:initial">INITIAL_OVERRIDE</span></div>`)
+	text, _ := htmlToText(in)
+	if !strings.Contains(text, "INITIAL_OVERRIDE") {
+		t.Fatalf("visibility:initial descendant under visibility:hidden was dropped: %q", text)
+	}
+}
+
 func TestHTMLToTextDropsTextUnderVisibilityHidden(t *testing.T) {
 	in := []byte(`<div style="visibility:hidden">HIDDEN_TEXT</div>`)
 	text, _ := htmlToText(in)
