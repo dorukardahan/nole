@@ -44,8 +44,11 @@ func htmlToText(body []byte) (text string, title string) {
 	title = firstElementText(doc, "title")
 
 	var out strings.Builder
-	var walk func(*xhtml.Node, bool, bool)
-	walk = func(node *xhtml.Node, zeroFont bool, visHidden bool) {
+	var walk func(*xhtml.Node, bool, bool, int)
+	walk = func(node *xhtml.Node, zeroFont bool, visHidden bool, depth int) {
+		if depth > core.MaxDOMTraversalDepth {
+			return
+		}
 		switch node.Type {
 		case xhtml.CommentNode:
 			return
@@ -69,7 +72,7 @@ func htmlToText(body []byte) (text string, title string) {
 				out.WriteByte('\n')
 			}
 			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				walk(child, zeroFont, visHidden)
+				walk(child, zeroFont, visHidden, depth+1)
 			}
 			if blockHTMLTags[tag] {
 				out.WriteByte('\n')
@@ -77,10 +80,10 @@ func htmlToText(body []byte) (text string, title string) {
 			return
 		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child, zeroFont, visHidden)
+			walk(child, zeroFont, visHidden, depth+1)
 		}
 	}
-	walk(doc, false, false)
+	walk(doc, false, false, 0)
 
 	text = reInlineWS.ReplaceAllString(out.String(), " ")
 	text = reBlankRun.ReplaceAllString(text, "\n\n")
@@ -89,30 +92,33 @@ func htmlToText(body []byte) (text string, title string) {
 
 func firstElementText(root *xhtml.Node, tag string) string {
 	var found string
-	var visit func(*xhtml.Node)
-	visit = func(node *xhtml.Node) {
-		if found != "" {
+	var visit func(*xhtml.Node, int)
+	visit = func(node *xhtml.Node, depth int) {
+		if found != "" || depth > core.MaxDOMTraversalDepth {
 			return
 		}
 		if node.Type == xhtml.ElementNode && strings.EqualFold(node.Data, tag) {
 			var text strings.Builder
-			appendNodeText(&text, node)
+			appendNodeText(&text, node, depth)
 			found = strings.Join(strings.Fields(text.String()), " ")
 			return
 		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			visit(child)
+			visit(child, depth+1)
 		}
 	}
-	visit(root)
+	visit(root, 0)
 	return found
 }
 
-func appendNodeText(out *strings.Builder, node *xhtml.Node) {
+func appendNodeText(out *strings.Builder, node *xhtml.Node, depth int) {
+	if node == nil || depth > core.MaxDOMTraversalDepth {
+		return
+	}
 	if node.Type == xhtml.TextNode {
 		out.WriteString(node.Data)
 	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		appendNodeText(out, child)
+		appendNodeText(out, child, depth+1)
 	}
 }

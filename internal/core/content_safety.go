@@ -12,6 +12,10 @@ import (
 	xhtml "golang.org/x/net/html"
 )
 
+// MaxDOMTraversalDepth bounds recursive HTML tree walks on attacker-controlled
+// documents. Depths beyond this are truncated and reported by the raw scanner.
+const MaxDOMTraversalDepth = 2048
+
 // ContentRisk describes deterministic indicators found in untrusted web data.
 // It is not a verdict that content is safe or malicious.
 type ContentRisk string
@@ -301,11 +305,21 @@ func normalizeCommonCyrillicConfusables(text string) string {
 func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 	doc, err := xhtml.Parse(bytes.NewReader(raw))
 	if err != nil {
-		return ContentSafetyReport{Untrusted: true, Risk: ContentRiskNoIndicators}
+		acc := safetyAccumulator{}
+		signal := "html_parse_error"
+		if strings.Contains(strings.ToLower(err.Error()), "maximum depth") {
+			signal = "html_depth_limit"
+		}
+		acc.add(signal, ContentRiskCaution, 1)
+		return acc.report(false)
 	}
 	acc := safetyAccumulator{}
-	var walk func(*xhtml.Node, bool, bool)
-	walk = func(node *xhtml.Node, zeroFont bool, visHidden bool) {
+	var walk func(*xhtml.Node, bool, bool, int)
+	walk = func(node *xhtml.Node, zeroFont bool, visHidden bool, depth int) {
+		if depth > MaxDOMTraversalDepth {
+			acc.add("html_depth_limit", ContentRiskCaution, 1)
+			return
+		}
 		if node.Type == xhtml.CommentNode {
 			cleaned, _, _, _, _, _ := sanitizeInvisibleControls(node.Data)
 			normalized := normalizeCommonCyrillicConfusables(cleaned)
@@ -353,10 +367,10 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 			}
 		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child, zeroFont, visHidden)
+			walk(child, zeroFont, visHidden, depth+1)
 		}
 	}
-	walk(doc, false, false)
+	walk(doc, false, false, 0)
 	return acc.report(false)
 }
 
@@ -625,35 +639,57 @@ func cssNumberIsZero(value string, units ...string) bool {
 }
 
 func subtreeHasContent(node *xhtml.Node) bool {
-	if node == nil {
+	return subtreeHasContentDepth(node, 0)
+}
+
+func subtreeHasContentDepth(node *xhtml.Node, depth int) bool {
+	if node == nil || depth > MaxDOMTraversalDepth {
 		return false
 	}
 	if (node.Type == xhtml.TextNode || node.Type == xhtml.CommentNode) && strings.TrimSpace(node.Data) != "" {
 		return true
 	}
+	if node.Type == xhtml.ElementNode {
+		for _, attr := range node.Attr {
+			if strings.TrimSpace(attr.Val) != "" {
+				return true
+			}
+		}
+	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if subtreeHasContent(child) {
+		if subtreeHasContentDepth(child, depth+1) {
 			return true
 		}
 	}
 	return false
 }
 
+func textHasInstruction(text string) bool {
+	cleaned, _, _, _, _, _ := sanitizeInvisibleControls(text)
+	normalized := normalizeCommonCyrillicConfusables(cleaned)
+	return instructionOverridePattern.MatchString(normalized) || sensitiveDataRequestPattern.MatchString(normalized) || toolRequestPattern.MatchString(normalized)
+}
+
 func subtreeHasInstruction(node *xhtml.Node) bool {
-	if node == nil {
+	return subtreeHasInstructionDepth(node, 0)
+}
+
+func subtreeHasInstructionDepth(node *xhtml.Node, depth int) bool {
+	if node == nil || depth > MaxDOMTraversalDepth {
 		return false
 	}
-	if node.Type == xhtml.TextNode || node.Type == xhtml.CommentNode {
-		// Sanitize invisible controls before matching so obfuscated
-		// instructions inside hidden nodes are still detected.
-		cleaned, _, _, _, _, _ := sanitizeInvisibleControls(node.Data)
-		normalized := normalizeCommonCyrillicConfusables(cleaned)
-		if instructionOverridePattern.MatchString(normalized) || sensitiveDataRequestPattern.MatchString(normalized) || toolRequestPattern.MatchString(normalized) {
-			return true
+	if (node.Type == xhtml.TextNode || node.Type == xhtml.CommentNode) && textHasInstruction(node.Data) {
+		return true
+	}
+	if node.Type == xhtml.ElementNode {
+		for _, attr := range node.Attr {
+			if textHasInstruction(attr.Val) {
+				return true
+			}
 		}
 	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if subtreeHasInstruction(child) {
+		if subtreeHasInstructionDepth(child, depth+1) {
 			return true
 		}
 	}
