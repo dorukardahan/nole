@@ -86,15 +86,22 @@ func TestHTMLToTextCollapsesWhitespace(t *testing.T) {
 	}
 }
 
+func TestHTMLToTextKeepsAriaHiddenVisibleContent(t *testing.T) {
+	in := []byte(`<p aria-hidden="true">VISIBLE_ARIA_TEXT</p><p>other</p>`)
+	text, _ := htmlToText(in)
+	if !strings.Contains(text, "VISIBLE_ARIA_TEXT") {
+		t.Fatalf("aria-hidden visible text was dropped: %q", text)
+	}
+}
+
 func TestHTMLToTextRemovesArbitraryAndNestedHiddenNodes(t *testing.T) {
 	in := []byte(`<body>
 		<main hidden>ARBITRARY_HIDDEN</main>
 		<div hidden><div>nested</div>NESTED_HIDDEN</div>
-		<custom-element aria-hidden="true">CUSTOM_HIDDEN</custom-element>
 		<p>visible</p>
 	</body>`)
 	text, _ := htmlToText(in)
-	for _, hidden := range []string{"ARBITRARY_HIDDEN", "NESTED_HIDDEN", "CUSTOM_HIDDEN"} {
+	for _, hidden := range []string{"ARBITRARY_HIDDEN", "NESTED_HIDDEN"} {
 		if strings.Contains(text, hidden) {
 			t.Fatalf("hidden payload %q leaked: %q", hidden, text)
 		}

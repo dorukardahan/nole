@@ -298,6 +298,16 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 			if !subtreeHasContent(node) {
 				return
 			}
+			// Boilerplate head/title elements exist on every well-formed page.
+			// Only escalate when they contain injection-like content; a clean
+			// head must not produce a caution signal or change the risk level.
+			if kind == "nonvisible_html" {
+				if subtreeHasInstruction(node) {
+					acc.add(kind, ContentRiskCaution, 1)
+					acc.add(kind+"_instruction", ContentRiskHigh, 1)
+				}
+				return
+			}
 			acc.add(kind, ContentRiskCaution, 1)
 			if subtreeHasInstruction(node) {
 				acc.add(kind+"_instruction", ContentRiskHigh, 1)
@@ -328,10 +338,6 @@ func HTMLNodeHiddenKind(node *xhtml.Node) string {
 		switch name {
 		case "hidden":
 			return "hidden_html"
-		case "aria-hidden":
-			if strings.EqualFold(value, "true") {
-				return "hidden_html"
-			}
 		case "style":
 			if inlineStyleHidesContent(value) {
 				return "css_hidden_content"
