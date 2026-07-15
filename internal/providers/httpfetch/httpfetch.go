@@ -214,8 +214,10 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 		}
 
 		var text, title string
+		rawSafety := core.ContentSafetyReport{Untrusted: true, Risk: core.ContentRiskNoIndicators}
 		if isHTMLLike(ct) {
 			text, title = htmlToText(bodyBytes)
+			rawSafety = core.ScanRawHTMLContentSafety(bodyBytes)
 		} else {
 			// The server EXPLICITLY declared a non-HTML text type (e.g. text/plain):
 			// return it verbatim. Running the HTML tag-stripper would corrupt
@@ -228,10 +230,11 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 			md["title"] = title
 		}
 		return core.ExtractResponse{
-			URL:      req.URL, // the ORIGINAL request URL, not the redirected target
-			Provider: "httpfetch",
-			Content:  strings.TrimSpace(text),
-			Metadata: md,
+			URL:           req.URL, // the ORIGINAL request URL, not the redirected target
+			Provider:      "httpfetch",
+			Content:       strings.TrimSpace(text),
+			ContentSafety: rawSafety,
+			Metadata:      md,
 		}, nil
 	}
 }

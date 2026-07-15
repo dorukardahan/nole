@@ -226,15 +226,16 @@ func intCachePart(v int) string {
 	return strconv.Itoa(v)
 }
 
-// cloneSearchResponse makes a shallow-by-value copy: the Results slice is
-// re-allocated, but each SearchResult is copied by value, so the
-// SearchResult.Score *float64 pointer is SHARED across cache entries. Score is
-// treated as immutable after adapter construction — never mutate *Score in
-// place, or this aliasing becomes a data race. The recency sort reorders
-// SearchResult values (it moves the pointer, never dereferences-and-assigns), so
-// it is safe.
+// cloneSearchResponse copies all mutable slices. SearchResult.Score *float64 is
+// intentionally SHARED across cache entries and treated as immutable after adapter
+// construction; ContentSafety.Signals is deep-copied because callers may otherwise
+// mutate a cached receipt through the slice alias. The recency sort reorders result
+// values and never mutates *Score.
 func cloneSearchResponse(resp SearchResponse) SearchResponse {
 	resp.Results = append([]SearchResult(nil), resp.Results...)
+	for i := range resp.Results {
+		resp.Results[i].ContentSafety = cloneContentSafety(resp.Results[i].ContentSafety)
+	}
 	resp.Route = append([]string(nil), resp.Route...)
 	resp.RouteTrace = append([]RouteAttempt(nil), resp.RouteTrace...)
 	resp.RemoteUsage = cloneProviderUsage(resp.RemoteUsage)
@@ -251,6 +252,7 @@ func cloneExtractResponse(resp ExtractResponse) ExtractResponse {
 	}
 	resp.Route = append([]string(nil), resp.Route...)
 	resp.RouteTrace = append([]RouteAttempt(nil), resp.RouteTrace...)
+	resp.ContentSafety = cloneContentSafety(resp.ContentSafety)
 	return resp
 }
 

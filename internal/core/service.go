@@ -121,6 +121,9 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 			if len(cached.Route) == 0 {
 				cached.Route = append([]string(nil), route...)
 			}
+			// Defense in depth for cache implementations populated by older or
+			// external callers: every returned result crosses the guard boundary.
+			ensureProtectedSearchResults(cached.Results)
 			cached.RouteTrace = []RouteAttempt{cacheHitAttempt(cached.Provider, len(cached.Results))}
 			cached.RoutingInsight = BuildSearchRoutingInsight(cached)
 			return cached, nil
@@ -145,7 +148,10 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 	case <-ctx.Done():
 		return cancelledSearchResponse(req, route, source), ctx.Err()
 	case res := <-ch:
-		resp := res.Val.(SearchResponse)
+		// singleflight returns the same value to every waiter. Clone mutable
+		// slices/maps per caller so one consumer cannot race with or corrupt a
+		// sibling response.
+		resp := cloneSearchResponse(res.Val.(SearchResponse))
 		resp.Query = req.Query
 		resp.Task = req.Task
 		resp.TaskSource = source
@@ -251,6 +257,10 @@ func (s *Service) searchUncached(ctx context.Context, req SearchRequest, route [
 			trace = append(trace, attemptWithDecision(name, "failed", "empty_results", decision, latency, 0))
 			continue
 		}
+		// Every provider-supplied search field is remote content. Sanitize
+		// invisible controls and attach a payload-free safety receipt before
+		// sorting/cache.
+		protectSearchResults(resp.Results)
 		// Surface the provider's freshness signal in date order for recency tasks
 		// (news/factcheck). Pure pass-through reorder of provider-supplied dates —
 		// never drops/filters/judges, never touches Score. Run once here so the
@@ -316,6 +326,12 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 			if len(cached.Route) == 0 {
 				cached.Route = append([]string(nil), route...)
 			}
+			if !contentSafetyInitialized(cached.ContentSafety) {
+				cleaned, central := ProtectUntrustedText(cached.Content)
+				cached.Content = cleaned
+				metadataSafety := protectExtractMetadata(cached.Metadata)
+				cached.ContentSafety = MergeContentSafety(cached.ContentSafety, central, metadataSafety)
+			}
 			cached.RouteTrace = []RouteAttempt{cacheHitAttempt(cached.Provider, contentResultCount(cached.Content))}
 			cached.RoutingInsight = BuildExtractRoutingInsight(cached)
 			return cached, nil
@@ -332,7 +348,8 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 	case <-ctx.Done():
 		return cancelledExtractResponse(req, route), ctx.Err()
 	case res := <-ch:
-		resp := res.Val.(ExtractResponse)
+		// See Search: every coalesced caller owns its mutable response storage.
+		resp := cloneExtractResponse(res.Val.(ExtractResponse))
 		resp.URL = req.URL
 		return resp, res.Err
 	}
@@ -453,12 +470,17 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 		resp.URL = req.URL
 		resp.Provider = provider.Name()
 		resp.Route = append([]string(nil), route...)
-		resultCount := contentResultCount(resp.Content)
 		if strings.TrimSpace(resp.Content) == "" {
+			resultCount := contentResultCount(resp.Content)
 			lastErr = fmt.Errorf("extract provider %s returned empty content", name)
 			trace = append(trace, attemptWithDecision(name, "failed", "empty_content", decision, latency, resultCount))
 			continue
 		}
+		cleaned, central := ProtectUntrustedText(resp.Content)
+		resp.Content = cleaned
+		metadataSafety := protectExtractMetadata(resp.Metadata)
+		resp.ContentSafety = MergeContentSafety(resp.ContentSafety, central, metadataSafety)
+		resultCount := contentResultCount(resp.Content)
 		// Only debit quota on a successful extract. See the matching Search
 		// path above for the rationale, including why a failed Record() does
 		// not discard the response.

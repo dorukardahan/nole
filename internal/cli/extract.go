@@ -36,6 +36,7 @@ func newExtractCommandWithService(service func() *core.Service) *cobra.Command {
 				return writeJSONTo(cmd.OutOrStdout(), resp)
 			}
 			writeHumanRoutingInsight(cmd.OutOrStdout(), resp.RoutingInsight, resp.RouteTrace, insightMode)
+			writeHumanContentSafety(cmd.OutOrStdout(), resp.ContentSafety)
 			fmt.Fprintln(cmd.OutOrStdout(), resp.Content)
 			return nil
 		},

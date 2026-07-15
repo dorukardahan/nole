@@ -364,8 +364,8 @@ Notes:
 
 Use for: keyless, zero-setup URL extraction — the last-resort `extract` backstop.
 
-- **No key, no runtime, no setup.** `httpfetch` is a pure-Go provider built on the
-  standard library (`net/http` + a regexp/`html.UnescapeString` HTML-to-text pass).
+- **No key, no runtime, no setup.** `httpfetch` is a pure-Go provider built on
+  standard-library HTTP plus Go's maintained `golang.org/x/net/html` HTML5 parser.
   It is always registered, so `extract` / `search_and_extract` work out of the box.
 - **Routing:** it is the LAST entry on the `extract` route
   (`scrapling -> firecrawl -> tavily -> httpfetch`), reached only when a configured

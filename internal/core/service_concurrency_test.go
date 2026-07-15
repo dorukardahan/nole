@@ -50,7 +50,7 @@ func (p *instrumentedProvider) Extract(ctx context.Context, req ExtractRequest) 
 	if p.release != nil {
 		<-p.release
 	}
-	return ExtractResponse{URL: req.URL, Provider: p.name, Content: "content"}, nil
+	return ExtractResponse{URL: req.URL, Provider: p.name, Content: "content", Metadata: map[string]string{"title": "t"}}, nil
 }
 
 func (p *instrumentedProvider) Status(ctx context.Context) ProviderStatus {
@@ -85,6 +85,7 @@ func TestServiceSearchCoalescesConcurrentIdenticalQueries(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make([]error, N)
 	provs := make([]string, N)
+	responses := make([]SearchResponse, N)
 	wg.Add(N)
 	for i := 0; i < N; i++ {
 		go func(i int) {
@@ -92,6 +93,7 @@ func TestServiceSearchCoalescesConcurrentIdenticalQueries(t *testing.T) {
 			resp, err := service.Search(context.Background(), SearchRequest{Query: "same query", Task: TaskGeneral, Limit: 5})
 			errs[i] = err
 			provs[i] = resp.Provider
+			responses[i] = resp
 		}(i)
 	}
 	// Wait for the leader to enter the provider, then let followers queue
@@ -117,6 +119,49 @@ func TestServiceSearchCoalescesConcurrentIdenticalQueries(t *testing.T) {
 		}
 		if provs[i] != "tavily" {
 			t.Fatalf("goroutine %d got provider %q, want tavily", i, provs[i])
+		}
+	}
+	responses[0].Results[0].Title = "caller-mutated"
+	for i := 1; i < N; i++ {
+		if responses[i].Results[0].Title == "caller-mutated" {
+			t.Fatalf("coalesced search response %d shares mutable result storage with caller 0", i)
+		}
+	}
+}
+
+func TestServiceExtractCoalescedResponsesDoNotShareMutableMetadata(t *testing.T) {
+	prov := &instrumentedProvider{name: "tavily", release: make(chan struct{})}
+	registry := NewRegistry()
+	_ = registry.Register(prov)
+	service := NewService(registry, freeTierLedger("tavily", 10), RouteMatrix{TaskExtract: {"tavily"}})
+
+	const n = 4
+	var wg sync.WaitGroup
+	responses := make([]ExtractResponse, n)
+	errs := make([]error, n)
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			responses[i], errs[i] = service.Extract(context.Background(), ExtractRequest{URL: "http://93.184.216.34/", Format: "markdown"})
+		}(i)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for prov.calls.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(prov.release)
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d errored: %v", i, err)
+		}
+	}
+	responses[0].Metadata["title"] = "caller-mutated"
+	for i := 1; i < n; i++ {
+		if responses[i].Metadata["title"] == "caller-mutated" {
+			t.Fatalf("coalesced extract response %d shares mutable metadata with caller 0", i)
 		}
 	}
 }

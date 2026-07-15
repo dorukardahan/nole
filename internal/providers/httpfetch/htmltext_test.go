@@ -3,6 +3,8 @@ package httpfetch
 import (
 	"strings"
 	"testing"
+
+	"github.com/dorukardahan/nole/internal/core"
 )
 
 func TestHTMLToTextExtractsVisibleContent(t *testing.T) {
@@ -81,6 +83,76 @@ func TestHTMLToTextCollapsesWhitespace(t *testing.T) {
 	}
 	if strings.TrimSpace(text) != text {
 		t.Errorf("output not trimmed: %q", text)
+	}
+}
+
+func TestHTMLToTextRemovesArbitraryAndNestedHiddenNodes(t *testing.T) {
+	in := []byte(`<body>
+		<main hidden>ARBITRARY_HIDDEN</main>
+		<div hidden><div>nested</div>NESTED_HIDDEN</div>
+		<custom-element aria-hidden="true">CUSTOM_HIDDEN</custom-element>
+		<p>visible</p>
+	</body>`)
+	text, _ := htmlToText(in)
+	for _, hidden := range []string{"ARBITRARY_HIDDEN", "NESTED_HIDDEN", "CUSTOM_HIDDEN"} {
+		if strings.Contains(text, hidden) {
+			t.Fatalf("hidden payload %q leaked: %q", hidden, text)
+		}
+	}
+	if !strings.Contains(text, "visible") {
+		t.Fatalf("visible text was dropped: %q", text)
+	}
+}
+
+func TestHTMLToTextKeepsFractionalOpacityAndFontSize(t *testing.T) {
+	in := []byte(`<p style="opacity:0.5">HALF_VISIBLE</p><p style="font-size:0.875rem">SMALL_VISIBLE</p><p style="opacity:0">HIDDEN_ZERO</p>`)
+	text, _ := htmlToText(in)
+	for _, visible := range []string{"HALF_VISIBLE", "SMALL_VISIBLE"} {
+		if !strings.Contains(text, visible) {
+			t.Fatalf("visible fractional CSS text %q was dropped: %q", visible, text)
+		}
+	}
+	if strings.Contains(text, "HIDDEN_ZERO") {
+		t.Fatalf("zero-opacity text leaked: %q", text)
+	}
+}
+
+func TestHTMLToTextRemovesAdditionalCSSHiddenForms(t *testing.T) {
+	for name, style := range map[string]string{
+		"opacity-percent":    "opacity:0%",
+		"font-size-rem":      "font-size:0rem",
+		"important-spacing":  "display:none ! important",
+		"comment-obfuscated": "display:n/**/one",
+		"trailing-comment":   "display:none/*synthetic-comment*/",
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw := []byte(`<p style="` + style + `">SYNTHETIC_HIDDEN_MARKER</p><p>visible</p>`)
+			text, _ := htmlToText(raw)
+			report := core.ScanRawHTMLContentSafety(raw)
+			hasCSSSignal := false
+			for _, signal := range report.Signals {
+				if signal.Type == "css_hidden_content" {
+					hasCSSSignal = true
+				}
+			}
+			if strings.Contains(text, "SYNTHETIC_HIDDEN_MARKER") || !hasCSSSignal {
+				t.Fatalf("CSS-hidden subtree bypass: style=%q text=%q report=%#v", style, text, report)
+			}
+		})
+	}
+}
+
+func TestHTMLToTextDoesNotSplitSemicolonsInsideCSSStrings(t *testing.T) {
+	raw := []byte(`<p style='--x:";display:none;"; color:red'>VISIBLE_CUSTOM_PROPERTY</p>`)
+	text, _ := htmlToText(raw)
+	report := core.ScanRawHTMLContentSafety(raw)
+	if !strings.Contains(text, "VISIBLE_CUSTOM_PROPERTY") {
+		t.Fatalf("visible custom-property text was dropped: text=%q report=%#v", text, report)
+	}
+	for _, signal := range report.Signals {
+		if signal.Type == "css_hidden_content" {
+			t.Fatalf("CSS string content caused false hidden signal: %#v", report)
+		}
 	}
 }
 

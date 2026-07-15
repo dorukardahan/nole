@@ -1,90 +1,114 @@
 package httpfetch
 
 import (
-	"html"
+	"bytes"
 	"regexp"
 	"strings"
+
+	"github.com/dorukardahan/nole/internal/core"
+	xhtml "golang.org/x/net/html"
 )
 
 // htmlToText converts an HTML document to readable plain text and extracts the
-// document title. It is a best-effort, dependency-free extractor built on the
-// stdlib (regexp + html.UnescapeString), matching the existing Nólë HTML helpers
-// (ddgs.cleanHTML, wikipedia.stripSearchMatch) rather than pulling in an HTML
-// tokenizer dependency. It is the algorithm behind the keyless httpfetch
-// last-resort extract backstop: it does NOT execute JavaScript, so it is weaker
-// than Scrapling/Firecrawl on SPA/JS-rendered pages — an honest, accepted limit.
+// document title. It uses Go's pure-Go HTML5 parser so malformed markup, nested
+// same-name elements, arbitrary custom elements and quoted '>' characters obey a
+// real DOM boundary rather than a regex approximation. It does not execute
+// JavaScript and remains weaker than Scrapling/Firecrawl on SPA/JS-rendered pages.
 //
-// It ports the Scrapling fallback TextExtractor (internal/providers/scrapling
-// extractScript): drop the bodies of non-visible elements (script/style/etc),
-// turn block-level tags into newlines so adjacent blocks don't glue together,
-// strip the remaining tags, decode entities, then collapse whitespace.
-//
-// Like every Nólë primitive it never judges quality and never panics. It is
-// deliberately NOT idempotent (tags are stripped before entities are decoded, so
-// "&lt;b&gt;" becomes "<b>"), and it preserves UTF-8 validity — the fuzz target
-// pins those invariants.
+// Non-visible element bodies and explicitly hidden DOM subtrees are excluded,
+// block-level tags become newlines, entities are decoded by the parser, and
+// whitespace is collapsed. Like every Nólë primitive it never judges content
+// quality and never panics.
 var (
-	reComment = regexp.MustCompile(`(?s)<!--.*?-->`)
-	// Title capture tolerates an UNCLOSED <title> (match to end-of-input): per the
-	// HTML spec <title> is RCDATA that ends only at </title> or EOF — a later
-	// <body> start tag does NOT close it. The non-capturing (?:...|$) keeps group 1
-	// = the title content.
-	reTitle = regexp.MustCompile(`(?is)<title\b[^>]*>(.*?)(?:</title\s*>|$)`)
-
-	// Elements whose ENTIRE body is non-visible (or, for <title>, separately
-	// captured) content. All tolerate an UNCLOSED tag (match to end-of-input) so a
-	// truncated or hostile page cannot leak e.g. raw JavaScript — or, for <title>,
-	// RCDATA title text — into the body output. <title> is a leaf element, so the
-	// end-of-input fallback is browser-faithful and cannot swallow a real body the
-	// way an unclosed <head> could.
-	reSkipUnclosed = []*regexp.Regexp{
-		regexp.MustCompile(`(?is)<script\b[^>]*>.*?(</script\s*>|$)`),
-		regexp.MustCompile(`(?is)<style\b[^>]*>.*?(</style\s*>|$)`),
-		regexp.MustCompile(`(?is)<noscript\b[^>]*>.*?(</noscript\s*>|$)`),
-		regexp.MustCompile(`(?is)<template\b[^>]*>.*?(</template\s*>|$)`),
-		regexp.MustCompile(`(?is)<svg\b[^>]*>.*?(</svg\s*>|$)`),
-		regexp.MustCompile(`(?is)<title\b[^>]*>.*?(</title\s*>|$)`),
-	}
-	// <head> is matched CLOSED-ONLY: an unclosed <head> must not swallow the whole
-	// document body (browsers auto-close head at <body>).
-	reSkipClosed = []*regexp.Regexp{
-		regexp.MustCompile(`(?is)<head\b[^>]*>.*?</head\s*>`),
-	}
-
-	// Block-level tags (open or close) become a newline so adjacent blocks stay
-	// separated. Mirrors the Scrapling TextExtractor block set (plus a few common
-	// table/list/preformatted tags).
-	reBlockTag = regexp.MustCompile(`(?i)</?(p|div|section|article|header|footer|main|br|li|tr|td|th|h[1-6]|ul|ol|dl|dt|dd|table|blockquote|pre|hr)\b[^>]*>`)
-	reAnyTag   = regexp.MustCompile(`<[^>]*>`)
-
-	// Whitespace normalisation, ported from the Scrapling extractor: collapse
-	// intra-line whitespace to a single space, then collapse runs of blank lines
-	// to one blank line. \n is intentionally excluded from the first class so
-	// block separation survives into the blank-line pass.
 	reInlineWS = regexp.MustCompile(`[ \t\r\f\v]+`)
 	reBlankRun = regexp.MustCompile(`\n\s*\n+`)
+
+	blockHTMLTags = map[string]bool{
+		"p": true, "div": true, "section": true, "article": true,
+		"header": true, "footer": true, "main": true, "br": true,
+		"li": true, "tr": true, "td": true, "th": true,
+		"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+		"ul": true, "ol": true, "dl": true, "dt": true, "dd": true,
+		"table": true, "blockquote": true, "pre": true, "hr": true,
+	}
 )
 
 func htmlToText(body []byte) (text string, title string) {
-	s := string(body)
-
-	// Capture the title (decoded, single-line) before any element removal.
-	if m := reTitle.FindStringSubmatch(s); m != nil {
-		title = strings.Join(strings.Fields(html.UnescapeString(reAnyTag.ReplaceAllString(m[1], ""))), " ")
+	doc, err := xhtml.Parse(bytes.NewReader(body))
+	if err != nil {
+		// bytes.Reader cannot return an I/O error in normal operation. Fail
+		// closed rather than falling back to a text path that could leak script
+		// or hidden DOM bodies.
+		return "", ""
 	}
+	title = firstElementText(doc, "title")
 
-	s = reComment.ReplaceAllString(s, "")
-	for _, re := range reSkipUnclosed {
-		s = re.ReplaceAllString(s, "")
+	var out strings.Builder
+	var walk func(*xhtml.Node)
+	walk = func(node *xhtml.Node) {
+		switch node.Type {
+		case xhtml.CommentNode:
+			return
+		case xhtml.TextNode:
+			out.WriteString(node.Data)
+			return
+		case xhtml.ElementNode:
+			tag := strings.ToLower(node.Data)
+			if core.HTMLNodeHiddenKind(node) != "" {
+				return
+			}
+			if tag == "br" || tag == "hr" {
+				out.WriteByte('\n')
+				return
+			}
+			if blockHTMLTags[tag] {
+				out.WriteByte('\n')
+			}
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				walk(child)
+			}
+			if blockHTMLTags[tag] {
+				out.WriteByte('\n')
+			}
+			return
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
 	}
-	for _, re := range reSkipClosed {
-		s = re.ReplaceAllString(s, "")
-	}
-	s = reBlockTag.ReplaceAllString(s, "\n")
-	s = reAnyTag.ReplaceAllString(s, "")
-	s = html.UnescapeString(s)
+	walk(doc)
 
-	s = reInlineWS.ReplaceAllString(s, " ")
-	s = reBlankRun.ReplaceAllString(s, "\n\n")
-	return strings.TrimSpace(s), title
+	text = reInlineWS.ReplaceAllString(out.String(), " ")
+	text = reBlankRun.ReplaceAllString(text, "\n\n")
+	return strings.TrimSpace(text), title
+}
+
+func firstElementText(root *xhtml.Node, tag string) string {
+	var found string
+	var visit func(*xhtml.Node)
+	visit = func(node *xhtml.Node) {
+		if found != "" {
+			return
+		}
+		if node.Type == xhtml.ElementNode && strings.EqualFold(node.Data, tag) {
+			var text strings.Builder
+			appendNodeText(&text, node)
+			found = strings.Join(strings.Fields(text.String()), " ")
+			return
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			visit(child)
+		}
+	}
+	visit(root)
+	return found
+}
+
+func appendNodeText(out *strings.Builder, node *xhtml.Node) {
+	if node.Type == xhtml.TextNode {
+		out.WriteString(node.Data)
+	}
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		appendNodeText(out, child)
+	}
 }
