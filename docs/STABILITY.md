@@ -36,6 +36,14 @@ prevalidated/canonicalized by `core.Service`; existing search/research behavior
 is unchanged when they are omitted. Research applies them only to its internal
 search passes.
 
+The post-v1.8.1 content-safety expansion is an intentional MINOR response
+addition. Search results, extracts, `search_and_extract`, and research
+sources/extracts add a deterministic `content_safety` object; no existing field,
+input parameter, command, flag, MCP tool, or routing default is removed or renamed.
+The object is always present on successful remote-content records so clients do
+not have to infer trust from omission. Its `no_indicators` value is explicitly not
+a safety verdict.
+
 The post-v1.7.0 provider-usage expansion intentionally adds optional
 `providers --live-usage`. It queries provider usage APIs only where Nólë has a
 documented quota endpoint or response-header signal, emits sanitized usage fields,

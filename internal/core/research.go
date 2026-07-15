@@ -57,18 +57,20 @@ type ResearchEvidenceStep struct {
 
 // ResearchSource is a search result used in research.
 type ResearchSource struct {
-	Title   string `json:"title"`
-	URL     string `json:"url"`
-	Snippet string `json:"snippet"`
-	From    string `json:"from"`
+	Title         string              `json:"title"`
+	URL           string              `json:"url"`
+	Snippet       string              `json:"snippet"`
+	From          string              `json:"from"`
+	ContentSafety ContentSafetyReport `json:"content_safety"`
 }
 
 // ResearchExtract is extracted content from a source.
 type ResearchExtract struct {
-	URL       string `json:"url"`
-	Provider  string `json:"provider"`
-	Content   string `json:"content"`
-	Truncated bool   `json:"truncated,omitempty"`
+	URL           string              `json:"url"`
+	Provider      string              `json:"provider"`
+	Content       string              `json:"content"`
+	ContentSafety ContentSafetyReport `json:"content_safety"`
+	Truncated     bool                `json:"truncated,omitempty"`
 }
 
 // Research runs a multi-step search + extract pass over a question and returns
@@ -139,7 +141,7 @@ func (s *Service) ResearchWithOptions(ctx context.Context, req ResearchRequest) 
 				continue
 			}
 			seenURLs[r.URL] = true
-			allSources = append(allSources, ResearchSource{Title: r.Title, URL: r.URL, Snippet: r.Snippet, From: r.Provider})
+			allSources = append(allSources, ResearchSource{Title: r.Title, URL: r.URL, Snippet: r.Snippet, From: r.Provider, ContentSafety: cloneContentSafety(r.ContentSafety)})
 		}
 	}
 
@@ -211,10 +213,11 @@ func (s *Service) ResearchWithOptions(ctx context.Context, req ResearchRequest) 
 		}
 
 		report.Extracts = append(report.Extracts, ResearchExtract{
-			URL:       src.URL,
-			Provider:  resp.Provider,
-			Content:   content,
-			Truncated: truncated,
+			URL:           src.URL,
+			Provider:      resp.Provider,
+			Content:       content,
+			ContentSafety: cloneContentSafety(resp.ContentSafety),
+			Truncated:     truncated,
 		})
 		report.Steps++
 	}

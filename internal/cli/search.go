@@ -39,6 +39,7 @@ func newSearchCommand() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "Task: %s (%s)\n", resp.Task, resp.TaskSource)
 			}
 			for _, result := range resp.Results {
+				writeHumanContentSafety(cmd.OutOrStdout(), result.ContentSafety)
 				fmt.Fprintf(cmd.OutOrStdout(), "%s\n%s\n%s\n\n", result.Title, result.URL, result.Snippet)
 			}
 			return nil

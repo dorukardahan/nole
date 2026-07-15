@@ -84,10 +84,11 @@ type ExtractRequest struct {
 }
 
 type SearchResult struct {
-	Title    string `json:"title"`
-	URL      string `json:"url"`
-	Snippet  string `json:"snippet"`
-	Provider string `json:"provider"`
+	Title         string              `json:"title"`
+	URL           string              `json:"url"`
+	Snippet       string              `json:"snippet"`
+	Provider      string              `json:"provider"`
+	ContentSafety ContentSafetyReport `json:"content_safety"`
 	// Score and PublishedAt are provider-native signals passed through verbatim
 	// for the AGENT to judge relevance/recency. Nólë never computes, normalizes,
 	// or judges them; nil/empty when the provider supplies none. Score is a
@@ -114,13 +115,14 @@ type SearchResponse struct {
 }
 
 type ExtractResponse struct {
-	URL            string            `json:"url"`
-	Provider       string            `json:"provider"`
-	Content        string            `json:"content"`
-	Metadata       map[string]string `json:"metadata,omitempty"`
-	Route          []string          `json:"route,omitempty"`
-	RoutingInsight string            `json:"routing_insight,omitempty"`
-	RouteTrace     []RouteAttempt    `json:"route_trace,omitempty"`
+	URL            string              `json:"url"`
+	Provider       string              `json:"provider"`
+	Content        string              `json:"content"`
+	ContentSafety  ContentSafetyReport `json:"content_safety"`
+	Metadata       map[string]string   `json:"metadata,omitempty"`
+	Route          []string            `json:"route,omitempty"`
+	RoutingInsight string              `json:"routing_insight,omitempty"`
+	RouteTrace     []RouteAttempt      `json:"route_trace,omitempty"`
 }
 
 // SearchAndExtractRequest drives the combined search→read primitive: search,

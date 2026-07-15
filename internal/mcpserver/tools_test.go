@@ -46,4 +46,12 @@ func TestToolDescriptionsSupportAgentIntentMatching(t *testing.T) {
 	if !strings.Contains(extractToolDescription, "web page") {
 		t.Fatalf("extract description should mention web page use: %s", extractToolDescription)
 	}
+	for name, desc := range map[string]string{
+		"search": searchToolDescription, "extract": extractToolDescription,
+		"search_and_extract": searchAndExtractToolDescription, "research": researchToolDescription,
+	} {
+		if !strings.Contains(desc, "untrusted") || !strings.Contains(desc, "content_safety") {
+			t.Fatalf("%s description must preserve the untrusted content contract: %s", name, desc)
+		}
+	}
 }

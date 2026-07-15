@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Deterministic untrusted-content safety receipts across every web-data path.**
+  Search results, extracts, `search_and_extract`, and research sources/extracts now
+  carry additive payload-free `content_safety` metadata. The guard removes dangerous
+  invisible controls, flags instruction/homoglyph/encoded-content indicators, scans
+  remote metadata, and preserves `no_indicators` as a non-verdict. The keyless
+  `httpfetch` provider additionally detects raw HTML comments/hidden/CSS-hidden
+  channels and excludes closed hidden elements from readable output. Human CLI and
+  MCP tool descriptions preserve the same untrusted-data contract without repeating
+  suspected payloads.
+
 ## [1.8.1] - 2026-07-12
 
 ### Fixed

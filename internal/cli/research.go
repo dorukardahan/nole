@@ -65,6 +65,7 @@ func printResearchReport(cmd *cobra.Command, report *core.ResearchReport) error 
 	if len(report.Sources) > 0 {
 		fmt.Fprintln(out, "Sources:")
 		for i, s := range report.Sources {
+			writeHumanContentSafety(out, s.ContentSafety)
 			fmt.Fprintf(out, "%d. %s\n   %s  (%s)\n", i+1, s.Title, s.URL, s.From)
 		}
 		fmt.Fprintln(out)
@@ -73,6 +74,7 @@ func printResearchReport(cmd *cobra.Command, report *core.ResearchReport) error 
 	if len(report.Extracts) > 0 {
 		fmt.Fprintln(out, "Extracts (preview — full content in --json):")
 		for _, e := range report.Extracts {
+			writeHumanContentSafety(out, e.ContentSafety)
 			preview := core.TruncateRunes(strings.TrimSpace(e.Content), 200)
 			fmt.Fprintf(out, "- %s  (%s)\n  %s\n", e.URL, e.Provider, preview)
 		}
