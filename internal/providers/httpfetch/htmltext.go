@@ -44,13 +44,13 @@ func htmlToText(body []byte) (text string, title string) {
 	title = firstElementText(doc, "title")
 
 	var out strings.Builder
-	var walk func(*xhtml.Node, bool)
-	walk = func(node *xhtml.Node, zeroFont bool) {
+	var walk func(*xhtml.Node, bool, bool)
+	walk = func(node *xhtml.Node, zeroFont bool, visHidden bool) {
 		switch node.Type {
 		case xhtml.CommentNode:
 			return
 		case xhtml.TextNode:
-			if !zeroFont {
+			if !zeroFont && !visHidden {
 				out.WriteString(node.Data)
 			}
 			return
@@ -60,6 +60,7 @@ func htmlToText(body []byte) (text string, title string) {
 				return
 			}
 			zeroFont = core.HTMLNodeZeroFontSize(node, zeroFont)
+			visHidden = core.HTMLNodeVisibilityHidden(node, visHidden)
 			if tag == "br" || tag == "hr" {
 				out.WriteByte('\n')
 				return
@@ -68,7 +69,7 @@ func htmlToText(body []byte) (text string, title string) {
 				out.WriteByte('\n')
 			}
 			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				walk(child, zeroFont)
+				walk(child, zeroFont, visHidden)
 			}
 			if blockHTMLTags[tag] {
 				out.WriteByte('\n')
@@ -76,10 +77,10 @@ func htmlToText(body []byte) (text string, title string) {
 			return
 		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child, zeroFont)
+			walk(child, zeroFont, visHidden)
 		}
 	}
-	walk(doc, false)
+	walk(doc, false, false)
 
 	text = reInlineWS.ReplaceAllString(out.String(), " ")
 	text = reBlankRun.ReplaceAllString(text, "\n\n")

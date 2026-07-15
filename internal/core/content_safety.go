@@ -304,8 +304,8 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 		return ContentSafetyReport{Untrusted: true, Risk: ContentRiskNoIndicators}
 	}
 	acc := safetyAccumulator{}
-	var walk func(*xhtml.Node, bool)
-	walk = func(node *xhtml.Node, zeroFont bool) {
+	var walk func(*xhtml.Node, bool, bool)
+	walk = func(node *xhtml.Node, zeroFont bool, visHidden bool) {
 		if node.Type == xhtml.CommentNode {
 			cleaned, _, _, _, _, _ := sanitizeInvisibleControls(node.Data)
 			normalized := normalizeCommonCyrillicConfusables(cleaned)
@@ -344,11 +344,19 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 			return
 		}
 		zeroFont = HTMLNodeZeroFontSize(node, zeroFont)
+		inheritedVisHidden := visHidden
+		visHidden = HTMLNodeVisibilityHidden(node, visHidden)
+		if visHidden && !inheritedVisHidden {
+			acc.add("css_visibility_hidden", ContentRiskCaution, 1)
+			if subtreeHasInstruction(node) {
+				acc.add("css_visibility_hidden_instruction", ContentRiskHigh, 1)
+			}
+		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child, zeroFont)
+			walk(child, zeroFont, visHidden)
 		}
 	}
-	walk(doc, false)
+	walk(doc, false, false)
 	return acc.report(false)
 }
 
@@ -414,13 +422,40 @@ func inlineStyleHidesContent(style string) bool {
 	if declaration, ok := winners["display"]; ok && declaration.value == "none" {
 		return true
 	}
-	if declaration, ok := winners["visibility"]; ok && (declaration.value == "hidden" || declaration.value == "collapse") {
-		return true
-	}
+	// visibility:hidden is NOT included here: unlike display:none, visibility
+	// is inherited and descendants can override it with visibility:visible.
+	// It is tracked separately via HTMLNodeVisibilityHidden.
 	if declaration, ok := winners["opacity"]; ok && cssNumberIsZero(declaration.value, "%") {
 		return true
 	}
 	return false
+}
+
+// HTMLNodeVisibilityHidden returns the effective visibility:hidden state after
+// applying a node's winning inline visibility declaration. visibility is
+// inherited and overridable: a descendant with visibility:visible renders
+// normally even under a hidden ancestor.
+func HTMLNodeVisibilityHidden(node *xhtml.Node, inheritedHidden bool) bool {
+	if node == nil || node.Type != xhtml.ElementNode {
+		return inheritedHidden
+	}
+	for _, attr := range node.Attr {
+		if !strings.EqualFold(strings.TrimSpace(attr.Key), "style") {
+			continue
+		}
+		declaration, ok := inlineStyleWinners(attr.Val)["visibility"]
+		if !ok {
+			return inheritedHidden
+		}
+		if declaration.value == "hidden" || declaration.value == "collapse" {
+			return true
+		}
+		if declaration.value == "visible" {
+			return false
+		}
+		return inheritedHidden
+	}
+	return inheritedHidden
 }
 
 // HTMLNodeZeroFontSize returns the effective zero-font state after applying a

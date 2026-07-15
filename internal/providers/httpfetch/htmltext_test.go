@@ -170,6 +170,22 @@ func TestHTMLToTextRespectsInlineCSSCascade(t *testing.T) {
 	}
 }
 
+func TestHTMLToTextPreservesVisibleDescendantsUnderHiddenVisibility(t *testing.T) {
+	in := []byte(`<div style="visibility:hidden"><span style="visibility:visible">VISIBLE_OVERRIDE</span></div>`)
+	text, _ := htmlToText(in)
+	if !strings.Contains(text, "VISIBLE_OVERRIDE") {
+		t.Fatalf("visibility:visible descendant under visibility:hidden was dropped: %q", text)
+	}
+}
+
+func TestHTMLToTextDropsTextUnderVisibilityHidden(t *testing.T) {
+	in := []byte(`<div style="visibility:hidden">HIDDEN_TEXT</div>`)
+	text, _ := htmlToText(in)
+	if strings.Contains(text, "HIDDEN_TEXT") {
+		t.Fatalf("visibility:hidden text leaked: %q", text)
+	}
+}
+
 func TestHTMLToTextRemovesAdditionalCSSHiddenForms(t *testing.T) {
 	for name, style := range map[string]string{
 		"opacity-percent":    "opacity:0%",
