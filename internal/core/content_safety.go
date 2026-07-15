@@ -368,6 +368,11 @@ func HTMLNodeHiddenKind(node *xhtml.Node) string {
 }
 
 func inlineStyleHidesContent(style string) bool {
+	type winningDeclaration struct {
+		value     string
+		important bool
+	}
+	winners := make(map[string]winningDeclaration, 4)
 	for _, declaration := range splitCSSDeclarations(style) {
 		parts := strings.SplitN(declaration, ":", 2)
 		if len(parts) != 2 {
@@ -375,25 +380,32 @@ func inlineStyleHidesContent(style string) bool {
 		}
 		property := decodeCSSIdent(strings.ToLower(strings.TrimSpace(parts[0])))
 		value := decodeCSSIdent(strings.ToLower(strings.TrimSpace(parts[1])))
+		important := cssImportantPattern.MatchString(value)
 		value = strings.TrimSpace(cssImportantPattern.ReplaceAllString(value, ""))
 		switch property {
-		case "display":
-			if value == "none" {
-				return true
-			}
-		case "visibility":
-			if value == "hidden" || value == "collapse" {
-				return true
-			}
-		case "opacity":
-			if cssNumberIsZero(value, "%") {
-				return true
-			}
-		case "font-size":
-			if cssNumberIsZero(value, "px", "em", "rem", "%", "pt") {
-				return true
-			}
+		case "display", "visibility", "opacity", "font-size":
+		default:
+			continue
 		}
+		current, exists := winners[property]
+		if exists && current.important && !important {
+			continue
+		}
+		// Later declarations win when importance is equal; an important
+		// declaration wins over any non-important declaration.
+		winners[property] = winningDeclaration{value: value, important: important}
+	}
+	if declaration, ok := winners["display"]; ok && declaration.value == "none" {
+		return true
+	}
+	if declaration, ok := winners["visibility"]; ok && (declaration.value == "hidden" || declaration.value == "collapse") {
+		return true
+	}
+	if declaration, ok := winners["opacity"]; ok && cssNumberIsZero(declaration.value, "%") {
+		return true
+	}
+	if declaration, ok := winners["font-size"]; ok && cssNumberIsZero(declaration.value, "px", "em", "rem", "%", "pt") {
+		return true
 	}
 	return false
 }
@@ -617,6 +629,9 @@ func protectExtractMetadata(metadata map[string]string) ContentSafetyReport {
 		cleanedKey, keyReport := ProtectUntrustedText(originalKey)
 		cleanedValue, valueReport := ProtectUntrustedText(metadata[originalKey])
 		base := cleanedKey
+		if keyReport.Risk == ContentRiskHigh {
+			base = "_content_safety_high_risk_key"
+		}
 		if base == "" {
 			base = "_metadata_key"
 		}

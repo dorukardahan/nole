@@ -124,6 +124,39 @@ func TestHTMLToTextKeepsFractionalOpacityAndFontSize(t *testing.T) {
 	}
 }
 
+func TestHTMLToTextRespectsInlineCSSCascade(t *testing.T) {
+	tests := []struct {
+		name       string
+		style      string
+		wantText   bool
+		wantSignal bool
+	}{
+		{name: "later-visible-wins", style: "display:none; display:block", wantText: true, wantSignal: false},
+		{name: "earlier-important-hidden-wins", style: "display:none !important; display:block", wantText: false, wantSignal: true},
+		{name: "later-important-visible-wins", style: "display:none; display:block !important", wantText: true, wantSignal: false},
+		{name: "later-important-hidden-wins", style: "display:block !important; display:none !important", wantText: false, wantSignal: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := []byte(`<p style="` + tc.style + `">CASCADE_MARKER</p>`)
+			text, _ := htmlToText(raw)
+			report := core.ScanRawHTMLContentSafety(raw)
+			if strings.Contains(text, "CASCADE_MARKER") != tc.wantText {
+				t.Fatalf("text visibility mismatch: style=%q text=%q report=%#v", tc.style, text, report)
+			}
+			gotSignal := false
+			for _, signal := range report.Signals {
+				if signal.Type == "css_hidden_content" {
+					gotSignal = true
+				}
+			}
+			if gotSignal != tc.wantSignal {
+				t.Fatalf("signal mismatch: style=%q report=%#v", tc.style, report)
+			}
+		})
+	}
+}
+
 func TestHTMLToTextRemovesAdditionalCSSHiddenForms(t *testing.T) {
 	for name, style := range map[string]string{
 		"opacity-percent":    "opacity:0%",
