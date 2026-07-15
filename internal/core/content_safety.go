@@ -43,12 +43,12 @@ type ContentSafetyReport struct {
 }
 
 var (
-	instructionOverridePattern = regexp.MustCompile(`(?i)\b(ignore|disregard|override|forget)\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier|system|developer)\s+(instructions?|messages?|rules?|prompts?)\b`)
-	promptSecretRequestPattern = regexp.MustCompile(`(?is)\b(reveal|show|print|return|expose|send|upload|exfiltrate)\b.{0,80}\b(system\s+prompt|developer\s+message|hidden\s+instructions?|secrets?|credentials?|api[_ -]?keys?|tokens?)\b`)
-	toolRequestPattern         = regexp.MustCompile(`(?is)\b(call|invoke|execute|run|use)\b.{0,40}\b(tool|command|shell|terminal|browser|function)\b`)
-	encodedPayloadPattern      = regexp.MustCompile(`\b[A-Za-z0-9+/]{80,}={0,2}\b|\b[0-9A-Fa-f]{120,}\b`)
-	cssImportantPattern        = regexp.MustCompile(`(?i)\s*!\s*important\s*$`)
-	cssNumberPattern           = regexp.MustCompile(`^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)([a-z%]*)$`)
+	instructionOverridePattern  = regexp.MustCompile(`(?i)\b(ignore|disregard|override|forget)\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier|system|developer)\s+(instructions?|messages?|rules?|prompts?)\b`)
+	sensitiveDataRequestPattern = regexp.MustCompile(`(?is)\b(reveal|show|print|return|expose|send|upload|exfiltrate)\b.{0,80}\b(system\s+prompt|developer\s+message|hidden\s+instructions?|secrets?|credentials?|api[_ -]?keys?|tokens?)\b`)
+	toolRequestPattern          = regexp.MustCompile(`(?is)\b(call|invoke|execute|run|use)\b.{0,40}\b(tool|command|shell|terminal|browser|function)\b`)
+	encodedPayloadPattern       = regexp.MustCompile(`\b[A-Za-z0-9+/]{80,}={0,2}\b|\b[0-9A-Fa-f]{120,}\b`)
+	cssImportantPattern         = regexp.MustCompile(`(?i)\s*!\s*important\s*$`)
+	cssNumberPattern            = regexp.MustCompile(`^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)([a-z%]*)$`)
 )
 
 type safetyAccumulator map[string]ContentSafetySignal
@@ -97,10 +97,10 @@ func ProtectUntrustedText(input string) (string, ContentSafetyReport) {
 	acc := safetyAccumulator{}
 
 	originalInstruction := instructionOverridePattern.MatchString(input)
-	originalSecret := promptSecretRequestPattern.MatchString(input)
+	originalSecret := sensitiveDataRequestPattern.MatchString(input)
 	originalTool := toolRequestPattern.MatchString(input)
 	cleanedInstruction := instructionOverridePattern.MatchString(cleaned)
-	cleanedSecret := promptSecretRequestPattern.MatchString(cleaned)
+	cleanedSecret := sensitiveDataRequestPattern.MatchString(cleaned)
 	cleanedTool := toolRequestPattern.MatchString(cleaned)
 
 	acc.add("zero_width_obfuscation", ContentRiskCaution, suspiciousZeroWidth)
@@ -116,7 +116,7 @@ func ProtectUntrustedText(input string) (string, ContentSafetyReport) {
 
 	confusableNormalized := normalizeCommonCyrillicConfusables(cleaned)
 	if confusableNormalized != cleaned {
-		normalizedDanger := instructionOverridePattern.MatchString(confusableNormalized) || promptSecretRequestPattern.MatchString(confusableNormalized)
+		normalizedDanger := instructionOverridePattern.MatchString(confusableNormalized) || sensitiveDataRequestPattern.MatchString(confusableNormalized)
 		cleanedDanger := cleanedInstruction || cleanedSecret
 		if normalizedDanger && !cleanedDanger {
 			acc.add("homoglyph_instruction_obfuscation", ContentRiskHigh, 1)
@@ -289,7 +289,7 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 	var walk func(*xhtml.Node)
 	walk = func(node *xhtml.Node) {
 		if node.Type == xhtml.CommentNode {
-			if instructionOverridePattern.MatchString(node.Data) || promptSecretRequestPattern.MatchString(node.Data) || toolRequestPattern.MatchString(node.Data) {
+			if instructionOverridePattern.MatchString(node.Data) || sensitiveDataRequestPattern.MatchString(node.Data) || toolRequestPattern.MatchString(node.Data) {
 				acc.add("html_comment_instruction", ContentRiskHigh, 1)
 			}
 			return
@@ -480,7 +480,7 @@ func subtreeHasInstruction(node *xhtml.Node) bool {
 	if node == nil {
 		return false
 	}
-	if (node.Type == xhtml.TextNode || node.Type == xhtml.CommentNode) && (instructionOverridePattern.MatchString(node.Data) || promptSecretRequestPattern.MatchString(node.Data) || toolRequestPattern.MatchString(node.Data)) {
+	if (node.Type == xhtml.TextNode || node.Type == xhtml.CommentNode) && (instructionOverridePattern.MatchString(node.Data) || sensitiveDataRequestPattern.MatchString(node.Data) || toolRequestPattern.MatchString(node.Data)) {
 		return true
 	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
