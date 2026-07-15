@@ -373,8 +373,8 @@ func inlineStyleHidesContent(style string) bool {
 		if len(parts) != 2 {
 			continue
 		}
-		property := strings.ToLower(strings.TrimSpace(parts[0]))
-		value := strings.ToLower(strings.TrimSpace(parts[1]))
+		property := decodeCSSIdent(strings.ToLower(strings.TrimSpace(parts[0])))
+		value := decodeCSSIdent(strings.ToLower(strings.TrimSpace(parts[1])))
 		value = strings.TrimSpace(cssImportantPattern.ReplaceAllString(value, ""))
 		switch property {
 		case "display":
@@ -463,6 +463,29 @@ func splitCSSDeclarations(style string) []string {
 	}
 	declarations = append(declarations, strings.Clone(current.String()))
 	return declarations
+}
+
+// decodeCSSIdent resolves CSS escape sequences like \6e one → none so that
+// hidden-style checks are not bypassed by escaped identifiers or values.
+var cssEscapePattern = regexp.MustCompile(`\\([0-9a-fA-F]{1,6})\s?|\\(.)`)
+
+func decodeCSSIdent(s string) string {
+	return cssEscapePattern.ReplaceAllStringFunc(s, func(match string) string {
+		if len(match) < 2 {
+			return match
+		}
+		if len(match) == 2 {
+			return string(match[1])
+		}
+		// Hex escape: \6e → 'n'
+		hex := strings.TrimPrefix(match, "\\")
+		hex = strings.TrimRight(hex, " \t")
+		n, err := strconv.ParseInt(hex, 16, 32)
+		if err != nil {
+			return match
+		}
+		return string(rune(n))
+	})
 }
 
 func cssNumberIsZero(value string, units ...string) bool {
@@ -604,6 +627,12 @@ func protectExtractMetadata(metadata map[string]string) ContentSafetyReport {
 			}
 			collisions++
 			candidate = base + "__duplicate_" + strconv.Itoa(duplicate)
+		}
+		// If the metadata value itself contains a high-risk instruction,
+		// replace it with a safe placeholder rather than preserving the
+		// suspect payload in the JSON metadata object.
+		if valueReport.Risk == ContentRiskHigh {
+			cleanedValue = "[content_safety: high-risk metadata value omitted]"
 		}
 		rebuilt[candidate] = cleanedValue
 		merged = MergeContentSafety(merged, keyReport, valueReport)
