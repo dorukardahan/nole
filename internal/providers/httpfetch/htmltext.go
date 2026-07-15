@@ -44,19 +44,22 @@ func htmlToText(body []byte) (text string, title string) {
 	title = firstElementText(doc, "title")
 
 	var out strings.Builder
-	var walk func(*xhtml.Node)
-	walk = func(node *xhtml.Node) {
+	var walk func(*xhtml.Node, bool)
+	walk = func(node *xhtml.Node, zeroFont bool) {
 		switch node.Type {
 		case xhtml.CommentNode:
 			return
 		case xhtml.TextNode:
-			out.WriteString(node.Data)
+			if !zeroFont {
+				out.WriteString(node.Data)
+			}
 			return
 		case xhtml.ElementNode:
 			tag := strings.ToLower(node.Data)
 			if core.HTMLNodeHiddenKind(node) != "" {
 				return
 			}
+			zeroFont = core.HTMLNodeZeroFontSize(node, zeroFont)
 			if tag == "br" || tag == "hr" {
 				out.WriteByte('\n')
 				return
@@ -65,7 +68,7 @@ func htmlToText(body []byte) (text string, title string) {
 				out.WriteByte('\n')
 			}
 			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				walk(child)
+				walk(child, zeroFont)
 			}
 			if blockHTMLTags[tag] {
 				out.WriteByte('\n')
@@ -73,10 +76,10 @@ func htmlToText(body []byte) (text string, title string) {
 			return
 		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
+			walk(child, zeroFont)
 		}
 	}
-	walk(doc)
+	walk(doc, false)
 
 	text = reInlineWS.ReplaceAllString(out.String(), " ")
 	text = reBlankRun.ReplaceAllString(text, "\n\n")

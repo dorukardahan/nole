@@ -124,6 +124,19 @@ func TestHTMLToTextKeepsFractionalOpacityAndFontSize(t *testing.T) {
 	}
 }
 
+func TestHTMLToTextKeepsVisibleDescendantOfZeroFontWrapper(t *testing.T) {
+	in := []byte(`<div style="font-size:0">HIDDEN_DIRECT<span>HIDDEN_INHERITED</span><span style="font-size:16px">VISIBLE_DESCENDANT</span></div>`)
+	text, _ := htmlToText(in)
+	if !strings.Contains(text, "VISIBLE_DESCENDANT") {
+		t.Fatalf("visible descendant of zero-font wrapper was dropped: %q", text)
+	}
+	for _, hidden := range []string{"HIDDEN_DIRECT", "HIDDEN_INHERITED"} {
+		if strings.Contains(text, hidden) {
+			t.Fatalf("zero-font text %q leaked: %q", hidden, text)
+		}
+	}
+}
+
 func TestHTMLToTextRespectsInlineCSSCascade(t *testing.T) {
 	tests := []struct {
 		name       string

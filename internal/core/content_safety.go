@@ -304,13 +304,22 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 		return ContentSafetyReport{Untrusted: true, Risk: ContentRiskNoIndicators}
 	}
 	acc := safetyAccumulator{}
-	var walk func(*xhtml.Node)
-	walk = func(node *xhtml.Node) {
+	var walk func(*xhtml.Node, bool)
+	walk = func(node *xhtml.Node, zeroFont bool) {
 		if node.Type == xhtml.CommentNode {
 			cleaned, _, _, _, _, _ := sanitizeInvisibleControls(node.Data)
 			normalized := normalizeCommonCyrillicConfusables(cleaned)
 			if instructionOverridePattern.MatchString(normalized) || sensitiveDataRequestPattern.MatchString(normalized) || toolRequestPattern.MatchString(normalized) {
 				acc.add("html_comment_instruction", ContentRiskHigh, 1)
+			}
+			return
+		}
+		if node.Type == xhtml.TextNode {
+			if zeroFont && strings.TrimSpace(node.Data) != "" {
+				acc.add("css_hidden_content", ContentRiskCaution, 1)
+				if subtreeHasInstruction(node) {
+					acc.add("css_hidden_content_instruction", ContentRiskHigh, 1)
+				}
 			}
 			return
 		}
@@ -334,11 +343,12 @@ func ScanRawHTMLContentSafety(raw []byte) ContentSafetyReport {
 			}
 			return
 		}
+		zeroFont = HTMLNodeZeroFontSize(node, zeroFont)
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
+			walk(child, zeroFont)
 		}
 	}
-	walk(doc)
+	walk(doc, false)
 	return acc.report(false)
 }
 
@@ -367,12 +377,13 @@ func HTMLNodeHiddenKind(node *xhtml.Node) string {
 	return ""
 }
 
-func inlineStyleHidesContent(style string) bool {
-	type winningDeclaration struct {
-		value     string
-		important bool
-	}
-	winners := make(map[string]winningDeclaration, 4)
+type cssWinningDeclaration struct {
+	value     string
+	important bool
+}
+
+func inlineStyleWinners(style string) map[string]cssWinningDeclaration {
+	winners := make(map[string]cssWinningDeclaration, 4)
 	for _, declaration := range splitCSSDeclarations(style) {
 		parts := strings.SplitN(declaration, ":", 2)
 		if len(parts) != 2 {
@@ -393,8 +404,13 @@ func inlineStyleHidesContent(style string) bool {
 		}
 		// Later declarations win when importance is equal; an important
 		// declaration wins over any non-important declaration.
-		winners[property] = winningDeclaration{value: value, important: important}
+		winners[property] = cssWinningDeclaration{value: value, important: important}
 	}
+	return winners
+}
+
+func inlineStyleHidesContent(style string) bool {
+	winners := inlineStyleWinners(style)
 	if declaration, ok := winners["display"]; ok && declaration.value == "none" {
 		return true
 	}
@@ -404,10 +420,58 @@ func inlineStyleHidesContent(style string) bool {
 	if declaration, ok := winners["opacity"]; ok && cssNumberIsZero(declaration.value, "%") {
 		return true
 	}
-	if declaration, ok := winners["font-size"]; ok && cssNumberIsZero(declaration.value, "px", "em", "rem", "%", "pt") {
+	return false
+}
+
+// HTMLNodeZeroFontSize returns the effective zero-font state after applying a
+// node's winning inline font-size declaration. Unlike display:none and opacity:0,
+// a zero font size is inherited text styling rather than a reason to prune the
+// whole subtree: a descendant can establish a visible absolute size.
+func HTMLNodeZeroFontSize(node *xhtml.Node, inheritedZero bool) bool {
+	if node == nil || node.Type != xhtml.ElementNode {
+		return inheritedZero
+	}
+	for _, attr := range node.Attr {
+		if !strings.EqualFold(strings.TrimSpace(attr.Key), "style") {
+			continue
+		}
+		declaration, ok := inlineStyleWinners(attr.Val)["font-size"]
+		if !ok {
+			return inheritedZero
+		}
+		if cssNumberIsZero(declaration.value, "px", "em", "rem", "%", "pt", "pc", "in", "cm", "mm", "q", "ex", "ch", "lh", "vw", "vh", "vmin", "vmax") {
+			return true
+		}
+		if cssFontSizeEstablishesVisibleSize(declaration.value) {
+			return false
+		}
+		return inheritedZero
+	}
+	return inheritedZero
+}
+
+func cssFontSizeEstablishesVisibleSize(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "xx-small", "x-small", "small", "medium", "large", "x-large", "xx-large", "xxx-large", "initial":
 		return true
 	}
-	return false
+	matches := cssNumberPattern.FindStringSubmatch(strings.ToLower(strings.TrimSpace(value)))
+	if matches == nil {
+		return false
+	}
+	number, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil || number == 0 {
+		return false
+	}
+	// em, ex, ch, lh and percentages remain relative to an inherited zero
+	// font size. Root-relative, absolute and viewport units establish a size
+	// independently and can therefore make a descendant visible again.
+	switch matches[2] {
+	case "rem", "px", "pt", "pc", "in", "cm", "mm", "q", "vw", "vh", "vmin", "vmax":
+		return true
+	default:
+		return false
+	}
 }
 
 // splitCSSDeclarations is a bounded scanner for inline declaration lists. It

@@ -228,6 +228,13 @@ func TestScanRawHTMLContentSafetyDoesNotTreatFractionalCSSAsHidden(t *testing.T)
 	}
 }
 
+func TestScanRawHTMLContentSafetyDoesNotFlagVisibleZeroFontDescendant(t *testing.T) {
+	report := ScanRawHTMLContentSafety([]byte(`<div style="font-size:0"><span style="font-size:16px">visible</span></div>`))
+	if hasSafetySignal(report, "css_hidden_content") {
+		t.Fatalf("visible descendant of zero-font wrapper was classified as hidden: %#v", report)
+	}
+}
+
 func TestScanRawHTMLContentSafetyDoesNotFlagCleanHeadTitle(t *testing.T) {
 	report := ScanRawHTMLContentSafety([]byte(`<html><head><title>Ordinary Page Title</title></head><body><p>hello</p></body></html>`))
 	if report.Risk != ContentRiskNoIndicators || len(report.Signals) != 0 {
