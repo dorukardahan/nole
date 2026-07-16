@@ -170,7 +170,7 @@ func newSetupCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(out, "\n%d agent(s) configured.\n", configured)
-			fmt.Fprintln(out, "Nólë works with ZERO keys: Firecrawl's hosted keyless route provides search and JavaScript-capable extraction; DDGS search and httpfetch extraction remain keyless fallbacks. Firecrawl applies upstream per-IP daily request and credit limits, but Nólë adds no artificial call quota. No Firecrawl key is required during setup.")
+			fmt.Fprintln(out, "Nólë works with ZERO keys: Nólë sends identified no-auth requests to Firecrawl's keyless search and JavaScript-capable extraction routes; DDGS search and httpfetch extraction remain keyless fallbacks. Firecrawl client/IP eligibility and per-IP daily request/credit limits apply, while Nólë adds no artificial call quota. No Firecrawl key is required during setup.")
 			fmt.Fprintln(out, "Provider keys are OPTIONAL. Brave and Tavily add account-backed routes; an existing Firecrawl key can be configured later for account-backed quota and higher upstream limits:")
 			fmt.Fprintln(out, "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
 			fmt.Fprintln(out, "  export TAVILY_API_KEY=...")

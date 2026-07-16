@@ -36,10 +36,17 @@ The wrapper sources `~/.config/nole/.env` and execs `nole mcp`; OpenClaw config 
 ## Firecrawl works without a key
 
 Do not ask the user for `FIRECRAWL_API_KEY` while installing Nólë for OpenClaw.
-Nólë registers Firecrawl's hosted keyless search and scrape API automatically,
-omits the Authorization header, classifies the route as `keyless-free`, and does
-not apply a fabricated local daily or monthly call cap. A key is optional and is
+Nólë sends identified no-auth requests (`nole/<version>` and
+`origin=nole@<version>`), classifies the route as `keyless-free`, and does not
+apply a fabricated local daily or monthly call cap. A key is optional and is
 only for account-backed quota and higher upstream limits.
+
+This is a best-effort keyless route, not an unlimited or guaranteed entitlement.
+Firecrawl's current documentation scopes keyless eligibility to supported
+clients and eligible IPs. Nólë identifies itself honestly rather than
+impersonating OpenClaw or a Firecrawl SDK; if upstream rejects the client/IP,
+rate-limits it, or is unavailable, Nólë uses its normal fallback path without
+turning the failure into a credential prompt.
 
 Firecrawl's keyless service is not unlimited. Current Firecrawl documentation
 says keyless usage is capped per IP address per day by both a request limit and
@@ -56,7 +63,9 @@ OpenClaw's keyless `firecrawl-free` web search and explicit Firecrawl
 search/extract tools and does not require those OpenClaw plugin tools.
 
 Sources: [OpenClaw Firecrawl docs](https://docs.openclaw.ai/tools/firecrawl/),
+[OpenClaw keyless client source](https://github.com/openclaw/openclaw/blob/main/extensions/firecrawl/src/firecrawl-client.ts),
 [Firecrawl keyless rate limits](https://docs.firecrawl.dev/rate-limits#keyless-no-api-key),
+[Firecrawl keyless auth source](https://github.com/firecrawl/firecrawl/blob/main/apps/api/src/controllers/auth.ts),
 [Firecrawl Keyless launch](https://www.firecrawl.dev/blog/firecrawl-keyless-launch).
 
 ## Install Nólë first

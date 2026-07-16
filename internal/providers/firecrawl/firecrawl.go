@@ -15,6 +15,7 @@ import (
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/providers/providerhttp"
+	"github.com/dorukardahan/nole/internal/version"
 )
 
 type Provider struct {
@@ -61,12 +62,27 @@ func (p Provider) Capabilities() []core.Capability {
 	return []core.Capability{core.CapabilitySearch, core.CapabilityExtract, core.CapabilityStatus}
 }
 
+var firecrawlClientVersionSanitizer = regexp.MustCompile(`[^A-Za-z0-9._+-]+`)
+
+func firecrawlClientVersion() string {
+	value := firecrawlClientVersionSanitizer.ReplaceAllString(strings.TrimSpace(version.Version), "-")
+	value = strings.Trim(value, "-")
+	if value == "" {
+		return "dev"
+	}
+	return value
+}
+
+func firecrawlClientUserAgent() string { return "nole/" + firecrawlClientVersion() }
+func firecrawlClientOrigin() string    { return "nole@" + firecrawlClientVersion() }
+
 // --- Firecrawl Search API request/response types ---
 
 type firecrawlSearchRequest struct {
 	Query   string `json:"query"`
 	Limit   int    `json:"limit"`
 	Country string `json:"country,omitempty"`
+	Origin  string `json:"origin,omitempty"`
 	// TBS is set only for recency tasks or explicit freshness. qdr:m = past
 	// month; omitempty keeps every other task's request byte-identical to before.
 	TBS string `json:"tbs,omitempty"`
@@ -135,6 +151,9 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		Limit:   limit,
 		Country: req.Options.Country,
 	}
+	if p.apiKey == "" {
+		body.Origin = firecrawlClientOrigin()
+	}
 	// Task-aware freshness (allowlist): recency tasks get a conservative past-month
 	// window by default; explicit SearchOptions.Freshness overrides the task
 	// default and may be used on any task. firecrawl web-source results carry no
@@ -159,6 +178,8 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 	if p.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	} else {
+		httpReq.Header.Set("User-Agent", firecrawlClientUserAgent())
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
@@ -214,6 +235,9 @@ func (p Provider) searchResearchPapers(ctx context.Context, req core.SearchReque
 	query := endpoint.Query()
 	query.Set("query", req.Query)
 	query.Set("k", strconv.Itoa(limit))
+	if p.apiKey == "" {
+		query.Set("origin", firecrawlClientOrigin())
+	}
 	endpoint.RawQuery = query.Encode()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
@@ -222,6 +246,8 @@ func (p Provider) searchResearchPapers(ctx context.Context, req core.SearchReque
 	}
 	if p.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	} else {
+		httpReq.Header.Set("User-Agent", firecrawlClientUserAgent())
 	}
 
 	resp, err := providerhttp.DoWithRetryBreaker(ctx, p.httpClient, httpReq, providerhttp.DefaultRetryOptions(), p.breaker)
@@ -310,7 +336,8 @@ func canonicalArxivURL(value string) string {
 // --- Firecrawl Scrape API request/response types ---
 
 type firecrawlScrapeRequest struct {
-	URL string `json:"url"`
+	URL    string `json:"url"`
+	Origin string `json:"origin,omitempty"`
 }
 
 type firecrawlScrapeResponse struct {
@@ -337,6 +364,9 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	body := firecrawlScrapeRequest{
 		URL: req.URL,
 	}
+	if p.apiKey == "" {
+		body.Origin = firecrawlClientOrigin()
+	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return core.ExtractResponse{}, fmt.Errorf("firecrawl: marshal request: %w", err)
@@ -348,6 +378,8 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	}
 	if p.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	} else {
+		httpReq.Header.Set("User-Agent", firecrawlClientUserAgent())
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
@@ -396,7 +428,7 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 		BreakerOpenedAt:    openedAt,
 	}
 	if p.apiKey == "" {
-		status.Reason = "keyless mode active: upstream per-IP daily request/credit limits apply; account-backed mode is optional"
+		status.Reason = "identified no-auth keyless mode: upstream client/IP eligibility and per-IP daily request/credit limits apply; account-backed mode is optional"
 	}
 	if p.breaker.IsOpen() {
 		status.Available = false

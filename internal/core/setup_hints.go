@@ -35,8 +35,8 @@ func BuildSetupSuggestions(configured map[string]bool, extractAvailable bool) []
 		if configured[p.Name] {
 			continue
 		}
-		// Firecrawl's hosted keyless route is already available without a key.
-		// A key changes quota/limits; it does not unlock a missing Nólë
+		// Firecrawl's no-auth keyless route is available on a best-effort basis
+		// subject to upstream client/IP eligibility. A key changes quota/limits;
 		// capability. Keep it visible in provider status, but never turn it into
 		// a setup suggestion that encourages an agent to ask the user for a key.
 		if p.Name == "firecrawl" {

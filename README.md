@@ -83,7 +83,7 @@ Prerequisites:
 - Go 1.25+ for building from source (matches the `go 1.25.12` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily and Firecrawl.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
-- No provider key is required for Firecrawl's hosted keyless search/extract route, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback. Nólë adds no artificial call quota to keyless Firecrawl; the provider's upstream per-IP daily request and credit limits remain authoritative.
+- No provider key is required for Nólë's identified no-auth Firecrawl keyless route, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback. Nólë adds no artificial call quota to keyless Firecrawl; upstream client/IP eligibility and per-IP daily request and credit limits remain authoritative, with normal fallback when Firecrawl refuses or exhausts the keyless route.
 
 Build and run locally:
 

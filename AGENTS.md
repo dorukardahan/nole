@@ -52,7 +52,7 @@ export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."       # optional account-backed/higher-limit mode
 ```
 
-Do not ask for a Firecrawl key during a zero-key install. Nólë already uses Firecrawl's hosted keyless search/extract route without an Authorization header or a local artificial call cap; Firecrawl's upstream per-IP daily request and credit limits remain authoritative. Mention `FIRECRAWL_API_KEY` only when the user already has an account/key or explicitly asks for account-backed higher limits. For Brave/Tavily, tell users who want those optional routes to create keys in provider dashboards and set them locally. Never ask the user to paste real values into chat. If a GUI app does not inherit shell env, use a local env file such as `~/.config/nole/.env` with mode `0600` and configure the client launcher to source it.
+Do not ask for a Firecrawl key during a zero-key install. Nólë sends identified no-auth keyless requests (`nole/<version>` plus `origin=nole@<version>`) without a local artificial call cap. Firecrawl's upstream client/IP eligibility, per-IP daily request limits and per-IP daily credit limits remain authoritative; rejected or exhausted keyless calls fall through Nólë's normal fallback path. Mention `FIRECRAWL_API_KEY` only when the user already has an account/key or explicitly asks for account-backed higher limits. For Brave/Tavily, tell users who want those optional routes to create keys in provider dashboards and set them locally. Never ask the user to paste real values into chat. If a GUI app does not inherit shell env, use a local env file such as `~/.config/nole/.env` with mode `0600` and configure the client launcher to source it.
 
 For details and overage cautions, read `docs/PROVIDER-KEYS.md`.
 

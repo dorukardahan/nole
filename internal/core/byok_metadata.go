@@ -83,7 +83,7 @@ var byokProviders = []BYOKProvider{
 		EnvExample:      "export FIRECRAWL_API_KEY=fc-...",
 		Unlocks:         []string{"url_extraction"},
 		MeteringModel:   "credit-based",
-		RateLimitNote:   "keyless mode is capped upstream per IP per day by both request and credit limits; crossing either returns 429. Nólë adds no local keyless quota and does not pretend to know remote balance. Keyed mode is credit-based: scrape ~1 credit/page, search ~2 credits per 10 results (up to 4 for a 20-result call; Nólë never issues the 5-credit Enhanced Mode); Nólë debits 1 per call against a 250-call floor. Free-tier rate limits /scrape 10 rpm, /search 5 rpm, not tracked.",
+		RateLimitNote:   "keyless mode is best-effort and subject to upstream client/IP eligibility, then capped per IP per day by both request and credit limits; crossing either cap returns 429. Nólë adds no local keyless quota and does not pretend to know remote balance. Keyed mode is credit-based: scrape ~1 credit/page, search ~2 credits per 10 results (up to 4 for a 20-result call; Nólë never issues the 5-credit Enhanced Mode); Nólë debits 1 per call against a 250-call floor. Free-tier rate limits /scrape 10 rpm, /search 5 rpm, not tracked.",
 		EstimateOnly:    true,
 	},
 }

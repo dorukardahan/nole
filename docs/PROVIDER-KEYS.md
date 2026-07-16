@@ -248,7 +248,7 @@ Setup:
 
 Notes:
 
-- Keyless Firecrawl is capped upstream per IP per day by both request and credit limits; crossing either returns 429. Nólë adds no local keyless quota, and a 429 is provider limit/drift or route failure rather than local ledger exhaustion or a known remote balance.
+- Keyless Firecrawl is best-effort and subject to upstream client/IP eligibility, then capped upstream per IP per day by both request and credit limits; crossing either cap returns 429. Nólë adds no local keyless quota, and a 429 is provider limit/drift or route failure rather than local ledger exhaustion or a known remote balance.
 - Firecrawl's keyed free quota semantics changed in early 2026; verify the dashboard balance matches Nólë's local counter before high-volume keyed use, and bump the hardcoded default if the provider raises it.
 - Set `NOLE_FIRECRAWL_PAID=1` to treat keyed Firecrawl as premium-capable when on a paid plan.
 - Keyed live extraction may consume the local counter quickly; keep dry-run experiments small.
@@ -446,7 +446,7 @@ zero setup). Configuring a higher-fidelity provider upgrades the extract QUALITY
 (JS rendering, cleaner content) but is no longer required for the tools to exist.
 The MCP surface adapts to which keys/runtimes are configured:
 
-- **No keys and no local Scrapling runtime:** `mcp__nole__search`, `mcp__nole__extract`, and `mcp__nole__search_and_extract` are registered. Routes may use Firecrawl's hosted keyless route (search + JavaScript-capable extraction), then fall through to DDGS search and the keyless `httpfetch` extraction backstop. Nólë does not apply a local Firecrawl call cap; Firecrawl's upstream per-IP daily request and credit limits remain authoritative. `mcp__nole__provider_status` and `mcp__nole__budget_status` are always available.
+- **No keys and no local Scrapling runtime:** `mcp__nole__search`, `mcp__nole__extract`, and `mcp__nole__search_and_extract` are registered. Routes may use Nólë's identified no-auth Firecrawl route (search + JavaScript-capable extraction, subject to upstream client/IP eligibility), then fall through to DDGS search and the keyless `httpfetch` extraction backstop. Nólë does not apply a local Firecrawl call cap; Firecrawl's upstream per-IP daily request and credit limits remain authoritative. `mcp__nole__provider_status` and `mcp__nole__budget_status` are always available.
 - **No keys plus `nole setup --local-extract`:** Search may use keyless Firecrawl with DDGS fallback; extract prefers local Scrapling, then keyless Firecrawl/httpfetch according to route availability.
 - **Only `BRAVE_API_KEY`:** Search routes Brave-first with DDGS fallback. Extract is backed by Scrapling if configured, otherwise the keyless `httpfetch` backstop.
 - **Only `TAVILY_API_KEY`:** Tavily adds an account-backed search/extract route; Scrapling still leads when configured, with keyless Firecrawl/httpfetch fallbacks.

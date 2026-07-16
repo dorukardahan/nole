@@ -9,9 +9,22 @@ import (
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
+	"github.com/dorukardahan/nole/internal/version"
 )
 
 func boolPtr(v bool) *bool { return &v }
+
+func TestFirecrawlClientIdentitySanitizesBuildVersion(t *testing.T) {
+	original := version.Version
+	version.Version = "v1.2.3\r\nX-Evil: yes"
+	t.Cleanup(func() { version.Version = original })
+	if got := firecrawlClientUserAgent(); got != "nole/v1.2.3-X-Evil-yes" {
+		t.Fatalf("sanitized user agent = %q", got)
+	}
+	if got := firecrawlClientOrigin(); got != "nole@v1.2.3-X-Evil-yes" {
+		t.Fatalf("sanitized origin = %q", got)
+	}
+}
 
 func TestNewHasHTTPTimeout(t *testing.T) {
 	p := New(WithAPIKey("test-key"))
@@ -388,9 +401,15 @@ func TestFirecrawlExtractOmittedSuccessIsAccepted(t *testing.T) {
 }
 
 func TestFirecrawlKeylessSearchOmitsAuthorization(t *testing.T) {
-	var auth string
+	var auth, userAgent, origin string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth = r.Header.Get("Authorization")
+		userAgent = r.Header.Get("User-Agent")
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		origin, _ = body["origin"].(string)
 		_ = json.NewEncoder(w).Encode(firecrawlSearchResponse{
 			Success: boolPtr(true),
 			Data:    firecrawlSearchData{Web: []firecrawlSearchWebResult{{Title: "Nólë", URL: "https://example.com/nole", Description: "router"}}},
@@ -406,12 +425,21 @@ func TestFirecrawlKeylessSearchOmitsAuthorization(t *testing.T) {
 	if auth != "" {
 		t.Fatalf("keyless request must omit Authorization header, got %q", auth)
 	}
+	if userAgent != "nole/dev" || origin != "nole@dev" {
+		t.Fatalf("keyless client identity = ua:%q origin:%q", userAgent, origin)
+	}
 }
 
 func TestFirecrawlKeylessExtractOmitsAuthorization(t *testing.T) {
-	var auth string
+	var auth, userAgent, origin string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth = r.Header.Get("Authorization")
+		userAgent = r.Header.Get("User-Agent")
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		origin, _ = body["origin"].(string)
 		_ = json.NewEncoder(w).Encode(firecrawlScrapeResponse{Success: boolPtr(true), Data: firecrawlScrapeData{Markdown: "# ok"}})
 	}))
 	defer srv.Close()
@@ -423,6 +451,29 @@ func TestFirecrawlKeylessExtractOmitsAuthorization(t *testing.T) {
 	}
 	if auth != "" {
 		t.Fatalf("keyless request must omit Authorization header, got %q", auth)
+	}
+	if userAgent != "nole/dev" || origin != "nole@dev" {
+		t.Fatalf("keyless client identity = ua:%q origin:%q", userAgent, origin)
+	}
+}
+
+func TestFirecrawlKeylessAcademicIdentifiesNole(t *testing.T) {
+	var auth, userAgent, origin string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		userAgent = r.Header.Get("User-Agent")
+		origin = r.URL.Query().Get("origin")
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "results": []any{}})
+	}))
+	defer srv.Close()
+
+	p := New(WithAPIKey(""), WithBaseURL(srv.URL))
+	p.apiKey = ""
+	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "agents", Task: core.TaskAcademic}); err != nil {
+		t.Fatalf("keyless academic search failed: %v", err)
+	}
+	if auth != "" || userAgent != "nole/dev" || origin != "nole@dev" {
+		t.Fatalf("keyless client identity = auth:%q ua:%q origin:%q", auth, userAgent, origin)
 	}
 }
 
