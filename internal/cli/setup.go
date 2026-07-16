@@ -170,9 +170,8 @@ func newSetupCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(out, "\n%d agent(s) configured.\n", configured)
-			fmt.Fprintln(out, "Nólë works with ZERO keys: DDGS gives keyless web search and the built-in httpfetch backstop gives keyless URL extraction out of the box (best-effort, no JavaScript). `nole setup --local-extract` adds JS-capable local extraction via Scrapling.")
-			fmt.Fprintln(out, "Provider keys are OPTIONAL — they only unlock higher-quality search and URL-extraction routes:")
-			fmt.Fprintln(out, "  export FIRECRAWL_API_KEY=...")
+			fmt.Fprintln(out, "Nólë works with ZERO keys: Firecrawl's hosted keyless route provides search and JavaScript-capable extraction; DDGS search and httpfetch extraction remain keyless fallbacks. Firecrawl applies upstream per-IP daily request and credit limits, but Nólë adds no artificial call quota. No Firecrawl key is required during setup.")
+			fmt.Fprintln(out, "Provider keys are OPTIONAL. Brave and Tavily add account-backed routes; an existing Firecrawl key can be configured later for account-backed quota and higher upstream limits:")
 			fmt.Fprintln(out, "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
 			fmt.Fprintln(out, "  export TAVILY_API_KEY=...")
 			fmt.Fprintln(out, "  Or store them in ~/.config/nole/.env; Nólë commands load it, and Codex setup plus the nole-mcp wrapper source it for MCP clients without putting secrets in client configs.")

@@ -61,10 +61,13 @@ func TestSetupMessageStatesKeylessOperation(t *testing.T) {
 		t.Fatalf("setup --claude: %v\n%s", err, out.String())
 	}
 	text := out.String()
-	for _, want := range []string{"ZERO keys", "DDGS", "keyless", "OPTIONAL"} {
+	for _, want := range []string{"ZERO keys", "Firecrawl", "per-IP daily", "No Firecrawl key is required", "DDGS", "OPTIONAL"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("keyless onboarding message missing %q:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "FIRECRAWL_API_KEY") {
+		t.Fatalf("zero-key setup must not mention or prompt for a Firecrawl credential: %s", text)
 	}
 }
 

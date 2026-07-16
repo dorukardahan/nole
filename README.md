@@ -83,7 +83,7 @@ Prerequisites:
 - Go 1.25+ for building from source (matches the `go 1.25.12` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily and Firecrawl.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
-- No provider key is required for the deterministic benchmark, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback.
+- No provider key is required for Firecrawl's hosted keyless search/extract route, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback. Nólë adds no artificial call quota to keyless Firecrawl; the provider's upstream per-IP daily request and credit limits remain authoritative.
 
 Build and run locally:
 
@@ -252,13 +252,13 @@ For unverified or generic clients, use the MCP command template:
 
 ## Provider keys and cost control
 
-Default stance: `free-first`. Nólë treats supported keyed provider accounts as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, 500 for Tavily, and 250 for keyed Firecrawl, reset at the start of each UTC calendar month — the lower floors reflect those providers' variable per-credit metering, where the ledger debits 1 per call but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4). Firecrawl without `FIRECRAWL_API_KEY`, DDGS, Wikipedia, arXiv, the keyless httpfetch extraction backstop, and a configured local Scrapling runtime are keyless-free: no local free-tier quota ledger, no hidden paid usage inside Nólë, and no claim that Nólë knows remote balance. Keyless remote providers can still be shared, rate-limited or unavailable upstream; Nólë reports those 429/provider errors as route/provider drift, not as local ledger exhaustion.
+Default stance: `free-first`. Nólë treats supported keyed provider accounts as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, 500 for Tavily, and 250 for keyed Firecrawl, reset at the start of each UTC calendar month — the lower floors reflect those providers' variable per-credit metering, where the ledger debits 1 per call but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4). Firecrawl without `FIRECRAWL_API_KEY`, DDGS, Wikipedia, arXiv, the keyless httpfetch extraction backstop, and a configured local Scrapling runtime are keyless-free: no local free-tier quota ledger, no hidden paid usage inside Nólë, and no claim that Nólë knows remote balance. Firecrawl's keyless route remains subject to upstream per-IP daily request and credit limits; Nólë reports resulting 429/provider errors as route/provider drift, not as local ledger exhaustion.
 
 A key by itself is enough to start using a provider under the default policy; you only have to flip `NOLE_<PROVIDER>_PAID=1` when you want Nólë to treat that provider as premium-capable (e.g. you are on a paid plan and the cost-capped or quality-first policy should apply). See `docs/PROVIDER-KEYS.md` for per-provider free-tier sourcing and the Brave subscription/CC caveat.
 
 Cost status classes exposed in `provider_status`, `budget_status`, `route_trace` and JSON CLI/MCP surfaces are:
 
-- `keyless-free` — no key required, currently used for the DDGS search fallback, the Wikipedia/MediaWiki and arXiv search providers, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback.
+- `keyless-free` — no key required, currently used for Firecrawl's keyless route, the DDGS search fallback, the Wikipedia/MediaWiki and arXiv search providers, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback.
 - `free-tier-BYOK` — user-keyed provider running against the local free-tier quota. Default for keyed Brave / Tavily / Firecrawl.
 - `premium-capable` — keyed provider that may incur paid usage depending on account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost` — fail-closed unless an explicit quality-first policy is selected.

@@ -31,39 +31,39 @@ func TestBuildSetupSuggestionsExhaustive(t *testing.T) {
 		// missing keyed extract provider is a fidelity upgrade (medium), not a
 		// disabled-feature unlock (high).
 		{
-			label:                "no keys, keyless extract baseline — keyed extract = fidelity upgrade",
+			label:                "no keys, keyless extract baseline — only key-gated providers are suggested",
 			configured:           configuredSet(),
 			extractAvailable:     true,
-			wantMissing:          []string{"brave", "firecrawl", "tavily"},
-			wantImpactByProvider: map[string]string{"brave": "medium", "tavily": "medium", "firecrawl": "medium"},
+			wantMissing:          []string{"brave", "tavily"},
+			wantImpactByProvider: map[string]string{"brave": "medium", "tavily": "medium"},
 		},
 		{
-			label:                "only brave, keyless extract baseline — keyed extract still MEDIUM upgrade",
+			label:                "only brave, keyless extract baseline — tavily remains an optional upgrade",
 			configured:           configuredSet("brave"),
 			extractAvailable:     true,
-			wantMissing:          []string{"firecrawl", "tavily"},
-			wantImpactByProvider: map[string]string{"tavily": "medium", "firecrawl": "medium"},
+			wantMissing:          []string{"tavily"},
+			wantImpactByProvider: map[string]string{"tavily": "medium"},
 		},
 		{
-			label:                "only tavily — extract keyed via tavily, others MEDIUM/LOW",
+			label:                "only tavily — brave remains an optional search upgrade",
 			configured:           configuredSet("tavily"),
 			extractAvailable:     true,
-			wantMissing:          []string{"brave", "firecrawl"},
-			wantImpactByProvider: map[string]string{"brave": "medium", "firecrawl": "low"},
+			wantMissing:          []string{"brave"},
+			wantImpactByProvider: map[string]string{"brave": "medium"},
 		},
 		{
-			label:                "only firecrawl — extract keyed via firecrawl",
+			label:                "only firecrawl key — brave and tavily remain optional upgrades",
 			configured:           configuredSet("firecrawl"),
 			extractAvailable:     true,
 			wantMissing:          []string{"brave", "tavily"},
 			wantImpactByProvider: map[string]string{"brave": "medium", "tavily": "medium"},
 		},
 		{
-			label:                "brave + tavily — only firecrawl missing, pure redundancy",
+			label:                "brave + tavily — keyless firecrawl needs no setup suggestion",
 			configured:           configuredSet("brave", "tavily"),
 			extractAvailable:     true,
-			wantMissing:          []string{"firecrawl"},
-			wantImpactByProvider: map[string]string{"firecrawl": "low"},
+			wantMissing:          []string{},
+			wantImpactByProvider: map[string]string{},
 		},
 		{
 			label:                "brave + firecrawl — tavily missing, semantic quality MEDIUM",
@@ -86,23 +86,22 @@ func TestBuildSetupSuggestionsExhaustive(t *testing.T) {
 			wantMissing:          []string{},
 			wantImpactByProvider: map[string]string{},
 		},
-		// extractAvailable=false: a build with NO extract provider at all (no
-		// httpfetch, no keyed extract, no Scrapling). Extract is genuinely
-		// unavailable, so the keyed extract providers are HIGH-impact unlocks. This
-		// is not the default service, but the function must stay correct for it.
+		// Even in a custom build with no extract provider registered, a Firecrawl
+		// account key is not a meaningful setup suggestion: the provider itself is
+		// absent. Only actually key-gated providers are suggested.
 		{
-			label:                "no keys AND no keyless extract — extract truly disabled, HIGH",
+			label:                "no keys AND no keyless extract — tavily is the key-gated extract unlock",
 			configured:           configuredSet(),
 			extractAvailable:     false,
-			wantMissing:          []string{"brave", "firecrawl", "tavily"},
-			wantImpactByProvider: map[string]string{"brave": "medium", "tavily": "high", "firecrawl": "high"},
+			wantMissing:          []string{"brave", "tavily"},
+			wantImpactByProvider: map[string]string{"brave": "medium", "tavily": "high"},
 		},
 		{
-			label:                "only brave, no keyless extract — both extract providers HIGH",
+			label:                "only brave, no keyless extract — tavily remains the key-gated extract provider",
 			configured:           configuredSet("brave"),
 			extractAvailable:     false,
-			wantMissing:          []string{"firecrawl", "tavily"},
-			wantImpactByProvider: map[string]string{"tavily": "high", "firecrawl": "high"},
+			wantMissing:          []string{"tavily"},
+			wantImpactByProvider: map[string]string{"tavily": "high"},
 		},
 	}
 
@@ -136,7 +135,7 @@ func TestBuildSetupSuggestionsExhaustive(t *testing.T) {
 func TestBuildSetupSuggestionsFieldsArePopulated(t *testing.T) {
 	// Sanity check: when a suggestion is produced, all string fields are
 	// non-empty so the AI tool has enough to articulate.
-	got := BuildSetupSuggestions(configuredSet(), true) // worst case: 3 suggestions (keyless extract baseline)
+	got := BuildSetupSuggestions(configuredSet(), true) // zero-key case: only genuinely key-gated providers
 	if len(got) == 0 {
 		t.Fatal("expected suggestions for zero-key case")
 	}
@@ -154,12 +153,12 @@ func TestBuildSetupTipPresenceMatchesSuggestions(t *testing.T) {
 	if tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave", "tavily", "firecrawl"), true)); tip != nil {
 		t.Errorf("expected nil tip when nothing missing, got %+v", tip)
 	}
-	// LOW-only: brave + tavily configured, firecrawl missing at LOW — tip must be nil.
+	// Firecrawl works keylessly, so brave + tavily configured leaves no suggestions.
 	if tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave", "tavily"), true)); tip != nil {
 		t.Errorf("expected nil tip for LOW-only suggestions, got %+v", tip)
 	}
-	// Only brave: with the keyless extract baseline, tavily+firecrawl are MEDIUM
-	// fidelity upgrades, so the tip is present (a quality nudge, not "disabled").
+	// Only brave: Tavily is still a MEDIUM optional upgrade, so the tip is
+	// present (a quality nudge, not "disabled").
 	tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave"), true))
 	if tip == nil {
 		t.Fatal("expected non-nil tip when MEDIUM fidelity upgrades are available")
@@ -190,10 +189,13 @@ func TestBuildSetupTipFramesZeroKeyBaselineAsWorkingUpgradePath(t *testing.T) {
 	if !strings.Contains(summary, "can improve search speed or extract fidelity") {
 		t.Fatalf("zero-key setup_tip should use speed/fidelity upgrade copy: %s", summary)
 	}
-	for _, key := range []string{"BRAVE_API_KEY", "TAVILY_API_KEY", "FIRECRAWL_API_KEY"} {
+	for _, key := range []string{"BRAVE_API_KEY", "TAVILY_API_KEY"} {
 		if !strings.Contains(summary, key) {
 			t.Fatalf("setup_tip should still name missing key %s: %s", key, summary)
 		}
+	}
+	if strings.Contains(summary, "FIRECRAWL_API_KEY") {
+		t.Fatalf("setup_tip must not ask for a key when Firecrawl keyless mode is available: %s", summary)
 	}
 	if tip.SeeAlso != "call provider_status for per-key signup links and env examples" {
 		t.Fatalf("unexpected see_also: %q", tip.SeeAlso)
@@ -210,8 +212,8 @@ func TestBuildSetupTipKeepsDisabledCopyForTrueHighImpactMissingFeature(t *testin
 	if !strings.Contains(lower, "disabled") {
 		t.Fatalf("true high-impact missing feature should still use disabled wording: %s", summary)
 	}
-	if !strings.Contains(summary, "TAVILY_API_KEY") || !strings.Contains(summary, "FIRECRAWL_API_KEY") {
-		t.Fatalf("high-impact extract keys should be named: %s", summary)
+	if !strings.Contains(summary, "TAVILY_API_KEY") || strings.Contains(summary, "FIRECRAWL_API_KEY") {
+		t.Fatalf("only genuinely key-gated high-impact extract providers should be named: %s", summary)
 	}
 	if strings.Contains(lower, "built-in fallback") {
 		t.Fatalf("high-impact copy should not reintroduce AI-tool built-in fallback wording: %s", summary)

@@ -39,7 +39,7 @@ func TestProvidersCommandJSONIncludesCostPolicyWithoutSecrets(t *testing.T) {
 	if got := byName["brave"]; got.CostClass != core.CostClassDisabledNoKey || got.AllowedByPolicy || got.PolicyReason != "disabled_no_key" {
 		t.Fatalf("unexpected brave disabled status: %#v", got)
 	}
-	if got := byName["firecrawl"]; got.CostClass != core.CostClassKeylessFree || !got.AllowedByPolicy || !got.Available || got.FreeRemaining != 0 || got.Reason != "keyless mode: limited/shared upstream; set FIRECRAWL_API_KEY for account-backed quota" {
+	if got := byName["firecrawl"]; got.CostClass != core.CostClassKeylessFree || !got.AllowedByPolicy || !got.Available || got.FreeRemaining != 0 || got.Reason != "keyless mode active: upstream per-IP daily request/credit limits apply; account-backed mode is optional" {
 		t.Fatalf("unexpected firecrawl keyless status: %#v", got)
 	}
 	forbidden := []string{"SECRET", "Bearer", "Authorization", "api_key"}

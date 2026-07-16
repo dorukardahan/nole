@@ -24,10 +24,10 @@ When an AI agent receives only the GitHub link and a user request to install Nó
 2. Build from source and run `go test ./...`, `go vet ./...`, `./nole doctor` and `./nole doctor --mcp`.
 3. Install the binary to a user-local PATH directory or capture the absolute binary path for MCP config.
 4. Run `nole setup --local-extract` after the binary is installed. This creates `~/.local/share/nole/scrapling-venv`, installs `scrapling[fetchers]`, writes `~/.config/nole/.env` and generates `~/.local/bin/nole-mcp`. If Python 3.10+ is missing, install Python through the user's normal package manager before declaring local extraction ready.
-5. Configure provider key variable names only if the user already owns the matching provider accounts; never ask the user to paste real values into chat.
+5. Configure provider key variable names only if the user already owns the matching provider accounts; never ask the user to paste real values into chat. Do not ask for a Firecrawl key during a zero-key install: Nólë's keyless Firecrawl search/extract route is already active. Mention `FIRECRAWL_API_KEY` only as an optional account-backed/higher-limit upgrade when the user asks for scale or already has an account.
 6. Keep default `NOLE_COST_POLICY=free-first` unless the user explicitly accepts premium-capable provider risk.
 7. Configure the selected client with the setup writer and include `--local-extract` when possible, for example `nole setup --codex --local-extract` or `nole setup --hermes --local-extract`.
-8. Verify the client sees `search`, `research`, `provider_status`, `budget_status`, `extract` and `search_and_extract` — advertised out of the box via the keyless httpfetch backstop (zero keys); a Tavily/Firecrawl key or local Scrapling upgrades extract fidelity rather than being required.
+8. Verify the client sees `search`, `research`, `provider_status`, `budget_status`, `extract` and `search_and_extract` with zero keys. Keyless Firecrawl provides hosted search/extraction, DDGS/httpfetch provide fallbacks, and local Scrapling or keyed Tavily can add extraction redundancy/fidelity. A Firecrawl key changes quota/limits, not tool availability.
 9. Run one low-limit docs search and include only the compact `routing_insight` plus result URLs in the user-facing answer.
 10. Record unresolved client/env limitations truthfully; do not upgrade a client status label without real-client evidence.
 11. Scan changed configs/log snippets for key values, bearer tokens, auth headers, raw provider payloads, private paths and private URLs before sharing.
@@ -67,7 +67,7 @@ cp ./nole "$NOLE_BIN"
 
 After this succeeds, use `"$NOLE_BIN"` as the MCP command path if the client inherits the env file, or use `$HOME/.local/bin/nole-mcp` as the MCP command path for GUI/service clients that need the generated env-sourcing wrapper.
 
-To install a prebuilt release binary instead of building from source, `scripts/install.sh` detects OS/arch, downloads the matching `nole-<os>-<arch>` asset, verifies its `SHA256SUMS` checksum before installing (fails closed on mismatch), and installs to `~/.local/bin`. Since v0.10.0 the installer also runs an **additive, optional** build-provenance check: when the GitHub CLI (`gh >= 2.93.0`) is present it verifies the release's keyless Sigstore attestation against the exact release-workflow identity and fails closed on a real mismatch; when `gh` is absent it soft-skips so the zero-dependency path is unaffected. Set `NOLE_INSTALL_VERIFY=require` to make attestation verification mandatory (supply-chain-strict), or `off` to skip it (SHA256 stays mandatory regardless). Prefer download-then-run over pipe-to-bash. After install, `nole doctor --check-updates` prints a fail-soft notice when a newer release exists (silent offline; never fails `doctor`), and `nole self-update` applies it — same verification contract as the installer (mandatory SHA256 + additive `gh attestation verify`; `--verify require` to make the attestation mandatory, `--check-only` to preview). Nólë works with ZERO keys via keyless DDGS search, so an install with no provider keys is fully functional.
+To install a prebuilt release binary instead of building from source, `scripts/install.sh` detects OS/arch, downloads the matching `nole-<os>-<arch>` asset, verifies its `SHA256SUMS` checksum before installing (fails closed on mismatch), and installs to `~/.local/bin`. Since v0.10.0 the installer also runs an **additive, optional** build-provenance check: when the GitHub CLI (`gh >= 2.93.0`) is present it verifies the release's keyless Sigstore attestation against the exact release-workflow identity and fails closed on a real mismatch; when `gh` is absent it soft-skips so the zero-dependency path is unaffected. Set `NOLE_INSTALL_VERIFY=require` to make attestation verification mandatory (supply-chain-strict), or `off` to skip it (SHA256 stays mandatory regardless). Prefer download-then-run over pipe-to-bash. After install, `nole doctor --check-updates` prints a fail-soft notice when a newer release exists (silent offline; never fails `doctor`), and `nole self-update` applies it — same verification contract as the installer (mandatory SHA256 + additive `gh attestation verify`; `--verify require` to make the attestation mandatory, `--check-only` to preview). Nólë works with ZERO keys via Firecrawl's hosted keyless search/extract route, with DDGS search and httpfetch extraction as keyless fallbacks, so an install with no provider keys is fully functional. Nólë adds no artificial Firecrawl call quota; Firecrawl's upstream per-IP daily request and credit limits remain authoritative. Firecrawl documents 1,000 credits as a free API-key signup benefit, not as the keyless allowance.
 
 ## PATH and absolute binary discovery
 
@@ -101,6 +101,7 @@ Use this template locally. It intentionally uses variable names and policy contr
 # Optional provider keys. Set only in your local shell, service env or local-only env file.
 # export BRAVE_API_KEY="set-locally"
 # export TAVILY_API_KEY="set-locally"
+# Do not request this during setup. Optional only for account-backed/higher-limit Firecrawl usage:
 # export FIRECRAWL_API_KEY="set-locally"
 
 # Default no-hidden-paid-spend mode.
@@ -171,14 +172,14 @@ Use a VPS only if that is where the agent runs or where the user explicitly want
 
 ## Provider keys
 
-Nólë works best with user-owned provider keys but can still use DDGS as a keyless fallback.
+Nólë works without provider keys: keyless Firecrawl provides hosted search and extraction, with DDGS/httpfetch as fallback routes. User-owned keys are optional account-backed upgrades.
 
 Environment variables:
 
 ```bash
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
-export FIRECRAWL_API_KEY="..."
+export FIRECRAWL_API_KEY="..."       # optional; do not request during zero-key setup
 ```
 
 Rules:

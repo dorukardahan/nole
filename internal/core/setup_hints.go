@@ -7,11 +7,12 @@ import (
 )
 
 // BuildSetupSuggestions inspects the set of configured BYOK providers and
-// returns one suggestion per missing key. Suggestions are returned sorted by
+// returns one suggestion per missing key-gated provider. Providers that already
+// work keylessly (currently Firecrawl) stay visible in provider status but do
+// not become credential prompts. Suggestions are returned sorted by
 // (impact desc, missing key asc) so the most actionable items come first.
 //
-// `configured` is keyed by provider name (e.g. "brave"). DDGS is keyless and
-// is never in this map.
+// `configured` is keyed by provider name (e.g. "brave").
 //
 // `extractAvailable` reports whether URL extraction works AT ALL in the running
 // service — true whenever any available extract provider is registered, including
@@ -32,6 +33,13 @@ func BuildSetupSuggestions(configured map[string]bool, extractAvailable bool) []
 	out := []SetupSuggestion{}
 	for _, p := range providers {
 		if configured[p.Name] {
+			continue
+		}
+		// Firecrawl's hosted keyless route is already available without a key.
+		// A key changes quota/limits; it does not unlock a missing Nólë
+		// capability. Keep it visible in provider status, but never turn it into
+		// a setup suggestion that encourages an agent to ask the user for a key.
+		if p.Name == "firecrawl" {
 			continue
 		}
 		impact := classifyImpact(p, hasKeyedExtract, extractAvailable)
@@ -78,8 +86,8 @@ func classifyImpact(p BYOKProvider, hasKeyedExtract, extractAvailable bool) stri
 	if p.Name == "tavily" && hasKeyedExtract {
 		return "medium"
 	}
-	// LOW: the provider only adds redundancy. Today this is Firecrawl when
-	// Tavily already covers extract.
+	// LOW: the provider only adds redundancy. Kept for future keyed providers;
+	// keyless-capable Firecrawl is excluded before impact classification.
 	return "low"
 }
 
