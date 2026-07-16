@@ -40,7 +40,7 @@ Current routing is task-based with an LLM-free multi-intent planner: `nole class
 
 ## Supported and priority agents
 
-Priority v0.1 agent targets:
+Current agent support matrix:
 
 | Client | Status in this repo | Notes |
 | --- | --- | --- |
