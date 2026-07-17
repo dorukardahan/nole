@@ -13,7 +13,7 @@ fail() {
   exit 1
 }
 
-for required in go.mod README.md AGENTS.md .github/workflows/ci.yml .github/workflows/release.yml; do
+for required in go.mod README.md AGENTS.md CONTRIBUTING.md docs/AGENT-INSTALL.md .github/workflows/ci.yml .github/workflows/release.yml; do
   [ -f "$ROOT/$required" ] || fail "missing required file: $required"
 done
 
@@ -43,6 +43,25 @@ check_agents_minimum() {
   fi
 }
 
+check_contributing_minimum() {
+  local version_pattern=${GO_VERSION//./\\.}
+  local exact_reference="\`go ${GO_VERSION}\`"
+
+  if ! grep -E "^[[:space:]]*-[[:space:]]+Go[[:space:]]+${version_pattern}\\+([^0-9.]|$)" "$ROOT/CONTRIBUTING.md" \
+    | grep -F "$exact_reference" \
+    | grep -Fq '`go.mod`'; then
+    fail "CONTRIBUTING.md must document a Go ${GO_VERSION}+ prerequisite and reference the exact go ${GO_VERSION} directive from go.mod"
+  fi
+}
+
+check_agent_install_minimum() {
+  local version_pattern=${GO_VERSION//./\\.}
+
+  if ! grep -Eq "[Ii]nstall[[:space:]]+Go[[:space:]]+${version_pattern}\\+([^0-9.]|$)" "$ROOT/docs/AGENT-INSTALL.md"; then
+    fail "docs/AGENT-INSTALL.md must document a Go ${GO_VERSION}+ install minimum"
+  fi
+}
+
 check_workflow_go_version() {
   local file=$1
   local declarations
@@ -63,5 +82,7 @@ check_workflow_go_version() {
 printf 'checking documented Go version requirements (go %s)\n' "$GO_VERSION"
 check_readme_minimum
 check_agents_minimum
+check_contributing_minimum
+check_agent_install_minimum
 check_workflow_go_version .github/workflows/ci.yml
 check_workflow_go_version .github/workflows/release.yml
