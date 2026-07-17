@@ -342,7 +342,7 @@ The agent should see MCP tools similar to:
 
 ### Go missing
 
-Install Go 1.25+ or use a user-local Go toolchain. Do not commit the toolchain into the repo.
+Install Go 1.25.12+ or use a user-local Go toolchain. Do not commit the toolchain into the repo.
 
 ### PATH issues
 

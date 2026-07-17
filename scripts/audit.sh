@@ -107,6 +107,7 @@ else
   echo "jq not found; skipping Scoop manifest shape check"
 fi
 
+run ./scripts/check-go-version-requirements.sh
 run ./scripts/check-docs-framing.sh
 run ./scripts/check-benchmark-claims.sh
 run ./scripts/check-integration-evidence.sh
