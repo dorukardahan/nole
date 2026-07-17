@@ -49,6 +49,9 @@ func newSetupCommand() *cobra.Command {
 	var gemini bool
 	var grok bool
 	var grokBuild bool
+	var openclaw bool
+	var openClawCLI string
+	var openClawWrapper string
 	var localExtract bool
 	var localExtractVenv string
 	var localExtractPython string
@@ -58,17 +61,18 @@ func newSetupCommand() *cobra.Command {
 		Use:   "setup",
 		Short: "Configure AI agents to use nole as MCP server",
 		Long: "Writes MCP server configuration files for supported AI coding agents.\n" +
-			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --antigravity, --gemini, --grok, --grok-build, or --all.\n" +
+			"Supports: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --antigravity, --gemini, --grok, --grok-build, --openclaw, or --all.\n" +
 			"Note: --antigravity targets Google's Antigravity CLI native config (~/.gemini/config/mcp_config.json); --gemini remains for Gemini CLI Standard/Enterprise/Cloud/paid API-key users (~/.gemini/settings.json).\n" +
 			"Note: --grok targets superagent-ai/grok-cli (~/.grok/user-settings.json, JSON); --grok-build targets xAI's Grok Build TUI (~/.grok/config.toml, TOML). They are different products — pick the one whose `grok` you have installed.\n" +
+			"Note: --openclaw changes OpenClaw's web providers and is explicit-only; --all does not enable it.\n" +
 			"Use --local-extract to install an isolated Scrapling runtime and write NOLE_SCRAPLING_PYTHON.\n" +
 			"Use --mcp-wrapper /absolute/path/to/nole-mcp to register an env-sourcing wrapper instead of the bare binary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
 				claude, cursor, codex, opencode, kimi, windsurf, hermes, antigravity, gemini, grok, grokBuild = true, true, true, true, true, true, true, true, true, true, true
 			}
-			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !antigravity && !gemini && !grok && !grokBuild && !localExtract {
-				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --antigravity, --gemini, --grok, --grok-build, --local-extract, or --all")
+			if !claude && !cursor && !codex && !opencode && !kimi && !windsurf && !hermes && !antigravity && !gemini && !grok && !grokBuild && !openclaw && !localExtract {
+				return fmt.Errorf("specify at least one agent or --local-extract: --claude, --cursor, --codex, --opencode, --kimi, --windsurf, --hermes, --antigravity, --gemini, --grok, --grok-build, --openclaw, --local-extract, or --all")
 			}
 
 			binary, err := os.Executable()
@@ -129,6 +133,25 @@ func newSetupCommand() *cobra.Command {
 				fmt.Fprintf(out, "local-extract: wrote env-sourcing MCP wrapper at %s\n", spec.Wrapper)
 			}
 
+			if openclaw {
+				result, err := setupOpenClaw(openClawSetupOptions{
+					Binary:      spec.Binary,
+					CLIPath:     openClawCLI,
+					WrapperPath: openClawWrapper,
+				})
+				if err != nil {
+					return err
+				}
+				if result.BridgeMode == "full" {
+					fmt.Fprintf(out, "openclaw: configured full Firecrawl bridge (search=%s, fetch=firecrawl) via %s\n", result.SearchProvider, result.CLIPath)
+				} else {
+					fmt.Fprintf(out, "openclaw: configured OpenClaw web_fetch bridge with keyless Firecrawl fallback via %s; search keeps Nólë fallbacks until OpenClaw exposes firecrawl-free\n", result.CLIPath)
+				}
+				fmt.Fprintf(out, "openclaw: registered Nólë MCP wrapper %s\n", result.WrapperPath)
+				fmt.Fprintln(out, "openclaw: if the Gateway was already running, restart it once so it loads the installed/enabled Firecrawl plugin")
+				configured++
+			}
+
 			if claude {
 				// Claude is intentionally instruction-only — the writer does
 				// not modify any file. Print the command but do not count it
@@ -170,11 +193,21 @@ func newSetupCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(out, "\n%d agent(s) configured.\n", configured)
-			fmt.Fprintln(out, "Nólë works with ZERO keys: Nólë sends identified no-auth requests to Firecrawl's keyless search and JavaScript-capable extraction routes; DDGS search and httpfetch extraction remain keyless fallbacks. Firecrawl client/IP eligibility and per-IP daily request/credit limits apply, while Nólë adds no artificial call quota. No Firecrawl key is required during setup.")
-			fmt.Fprintln(out, "Provider keys are OPTIONAL. Brave and Tavily add account-backed routes; an existing Firecrawl key can be configured later for account-backed quota and higher upstream limits:")
-			fmt.Fprintln(out, "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
-			fmt.Fprintln(out, "  export TAVILY_API_KEY=...")
-			fmt.Fprintln(out, "  Or store them in ~/.config/nole/.env; Nólë commands load it, and Codex setup plus the nole-mcp wrapper source it for MCP clients without putting secrets in client configs.")
+			if openclaw {
+				fmt.Fprintln(out, "OpenClaw bridge requires no Firecrawl key for this MCP entry.")
+				fmt.Fprintln(out, "When OpenClaw exposes firecrawl-free, Nólë delegates Firecrawl search and host fetch; current stable releases use OpenClaw web_fetch with keyless Firecrawl fallback and keep Nólë's existing search fallbacks.")
+				fmt.Fprintln(out, "The OpenClaw-only mode lives in nole-mcp-openclaw; generic Nólë CLI and other MCP clients keep the existing direct Firecrawl API/BYOK behavior.")
+				fmt.Fprintln(out, "Other provider keys remain OPTIONAL:")
+				fmt.Fprintln(out, "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
+				fmt.Fprintln(out, "  export TAVILY_API_KEY=...")
+			} else {
+				fmt.Fprintln(out, "Nólë works with ZERO keys: DDGS gives keyless web search and the built-in httpfetch backstop gives keyless URL extraction out of the box (best-effort, no JavaScript). `nole setup --local-extract` adds JS-capable local extraction via Scrapling.")
+				fmt.Fprintln(out, "Provider keys are OPTIONAL — they only unlock higher-quality search and URL-extraction routes:")
+				fmt.Fprintln(out, "  export FIRECRAWL_API_KEY=...")
+				fmt.Fprintln(out, "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")
+				fmt.Fprintln(out, "  export TAVILY_API_KEY=...")
+			}
+			fmt.Fprintln(out, "  Or store provider keys in ~/.config/nole/.env; Nólë commands load it, and Codex setup plus the MCP wrappers source it without putting secrets in client configs.")
 			if !localExtract {
 				fmt.Fprintln(out, "  Optional local extraction fallback:")
 				fmt.Fprintln(out, "    nole setup --local-extract")
@@ -206,6 +239,9 @@ func newSetupCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&gemini, "gemini", false, "configure Gemini CLI (Standard/Enterprise/Cloud/paid API-key users; ~/.gemini/settings.json)")
 	cmd.Flags().BoolVar(&grok, "grok", false, "configure Grok CLI (superagent-ai/grok-cli; ~/.grok/user-settings.json)")
 	cmd.Flags().BoolVar(&grokBuild, "grok-build", false, "configure xAI Grok Build TUI (~/.grok/config.toml; distinct from --grok)")
+	cmd.Flags().BoolVar(&openclaw, "openclaw", false, "configure an OpenClaw-only MCP bridge to OpenClaw's keyless Firecrawl web tools")
+	cmd.Flags().StringVar(&openClawCLI, "openclaw-cli", "", "OpenClaw CLI executable (default: resolve openclaw from PATH)")
+	cmd.Flags().StringVar(&openClawWrapper, "openclaw-wrapper", "", "absolute path for the dedicated OpenClaw-mode Nólë MCP wrapper (default: ~/.local/bin/nole-mcp-openclaw)")
 	cmd.Flags().BoolVar(&localExtract, "local-extract", false, "install an isolated local Scrapling extract runtime and write NOLE_SCRAPLING_PYTHON")
 	cmd.Flags().StringVar(&localExtractVenv, "local-extract-venv", "", "absolute path for the local extract Python virtual environment (default: ~/.local/share/nole/scrapling-venv)")
 	cmd.Flags().StringVar(&localExtractPython, "python", "", "Python 3.10+ executable to use for creating the local extract virtual environment (default: auto-detect python3/python)")

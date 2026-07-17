@@ -61,13 +61,172 @@ func TestSetupMessageStatesKeylessOperation(t *testing.T) {
 		t.Fatalf("setup --claude: %v\n%s", err, out.String())
 	}
 	text := out.String()
-	for _, want := range []string{"ZERO keys", "Firecrawl", "per-IP daily", "No Firecrawl key is required", "DDGS", "OPTIONAL"} {
+	for _, want := range []string{"ZERO keys", "DDGS", "keyless", "OPTIONAL"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("keyless onboarding message missing %q:\n%s", want, text)
 		}
 	}
+}
+
+func TestSetupOpenClawConfiguresBridgeWithoutFirecrawlKeyPrompt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	originalLookPath := openClawLookPath
+	originalOutput := runOpenClawSetupOutput
+	originalRun := runOpenClawSetupCommand
+	openClawLookPath = func(name string) (string, error) {
+		if name != "openclaw" {
+			t.Fatalf("unexpected lookup %q", name)
+		}
+		return "/usr/bin/openclaw", nil
+	}
+	var commands [][]string
+	runOpenClawSetupOutput = func(name string, args ...string) ([]byte, error) {
+		if name != "/usr/bin/openclaw" || strings.Join(args, " ") != "plugins list --json" {
+			t.Fatalf("unexpected OpenClaw inspect command: %q %#v", name, args)
+		}
+		return []byte(`{"plugins":[{"id":"firecrawl","origin":"bundled","webSearchProviderIds":["firecrawl-free","firecrawl"],"webFetchProviderIds":["firecrawl"]}]}`), nil
+	}
+	runOpenClawSetupCommand = func(name string, args ...string) error {
+		commands = append(commands, append([]string{name}, args...))
+		return nil
+	}
+	t.Cleanup(func() {
+		openClawLookPath = originalLookPath
+		runOpenClawSetupOutput = originalOutput
+		runOpenClawSetupCommand = originalRun
+	})
+
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"setup", "--openclaw"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("setup --openclaw: %v\n%s", err, out.String())
+	}
+
+	if len(commands) != 4 {
+		t.Fatalf("OpenClaw setup commands = %#v", commands)
+	}
+	wantPrefixes := [][]string{
+		{"/usr/bin/openclaw", "plugins", "enable", "firecrawl"},
+		{"/usr/bin/openclaw", "config", "set", "tools.web.search.provider", "firecrawl-free"},
+		{"/usr/bin/openclaw", "config", "set", "tools.web.fetch.provider", "firecrawl"},
+		{"/usr/bin/openclaw", "mcp", "set", "nole"},
+	}
+	for i, want := range wantPrefixes {
+		if len(commands[i]) < len(want) {
+			t.Fatalf("command %d too short: %#v", i, commands[i])
+		}
+		for j := range want {
+			if commands[i][j] != want[j] {
+				t.Fatalf("command %d = %#v, want prefix %#v", i, commands[i], want)
+			}
+		}
+	}
+	var mcpEntry mcpServerEntry
+	if err := json.Unmarshal([]byte(commands[3][4]), &mcpEntry); err != nil {
+		t.Fatalf("decode OpenClaw MCP entry: %v", err)
+	}
+	if !strings.HasSuffix(mcpEntry.Command, "nole-mcp-openclaw") || len(mcpEntry.Args) != 0 {
+		t.Fatalf("unexpected OpenClaw MCP entry: %+v", mcpEntry)
+	}
+
+	openClawWrapper := filepath.Join(home, ".local", "bin", "nole-mcp-openclaw")
+	wrapperBody, err := os.ReadFile(openClawWrapper)
+	if err != nil {
+		t.Fatalf("read OpenClaw wrapper: %v", err)
+	}
+	wrapperText := string(wrapperBody)
+	for _, want := range []string{"NOLE_CLIENT='openclaw'", "NOLE_OPENCLAW_CLI='/usr/bin/openclaw'", "NOLE_OPENCLAW_BRIDGE='full'"} {
+		if !strings.Contains(wrapperText, want) {
+			t.Fatalf("OpenClaw wrapper missing %q:\n%s", want, wrapperText)
+		}
+	}
+	if info, err := os.Stat(openClawWrapper); err != nil || info.Mode().Perm()&0100 == 0 {
+		t.Fatalf("OpenClaw setup must write executable wrapper: info=%v err=%v", info, err)
+	}
+	genericEnv := filepath.Join(home, ".config", "nole", ".env")
+	if body, err := os.ReadFile(genericEnv); err == nil && strings.Contains(string(body), "NOLE_CLIENT") {
+		t.Fatalf("OpenClaw mode leaked into generic Nole env: %s", body)
+	}
+	text := out.String()
 	if strings.Contains(text, "FIRECRAWL_API_KEY") {
-		t.Fatalf("zero-key setup must not mention or prompt for a Firecrawl credential: %s", text)
+		t.Fatalf("OpenClaw setup must not prompt for a Firecrawl key:\n%s", text)
+	}
+	for _, want := range []string{"OpenClaw", "firecrawl-free", "no Firecrawl key", "restart it once"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("OpenClaw setup output missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestEnsureOpenClawFirecrawlPluginInstallsOfficialCompatiblePackage(t *testing.T) {
+	originalOutput := runOpenClawSetupOutput
+	originalRun := runOpenClawSetupCommand
+	listCalls := 0
+	runOpenClawSetupOutput = func(_ string, args ...string) ([]byte, error) {
+		if strings.Join(args, " ") != "plugins list --json" {
+			t.Fatalf("unexpected inspect args: %#v", args)
+		}
+		listCalls++
+		if listCalls == 1 {
+			return []byte(`{"plugins":[]}`), nil
+		}
+		return []byte(`{"plugins":[{"id":"firecrawl","origin":"global","source":"/tmp/openclaw/node_modules/@openclaw/firecrawl-plugin/dist/index.js","webSearchProviderIds":["firecrawl"],"webFetchProviderIds":["firecrawl"]}]}`), nil
+	}
+	var actions [][]string
+	runOpenClawSetupCommand = func(name string, args ...string) error {
+		actions = append(actions, append([]string{name}, args...))
+		return nil
+	}
+	t.Cleanup(func() {
+		runOpenClawSetupOutput = originalOutput
+		runOpenClawSetupCommand = originalRun
+	})
+
+	provider, err := ensureOpenClawFirecrawlPlugin("/usr/bin/openclaw")
+	if err != nil {
+		t.Fatalf("ensure plugin: %v", err)
+	}
+	if provider != "" {
+		t.Fatalf("search provider = %q, want fetch-only selection", provider)
+	}
+	if len(actions) != 2 {
+		t.Fatalf("plugin actions = %#v", actions)
+	}
+	if got := strings.Join(actions[0], " "); got != "/usr/bin/openclaw plugins install @openclaw/firecrawl-plugin --pin" {
+		t.Fatalf("install action = %q", got)
+	}
+	if got := strings.Join(actions[1], " "); got != "/usr/bin/openclaw plugins enable firecrawl" {
+		t.Fatalf("enable action = %q", got)
+	}
+}
+
+func TestEnsureOpenClawFirecrawlPluginRejectsNonOfficialIDCollision(t *testing.T) {
+	originalOutput := runOpenClawSetupOutput
+	originalRun := runOpenClawSetupCommand
+	runOpenClawSetupOutput = func(string, ...string) ([]byte, error) {
+		return []byte(`{"plugins":[{"id":"firecrawl","origin":"global","source":"/tmp/evil/firecrawl.js","webSearchProviderIds":["firecrawl-free"],"webFetchProviderIds":["firecrawl"]}]}`), nil
+	}
+	called := false
+	runOpenClawSetupCommand = func(string, ...string) error {
+		called = true
+		return nil
+	}
+	t.Cleanup(func() {
+		runOpenClawSetupOutput = originalOutput
+		runOpenClawSetupCommand = originalRun
+	})
+
+	_, err := ensureOpenClawFirecrawlPlugin("/usr/bin/openclaw")
+	if err == nil || !strings.Contains(err.Error(), "non-official") {
+		t.Fatalf("expected non-official plugin rejection, got %v", err)
+	}
+	if called {
+		t.Fatal("non-official plugin was enabled")
 	}
 }
 

@@ -39,7 +39,7 @@ func TestProvidersCommandJSONIncludesCostPolicyWithoutSecrets(t *testing.T) {
 	if got := byName["brave"]; got.CostClass != core.CostClassDisabledNoKey || got.AllowedByPolicy || got.PolicyReason != "disabled_no_key" {
 		t.Fatalf("unexpected brave disabled status: %#v", got)
 	}
-	if got := byName["firecrawl"]; got.CostClass != core.CostClassKeylessFree || !got.AllowedByPolicy || !got.Available || got.FreeRemaining != 0 || got.Reason != "identified no-auth keyless mode: upstream client/IP eligibility and per-IP daily request/credit limits apply; account-backed mode is optional" {
+	if got := byName["firecrawl"]; got.CostClass != core.CostClassKeylessFree || !got.AllowedByPolicy || !got.Available || got.FreeRemaining != 0 || got.Reason != "keyless mode: limited/shared upstream; set FIRECRAWL_API_KEY for account-backed quota" {
 		t.Fatalf("unexpected firecrawl keyless status: %#v", got)
 	}
 	forbidden := []string{"SECRET", "Bearer", "Authorization", "api_key"}
@@ -110,9 +110,8 @@ func TestProvidersCommandPaidModeQualityFirstExplicitlyAllows(t *testing.T) {
 }
 
 // TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions asserts that the
-// --json output is an envelope (not a bare array) and that setup_suggestions
-// is populated when BYOK-only providers are absent. Firecrawl has a keyless
-// API path now, so a missing FIRECRAWL_API_KEY must not appear as a blocker.
+// --json output is an envelope (not a bare array) and generic clients retain
+// the existing optional direct Firecrawl API/BYOK suggestion.
 func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
 	clearProviderPolicyEnv(t)
 	// All BYOK keys are already cleared by clearProviderPolicyEnv; be explicit.
@@ -127,7 +126,7 @@ func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
 		t.Fatal("expected providers in envelope")
 	}
 	if len(envelope.SetupSuggestions) != 2 {
-		t.Fatalf("expected 2 setup_suggestions (brave/tavily missing; firecrawl is keyless), got %d: %#v",
+		t.Fatalf("expected 2 generic setup_suggestions (brave/tavily; direct Firecrawl is available), got %d: %#v",
 			len(envelope.SetupSuggestions), envelope.SetupSuggestions)
 	}
 	byKey := map[string]core.SetupSuggestion{}
@@ -141,7 +140,7 @@ func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
 		}
 	}
 	if _, ok := byKey["FIRECRAWL_API_KEY"]; ok {
-		t.Fatalf("FIRECRAWL_API_KEY should be optional now, got keys: %v", keysOf(byKey))
+		t.Fatalf("available direct Firecrawl path should not be a status blocker: %v", keysOf(byKey))
 	}
 	// Impact must be set for each suggestion.
 	for _, s := range envelope.SetupSuggestions {
@@ -151,6 +150,36 @@ func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
 		if s.SignupURL == "" {
 			t.Errorf("suggestion for %q has empty signup_url", s.MissingKey)
 		}
+	}
+}
+
+func TestProvidersCommandOpenClawModeUsesBridgeAndSuppressesOnlyFirecrawlKey(t *testing.T) {
+	clearProviderPolicyEnv(t)
+	t.Setenv("NOLE_CLIENT", "openclaw")
+	t.Setenv("NOLE_OPENCLAW_CLI", "/usr/bin/openclaw")
+	t.Setenv("NOLE_OPENCLAW_BRIDGE", "fetch-only")
+	// Even if the generic env contains an old key, the dedicated OpenClaw
+	// wrapper delegates to the host and classifies the route as keyless.
+	t.Setenv("FIRECRAWL_API_KEY", "placeholder-test-key")
+
+	envelope := decodeProvidersEnvelopeJSON(t)
+	var firecrawlStatus core.ProviderStatus
+	for _, status := range envelope.Providers {
+		if status.Name == "firecrawl" {
+			firecrawlStatus = status
+			break
+		}
+	}
+	if firecrawlStatus.CostClass != core.CostClassKeylessFree || !firecrawlStatus.AllowedByPolicy || !strings.Contains(firecrawlStatus.Reason, "OpenClaw web_fetch bridge active with keyless Firecrawl fallback") {
+		t.Fatalf("unexpected OpenClaw bridge status: %#v", firecrawlStatus)
+	}
+	for _, suggestion := range envelope.SetupSuggestions {
+		if suggestion.MissingKey == "FIRECRAWL_API_KEY" {
+			t.Fatalf("OpenClaw mode must not suggest a Firecrawl key: %#v", envelope.SetupSuggestions)
+		}
+	}
+	if len(envelope.SetupSuggestions) != 2 {
+		t.Fatalf("OpenClaw mode should preserve Brave/Tavily suggestions only: %#v", envelope.SetupSuggestions)
 	}
 }
 
@@ -233,7 +262,7 @@ func clearProviderPolicyEnv(t *testing.T) {
 	for _, key := range []string{
 		"BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY", "TAVILY_API_KEY", "FIRECRAWL_API_KEY",
 		"NOLE_COST_POLICY", "NOLE_HARD_CAP_CENTS", "NOLE_BRAVE_ESTIMATED_COST_CENTS", "NOLE_TAVILY_ESTIMATED_COST_CENTS",
-		"NOLE_FIRECRAWL_ESTIMATED_COST_CENTS",
+		"NOLE_FIRECRAWL_ESTIMATED_COST_CENTS", "NOLE_CLIENT", "NOLE_OPENCLAW_CLI", "NOLE_OPENCLAW_BRIDGE",
 		"NOLE_BRAVE_PAID", "NOLE_TAVILY_PAID", "NOLE_FIRECRAWL_PAID",
 		"NOLE_CACHE_TTL", "NOLE_CACHE_TTL_SECONDS",
 	} {

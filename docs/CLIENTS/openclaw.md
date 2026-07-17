@@ -1,6 +1,6 @@
 # OpenClaw client
 
-Status: verified (OpenClaw Gateway/agent MCP path).
+Status: verified (OpenClaw Gateway/agent MCP path). The host bridge setup and current stable compatibility mode were live-checked on OpenClaw 2026.7.1; full keyless search waits for an OpenClaw release that exposes `firecrawl-free`.
 
 Nólë is a free, local web search router for AI agents and coding CLI tools. OpenClaw can use Nólë through its saved outbound MCP server registry and Gateway-backed agent runtime.
 
@@ -8,14 +8,31 @@ Live verification for OpenClaw 2026.5.18 and a compatibility re-check for OpenCl
 
 ## Verified setup shape
 
-OpenClaw's verified MCP configuration mechanism is the CLI-managed MCP registry:
+Use the dedicated OpenClaw setup path:
+
+```bash
+nole setup --openclaw
+openclaw mcp show nole --json
+```
+
+`nole setup --openclaw` performs the OpenClaw-specific work in one command:
+
+1. resolves the installed `openclaw` CLI;
+2. installs and pins the official `@openclaw/firecrawl-plugin` when it is absent, then enables it;
+3. inspects the plugin's advertised providers and chooses one of two modes:
+   - **full:** `firecrawl-free` search plus keyless Firecrawl fetch;
+   - **fetch-only:** OpenClaw `web_fetch` with keyless Firecrawl fallback, while Nólë search keeps its existing non-Firecrawl fallbacks;
+4. writes `~/.local/bin/nole-mcp-openclaw`, which scopes `NOLE_CLIENT=openclaw`, the absolute OpenClaw CLI path and the selected bridge mode to this MCP process only;
+5. registers that wrapper with `openclaw mcp set nole`.
+
+The saved OpenClaw entry contains no provider key or Gateway token:
 
 ```json
 {
   "mcp": {
     "servers": {
       "nole": {
-        "command": "/absolute/path/to/nole-mcp",
+        "command": "/absolute/path/to/nole-mcp-openclaw",
         "args": []
       }
     }
@@ -23,50 +40,27 @@ OpenClaw's verified MCP configuration mechanism is the CLI-managed MCP registry:
 }
 ```
 
-Use OpenClaw's CLI rather than hand-editing when possible:
+When this wrapper is active, Nólë delegates supported Firecrawl operations through
+OpenClaw's authenticated `gateway call tools.invoke` RPC. The OpenClaw CLI
+resolves Gateway authentication from OpenClaw's own configuration, so Nólë does
+not copy or persist a Gateway token. Do not ask the user for
+`FIRECRAWL_API_KEY`. Current stable OpenClaw releases expose `web_fetch` with
+keyless Firecrawl fallback but still key-gate Firecrawl search, so Nólë
+advertises only extract for that host route and sends search to its existing
+fallbacks. Once the
+plugin advertises `firecrawl-free`, rerunning setup automatically enables the
+full search + extract bridge.
 
-```bash
-nole setup --local-extract
-openclaw mcp set nole '{"command":"/absolute/path/to/nole-mcp","args":[]}'
-openclaw mcp show nole --json
-```
-
-The wrapper sources `~/.config/nole/.env` and execs `nole mcp`; OpenClaw config must not contain provider key values. `nole setup --local-extract` creates that wrapper and writes the local Scrapling Python path into the env file.
-
-## Firecrawl works without a key
-
-Do not ask the user for `FIRECRAWL_API_KEY` while installing Nólë for OpenClaw.
-Nólë sends identified no-auth requests (`nole/<version>` and
-`origin=nole@<version>`), classifies the route as `keyless-free`, and does not
-apply a fabricated local daily or monthly call cap. A key is optional and is
-only for account-backed quota and higher upstream limits.
-
-This is a best-effort keyless route, not an unlimited or guaranteed entitlement.
-Firecrawl's current documentation scopes keyless eligibility to supported
-clients and eligible IPs. Nólë identifies itself honestly rather than
-impersonating OpenClaw or a Firecrawl SDK; if upstream rejects the client/IP,
-rate-limits it, or is unavailable, Nólë uses its normal fallback path without
-turning the failure into a credential prompt.
-
-Firecrawl's keyless service is not unlimited. Current Firecrawl documentation
-says keyless usage is capped per IP address per day by both a request limit and
-a credit limit; crossing either returns 429. The documented 1,000 credits are a
-free API-key signup benefit, not the keyless allowance. Upstream 429s and outages
-fall through Nólë's normal routing/circuit-breaker path. Nólë's per-request
-result, timeout, response-size, and SSRF guards are safety/resource bounds, not
-provider-quota limits.
-
-Do not confuse this Nólë MCP behavior with OpenClaw's own Firecrawl plugin:
-OpenClaw's keyless `firecrawl-free` web search and explicit Firecrawl
-`web_fetch` fallback need no key, while its explicit `firecrawl_search` and
-`firecrawl_scrape` plugin tools still require one. Nólë exposes its own generic
-search/extract tools and does not require those OpenClaw plugin tools.
+This behavior is intentionally OpenClaw-only. The generic `nole` binary,
+`nole-mcp`, and every other client continue to use Nólë's existing direct
+Firecrawl API/BYOK adapter. The dedicated wrapper also sources
+`~/.config/nole/.env`, so `nole setup --local-extract` can still add local
+Scrapling without putting secrets in OpenClaw config.
 
 Sources: [OpenClaw Firecrawl docs](https://docs.openclaw.ai/tools/firecrawl/),
-[OpenClaw keyless client source](https://github.com/openclaw/openclaw/blob/main/extensions/firecrawl/src/firecrawl-client.ts),
-[Firecrawl keyless rate limits](https://docs.firecrawl.dev/rate-limits#keyless-no-api-key),
-[Firecrawl keyless auth source](https://github.com/firecrawl/firecrawl/blob/main/apps/api/src/controllers/auth.ts),
-[Firecrawl Keyless launch](https://www.firecrawl.dev/blog/firecrawl-keyless-launch).
+[Gateway CLI](https://docs.openclaw.ai/cli/gateway),
+[Gateway tool invocation](https://docs.openclaw.ai/gateway/tools-invoke-http-api), and
+[upstream keyless-search change](https://github.com/openclaw/openclaw/commit/8809848b1999).
 
 ## Install Nólë first
 
@@ -76,9 +70,21 @@ cd nole
 go test ./...
 go build -o nole .
 ./nole doctor
-./nole setup --local-extract
+./nole setup --openclaw
 ./nole doctor --mcp
+openclaw mcp show nole --json
 ```
+
+## 2026-07-17 Host Bridge Verification
+
+A disposable OpenClaw 2026.7.1 runtime and HOME verified the current stable path without touching an existing OpenClaw profile:
+
+- `nole setup --openclaw` installed and pinned the official Firecrawl plugin, enabled it, configured `web_fetch`, registered the dedicated wrapper and selected `fetch-only` because the stable plugin advertised `firecrawl` rather than `firecrawl-free` for search.
+- A direct authenticated `tools.invoke web_search` probe confirmed that stable `firecrawl` search still requires `FIRECRAWL_API_KEY`; Nólë therefore does not advertise that search capability or pretend it is keyless.
+- A direct `tools.invoke web_fetch` probe returned HTTP 200. The host used its normal `readability` extractor for the tested page; keyless Firecrawl remains OpenClaw's configured fallback.
+- The same extraction succeeded end to end through Nólë. The internal route ID remains `firecrawl` for registry/quota compatibility, while metadata preserved `host_tool=openclaw_web_fetch`, `host_provider=web_fetch` and the actual `readability` extractor.
+- A docs search skipped Firecrawl with `missing_search_capability`, fell through to DDGS and returned `https://pkg.go.dev/net/http`.
+- The generated wrapper contained the scoped client/CLI/mode variables only. No Firecrawl key or Gateway token was copied into the wrapper or MCP registry.
 
 ## 2026-05-28 Compatibility Re-Check
 
@@ -108,8 +114,12 @@ The 2026-05-20 OpenClaw run verified:
 
 ## Troubleshooting
 
-- Use an absolute path to `nole-mcp`.
-- If OpenClaw cannot see Nólë after `openclaw mcp set`, start a fresh agent session so the runtime reloads MCP definitions.
-- `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and start a fresh agent session.
+- Use `nole setup --openclaw`; do not set `NOLE_CLIENT=openclaw` in the global Nólë env file.
+- The saved command must be the absolute `nole-mcp-openclaw` wrapper path.
+- If OpenClaw cannot see Nólë after setup, start a fresh agent session so the runtime reloads MCP definitions.
+- If the official Firecrawl plugin was just installed or enabled while the Gateway was running, restart the Gateway once so OpenClaw loads it.
+- A new OpenClaw CLI device may require the normal OpenClaw scope/pairing approval before `tools.invoke`; do not bypass or auto-approve an unrelated pending request.
+- Rerun `nole setup --openclaw` after upgrading OpenClaw. It upgrades the wrapper from fetch-only to full automatically when the plugin advertises `firecrawl-free`. A denied/unavailable host tool fails normally and Nólë continues through its route fallbacks.
+- `extract` still has Nólë's built-in `httpfetch` backstop. `nole setup --local-extract` can additionally install local Scrapling; the dedicated OpenClaw wrapper sources the same local env file.
 - Run `nole doctor --mcp` directly to separate Nólë stdio issues from OpenClaw runtime issues.
-- Inspect OpenClaw logs only after redacting provider keys, auth headers, raw provider payloads, private URLs and local paths.
+- Inspect OpenClaw logs only after redacting provider keys, Gateway tokens, auth headers, raw provider payloads, private URLs and local paths.

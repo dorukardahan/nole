@@ -49,10 +49,12 @@ Nólë reads provider keys from environment variables:
 ```bash
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
-export FIRECRAWL_API_KEY="..."       # optional account-backed/higher-limit mode
+export FIRECRAWL_API_KEY="..."
 ```
 
-Do not ask for a Firecrawl key during a zero-key install. Nólë sends identified no-auth keyless requests (`nole/<version>` plus `origin=nole@<version>`) without a local artificial call cap. Firecrawl's upstream client/IP eligibility, per-IP daily request limits and per-IP daily credit limits remain authoritative; rejected or exhausted keyless calls fall through Nólë's normal fallback path. Mention `FIRECRAWL_API_KEY` only when the user already has an account/key or explicitly asks for account-backed higher limits. For Brave/Tavily, tell users who want those optional routes to create keys in provider dashboards and set them locally. Never ask the user to paste real values into chat. If a GUI app does not inherit shell env, use a local env file such as `~/.config/nole/.env` with mode `0600` and configure the client launcher to source it.
+Do not ask the user to paste real keys into chat. Tell the user to create keys in provider dashboards and set them locally. If a GUI app does not inherit shell env, use a local env file such as `~/.config/nole/.env` with mode `0600` and configure the client launcher to source it.
+
+**OpenClaw-only exception:** use `nole setup --openclaw` and do not ask for `FIRECRAWL_API_KEY`. That command creates a dedicated `nole-mcp-openclaw` wrapper and delegates supported Firecrawl operations through OpenClaw's authenticated `tools.invoke` gateway. If OpenClaw advertises `firecrawl-free`, search and extract are delegated; current stable releases use OpenClaw `web_fetch` with keyless Firecrawl fallback and keep Nólë's existing search fallbacks. The mode is scoped to that wrapper; generic Nólë CLI and every other MCP client keep the existing direct Firecrawl API/BYOK behavior.
 
 For details and overage cautions, read `docs/PROVIDER-KEYS.md`.
 

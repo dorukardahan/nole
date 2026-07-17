@@ -32,6 +32,7 @@ func defaultService() *core.Service {
 	registry := core.NewRegistry()
 
 	firecrawlKey := os.Getenv("FIRECRAWL_API_KEY")
+	clientMode := strings.ToLower(strings.TrimSpace(os.Getenv("NOLE_CLIENT")))
 	braveKey := os.Getenv("BRAVE_API_KEY")
 	if braveKey == "" {
 		braveKey = os.Getenv("BRAVE_SEARCH_API_KEY")
@@ -50,10 +51,30 @@ func defaultService() *core.Service {
 	// en.wikipedia.org would stall those routes ahead of DDGS on every request.
 	breakerOpts := providerhttp.DefaultBreakerOptions()
 
-	// Firecrawl — real adapter (search + extract). Firecrawl now supports
-	// limited keyless API calls; FIRECRAWL_API_KEY remains optional for
-	// account-backed quota / scale.
-	_ = registry.Register(firecrawl.New(firecrawl.WithAPIKey(firecrawlKey), firecrawl.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
+	// Firecrawl — real adapter (search + extract). The direct API behavior is
+	// unchanged for generic clients. The dedicated OpenClaw wrapper opts into a
+	// host-tool bridge instead; current stable hosts provide web_fetch with a
+	// keyless Firecrawl fallback, while newer hosts may also expose firecrawl-free.
+	firecrawlOptions := []firecrawl.Option{
+		firecrawl.WithAPIKey(firecrawlKey),
+		firecrawl.WithBreaker(providerhttp.NewBreaker(breakerOpts)),
+	}
+	effectiveFirecrawlKey := firecrawlKey
+	if clientMode == "openclaw" {
+		openClawCLI := strings.TrimSpace(os.Getenv("NOLE_OPENCLAW_CLI"))
+		if openClawCLI == "" {
+			openClawCLI = "openclaw"
+		}
+		bridgeMode := firecrawl.OpenClawBridgeMode(strings.TrimSpace(os.Getenv("NOLE_OPENCLAW_BRIDGE")))
+		if bridgeMode != firecrawl.OpenClawBridgeFull && bridgeMode != firecrawl.OpenClawBridgeFetchOnly {
+			bridgeMode = firecrawl.OpenClawBridgeFull
+		}
+		firecrawlOptions = append(firecrawlOptions, firecrawl.WithOpenClawBridgeMode(openClawCLI, bridgeMode))
+		// OpenClaw owns the upstream call/quota. An inherited generic Firecrawl
+		// key is intentionally not charged or suggested in this wrapper process.
+		effectiveFirecrawlKey = ""
+	}
+	_ = registry.Register(firecrawl.New(firecrawlOptions...))
 
 	// Brave — real adapter (search only)
 	if braveKey != "" {
@@ -91,7 +112,7 @@ func defaultService() *core.Service {
 	// makes extract / search_and_extract work with zero keys and zero setup.
 	_ = registry.Register(httpfetch.New())
 
-	entries := defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey)
+	entries := defaultQuotaEntries(braveKey, tavilyKey, effectiveFirecrawlKey)
 	ledger := defaultQuotaLedger(defaultQuotaPolicyFromEnv(), entries)
 
 	opts := []core.ServiceOption{
@@ -99,6 +120,7 @@ func defaultService() *core.Service {
 		// only, formatted per NOLE_LOG (text|json|off). stdout stays reserved for
 		// MCP JSON-RPC, REST bodies, and --json command output.
 		core.WithLogger(nolelog.FromEnv(os.Stderr)),
+		core.WithClientMode(clientMode),
 	}
 	if cache := defaultResponseCacheFromEnv(); cache != nil {
 		opts = append(opts, core.WithResponseCache(cache))

@@ -25,10 +25,11 @@ const maxSearchLimit = 20
 const maxExtractTop = 3
 
 type Service struct {
-	registry *Registry
-	ledger   QuotaLedger
-	router   *Router
-	cache    ResponseCache
+	registry   *Registry
+	ledger     QuotaLedger
+	router     *Router
+	cache      ResponseCache
+	clientMode string
 	// sfSearch/sfExtract collapse concurrent identical requests into a single
 	// upstream fetch and a single quota debit (cache-miss stampede guard). The
 	// zero value is ready to use; keys match the cache keys so coalescing and
@@ -70,6 +71,14 @@ func WithResponseCache(cache ResponseCache) ServiceOption {
 func WithLogger(log *nolelog.Logger) ServiceOption {
 	return func(s *Service) {
 		s.log = log
+	}
+}
+
+// WithClientMode enables narrowly scoped host-integration behavior. Core never
+// guesses this mode from PATH or process ancestry.
+func WithClientMode(mode string) ServiceOption {
+	return func(s *Service) {
+		s.clientMode = strings.ToLower(strings.TrimSpace(mode))
 	}
 }
 
@@ -567,7 +576,7 @@ func (s *Service) ProviderStatusWithOptions(ctx context.Context, opts ProviderSt
 		}
 		statuses = append(statuses, merged)
 	}
-	suggestions := BuildSetupSuggestions(configured, extractAvailable)
+	suggestions := filterSetupSuggestionsForClient(BuildSetupSuggestions(configured, extractAvailable), s.clientMode)
 	return ProviderStatusResponse{
 		Providers:        statuses,
 		SetupSuggestions: suggestions,

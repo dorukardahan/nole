@@ -7,12 +7,11 @@ import (
 )
 
 // BuildSetupSuggestions inspects the set of configured BYOK providers and
-// returns one suggestion per missing key-gated provider. Providers that already
-// work keylessly (currently Firecrawl) stay visible in provider status but do
-// not become credential prompts. Suggestions are returned sorted by
+// returns one suggestion per missing key. Suggestions are returned sorted by
 // (impact desc, missing key asc) so the most actionable items come first.
 //
-// `configured` is keyed by provider name (e.g. "brave").
+// `configured` is keyed by provider name (e.g. "brave"). DDGS is keyless and
+// is never in this map.
 //
 // `extractAvailable` reports whether URL extraction works AT ALL in the running
 // service — true whenever any available extract provider is registered, including
@@ -35,13 +34,6 @@ func BuildSetupSuggestions(configured map[string]bool, extractAvailable bool) []
 		if configured[p.Name] {
 			continue
 		}
-		// Firecrawl's no-auth keyless route is available on a best-effort basis
-		// subject to upstream client/IP eligibility. A key changes quota/limits;
-		// capability. Keep it visible in provider status, but never turn it into
-		// a setup suggestion that encourages an agent to ask the user for a key.
-		if p.Name == "firecrawl" {
-			continue
-		}
 		impact := classifyImpact(p, hasKeyedExtract, extractAvailable)
 		out = append(out, SetupSuggestion{
 			MissingKey:        p.EnvVars[0], // primary env var name
@@ -61,6 +53,20 @@ func BuildSetupSuggestions(configured map[string]bool, extractAvailable bool) []
 		return out[i].MissingKey < out[j].MissingKey
 	})
 	return out
+}
+
+func filterSetupSuggestionsForClient(suggestions []SetupSuggestion, clientMode string) []SetupSuggestion {
+	if !strings.EqualFold(strings.TrimSpace(clientMode), "openclaw") {
+		return suggestions
+	}
+	filtered := make([]SetupSuggestion, 0, len(suggestions))
+	for _, suggestion := range suggestions {
+		if suggestion.MissingKey == "FIRECRAWL_API_KEY" {
+			continue
+		}
+		filtered = append(filtered, suggestion)
+	}
+	return filtered
 }
 
 func classifyImpact(p BYOKProvider, hasKeyedExtract, extractAvailable bool) string {
@@ -86,8 +92,8 @@ func classifyImpact(p BYOKProvider, hasKeyedExtract, extractAvailable bool) stri
 	if p.Name == "tavily" && hasKeyedExtract {
 		return "medium"
 	}
-	// LOW: the provider only adds redundancy. Kept for future keyed providers;
-	// keyless-capable Firecrawl is excluded before impact classification.
+	// LOW: the provider only adds redundancy. Today this is Firecrawl when
+	// Tavily already covers extract.
 	return "low"
 }
 
