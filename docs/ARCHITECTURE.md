@@ -15,7 +15,7 @@ The process entrypoint is `main.go`, which builds the Cobra command tree and ren
 | `main` (process entry) | `main.go:11` | Builds root via `cli.NewRootCommand()`, executes, on error prints `safeerr.Message(err)` to stderr then `os.Exit(1)`. |
 | `NewRootCommand` (cobra root) | `internal/cli/root.go:7` | `Use="nole"`, `SilenceUsage+SilenceErrors=true`. Registers all 14 subcommands. |
 
-Subcommands (registered `internal/cli/root.go:14-27`):
+Subcommands (registered `internal/cli/root.go:18-31`):
 
 | Subcommand | Constructor | Anchor | Role |
 |---|---|---|---|
@@ -179,7 +179,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `parseShellEnvAssignment` | func | `internal/cli/env_file.go:45` | Parses `KEY=VALUE` (supports `export `, comments, quotes); existing env wins. |
 | `parseDoubleQuotedShellValue` | func | `internal/cli/env_file.go:121` | Double-quoted shell values w/ escapes + `os.ExpandEnv`, preserving `\$`. |
 
-**Data flow.** Entry is `root.go:14-27`. Before any service call, `app.go:25` calls `loadDefaultNoleEnvFile()`. `search.go`/`extract.go` parse `--insight` (`app.go:282`), call `runSearch`→`Service.Search`/`Service.Extract`, apply `applyXxxInsightMode`, then `writeJSONTo` or `writeHumanRoutingInsight`. On error with `--json` they emit `buildCLIErrorWithInsightMode`. `plan.go` classify/route-plan call pure core planners (provider-free). `research.go` is a thin wrapper over `core.Service.ResearchWithOptions`, which classifies the question, prevalidates/canonicalizes optional SearchOptions, fans `Service.Search` across task-fit routes with those options, dedupes, and `Service.Extract`s `min(sources, max_steps, 5)` URLs, returning evidence (sources + extracts) with no composed summary; `core.Service.SearchAndExtract` does one search + top-N extract. `http.go` re-exposes Service over REST (incl. `/api/search_and_extract`, `/api/research`) + MCP bridge, with `route_trace` opt-in via `include_trace`. `doctor.go --mcp` runs `checkMCPStdioSmoke` (0 stdout) + `checkMCPProtocolSmoke` (subprocess handshake).
+**Data flow.** Entry is `root.go:18-31`. Before any service call, `app.go:25` calls `loadDefaultNoleEnvFile()`. `search.go`/`extract.go` parse `--insight` (`app.go:282`), call `runSearch`→`Service.Search`/`Service.Extract`, apply `applyXxxInsightMode`, then `writeJSONTo` or `writeHumanRoutingInsight`. On error with `--json` they emit `buildCLIErrorWithInsightMode`. `plan.go` classify/route-plan call pure core planners (provider-free). `research.go` is a thin wrapper over `core.Service.ResearchWithOptions`, which classifies the question, prevalidates/canonicalizes optional SearchOptions, fans `Service.Search` across task-fit routes with those options, dedupes, and `Service.Extract`s `min(sources, max_steps, 5)` URLs, returning evidence (sources + extracts) with no composed summary; `core.Service.SearchAndExtract` does one search + top-N extract. `http.go` re-exposes Service over REST (incl. `/api/search_and_extract`, `/api/research`) + MCP bridge, with `route_trace` opt-in via `include_trace`. `doctor.go --mcp` runs `checkMCPStdioSmoke` (0 stdout) + `checkMCPProtocolSmoke` (subprocess handshake).
 
 ### Area: cli-setup — `nole setup` MCP client config writers + local-extract Scrapling bootstrap
 
