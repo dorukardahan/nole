@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -56,6 +57,7 @@ func WithOpenClawCommandRunner(runner OpenClawCommandRunner) Option {
 
 func runOpenClawCommand(ctx context.Context, command string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.Env = sanitizedOpenClawCommandEnv(os.Environ())
 	stdout := &boundedCommandBuffer{limit: providerhttp.MaxExtractResponseBytes}
 	stderr := &boundedCommandBuffer{limit: openClawStderrLimit}
 	cmd.Stdout = stdout
@@ -64,6 +66,33 @@ func runOpenClawCommand(ctx context.Context, command string, args ...string) ([]
 		return nil, err
 	}
 	return append([]byte(nil), stdout.Bytes()...), nil
+}
+
+func sanitizedOpenClawCommandEnv(environ []string) []string {
+	stripped := map[string]struct{}{
+		"FIRECRAWL_API_KEY":    {},
+		"BRAVE_API_KEY":        {},
+		"BRAVE_SEARCH_API_KEY": {},
+		"TAVILY_API_KEY":       {},
+	}
+	result := make([]string, 0, len(environ))
+	for _, entry := range environ {
+		name, _, found := strings.Cut(entry, "=")
+		if found {
+			remove := false
+			for secretName := range stripped {
+				if strings.EqualFold(name, secretName) {
+					remove = true
+					break
+				}
+			}
+			if remove {
+				continue
+			}
+		}
+		result = append(result, entry)
+	}
+	return result
 }
 
 type boundedCommandBuffer struct {

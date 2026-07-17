@@ -197,8 +197,19 @@ func TestOpenClawBridgeProductionRunnerExecutesCLI(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture is POSIX-only")
 	}
+	t.Setenv("FIRECRAWL_API_KEY", "must-not-reach-openclaw")
+	t.Setenv("BRAVE_API_KEY", "must-not-reach-openclaw")
+	t.Setenv("BRAVE_SEARCH_API_KEY", "must-not-reach-openclaw")
+	t.Setenv("TAVILY_API_KEY", "must-not-reach-openclaw")
+	t.Setenv("OPENCLAW_GATEWAY_TOKEN", "gateway-test-token")
 	script := filepath.Join(t.TempDir(), "openclaw")
 	body := `#!/bin/sh
+if [ -n "${FIRECRAWL_API_KEY:-}" ] || [ -n "${BRAVE_API_KEY:-}" ] || [ -n "${BRAVE_SEARCH_API_KEY:-}" ] || [ -n "${TAVILY_API_KEY:-}" ]; then
+  exit 9
+fi
+if [ "${OPENCLAW_GATEWAY_TOKEN:-}" != "gateway-test-token" ]; then
+  exit 8
+fi
 printf '%s' '{"ok":true,"toolName":"web_search","output":{"details":{"provider":"firecrawl-free","results":[{"title":"CLI","url":"https://example.com/cli","description":"from cli"}]}}}'
 `
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
