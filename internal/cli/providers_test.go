@@ -153,11 +153,10 @@ func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
 	}
 }
 
-func TestProvidersCommandOpenClawModeUsesBridgeAndSuppressesOnlyFirecrawlKey(t *testing.T) {
+func TestProvidersCommandOpenClawMissingModeFailsClosedToFetchOnly(t *testing.T) {
 	clearProviderPolicyEnv(t)
 	t.Setenv("NOLE_CLIENT", "openclaw")
 	t.Setenv("NOLE_OPENCLAW_CLI", "/usr/bin/openclaw")
-	t.Setenv("NOLE_OPENCLAW_BRIDGE", "fetch-only")
 	// Even if the generic env contains an old key, the dedicated OpenClaw
 	// wrapper delegates to the host and classifies the route as keyless.
 	t.Setenv("FIRECRAWL_API_KEY", "placeholder-test-key")
@@ -181,6 +180,32 @@ func TestProvidersCommandOpenClawModeUsesBridgeAndSuppressesOnlyFirecrawlKey(t *
 	if len(envelope.SetupSuggestions) != 2 {
 		t.Fatalf("OpenClaw mode should preserve Brave/Tavily suggestions only: %#v", envelope.SetupSuggestions)
 	}
+}
+
+func TestProvidersCommandOpenClawExplicitFullAdvertisesSearch(t *testing.T) {
+	clearProviderPolicyEnv(t)
+	t.Setenv("NOLE_CLIENT", "openclaw")
+	t.Setenv("NOLE_OPENCLAW_CLI", "/usr/bin/openclaw")
+	t.Setenv("NOLE_OPENCLAW_BRIDGE", "full")
+
+	envelope := decodeProvidersEnvelopeJSON(t)
+	for _, status := range envelope.Providers {
+		if status.Name != "firecrawl" {
+			continue
+		}
+		hasSearch := false
+		for _, capability := range status.Capabilities {
+			if capability == core.CapabilitySearch {
+				hasSearch = true
+				break
+			}
+		}
+		if !hasSearch || !strings.Contains(status.Reason, "search and extract") {
+			t.Fatalf("explicit full mode must advertise host search: %#v", status)
+		}
+		return
+	}
+	t.Fatal("firecrawl status missing")
 }
 
 func TestProviderHumanReasonSurfacesSanitizedLiveUsageFailure(t *testing.T) {
