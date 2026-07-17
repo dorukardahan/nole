@@ -110,6 +110,7 @@ type openClawSearchDetails struct {
 		URL         string   `json:"url"`
 		Description string   `json:"description"`
 		Content     string   `json:"content"`
+		Published   string   `json:"published"`
 		PublishedAt string   `json:"publishedAt"`
 		Score       *float64 `json:"score"`
 	} `json:"results"`
@@ -224,13 +225,17 @@ func (p Provider) searchViaOpenClaw(ctx context.Context, req core.SearchRequest,
 		if snippet == "" {
 			snippet = item.Content
 		}
+		publishedAt := item.PublishedAt
+		if publishedAt == "" {
+			publishedAt = item.Published
+		}
 		results = append(results, core.SearchResult{
 			Title:       item.Title,
 			URL:         item.URL,
 			Snippet:     core.TruncateRunes(snippet, 300),
 			Provider:    "firecrawl",
 			Score:       item.Score,
-			PublishedAt: item.PublishedAt,
+			PublishedAt: publishedAt,
 		})
 	}
 	return core.SearchResponse{

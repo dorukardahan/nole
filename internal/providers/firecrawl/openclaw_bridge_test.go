@@ -38,7 +38,7 @@ func TestOpenClawBridgeSearchUsesGatewayToolAndMapsResults(t *testing.T) {
 						"title": "Nole",
 						"url": "https://example.com/nole",
 						"description": "A result",
-						"publishedAt": "2026-07-01"
+						"published": "2026-07-01"
 					}]
 				}
 			}
