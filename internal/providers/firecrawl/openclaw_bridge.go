@@ -207,17 +207,6 @@ func (p Provider) searchViaOpenClaw(ctx context.Context, req core.SearchRequest,
 		"query": req.Query,
 		"count": hostLimit,
 	}
-	if country := strings.TrimSpace(req.Options.Country); country != "" {
-		args["country"] = country
-	}
-	if freshness := core.FreshnessTimeRange(req.Options.Freshness); freshness != "" {
-		args["freshness"] = freshness
-	} else {
-		switch req.Task {
-		case core.TaskNews, core.TaskFactcheck:
-			args["freshness"] = "month"
-		}
-	}
 	output, err := p.invokeOpenClawTool(ctx, "web_search", args)
 	if err != nil {
 		return core.SearchResponse{}, err

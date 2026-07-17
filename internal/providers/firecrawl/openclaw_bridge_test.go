@@ -71,8 +71,11 @@ func TestOpenClawBridgeSearchUsesGatewayToolAndMapsResults(t *testing.T) {
 	if params.Args["query"] != "nole openclaw" || params.Args["count"] != float64(10) {
 		t.Fatalf("unexpected web_search args: %#v", params.Args)
 	}
-	if params.Args["country"] != "tr" || params.Args["freshness"] != "day" {
-		t.Fatalf("search option mapping lost: %#v", params.Args)
+	if _, ok := params.Args["country"]; ok {
+		t.Fatalf("unsupported country filter forwarded to Firecrawl host: %#v", params.Args)
+	}
+	if _, ok := params.Args["freshness"]; ok {
+		t.Fatalf("unsupported freshness filter forwarded to Firecrawl host: %#v", params.Args)
 	}
 	if len(resp.Results) != 1 || resp.Results[0].URL != "https://example.com/nole" {
 		t.Fatalf("unexpected results: %+v", resp.Results)
