@@ -21,27 +21,25 @@ GO_VERSION=$(awk '$1 == "go" { print $2; exit }' "$ROOT/go.mod")
 if [[ ! "$GO_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
   fail "could not derive a valid Go version from the go directive in go.mod"
 fi
-GO_MAJOR_MINOR=$(printf '%s\n' "$GO_VERSION" | awk -F. '{ print $1 "." $2 }')
-
 check_readme_minimum() {
-  local major_minor_pattern=${GO_MAJOR_MINOR//./\\.}
+  local version_pattern=${GO_VERSION//./\\.}
   local exact_reference="\`go ${GO_VERSION}\`"
 
-  if ! grep -E "^[[:space:]]*-[[:space:]]+Go[[:space:]]+${major_minor_pattern}\\+[[:space:]]+for building from source" "$ROOT/README.md" \
+  if ! grep -E "^[[:space:]]*-[[:space:]]+Go[[:space:]]+${version_pattern}\\+[[:space:]]+for building from source" "$ROOT/README.md" \
     | grep -F "$exact_reference" \
     | grep -Fq '`go.mod`'; then
-    fail "README.md must document a Go ${GO_MAJOR_MINOR}+ minimum for building from source and reference the exact go ${GO_VERSION} directive from go.mod"
+    fail "README.md must document a Go ${GO_VERSION}+ minimum for building from source and reference the exact go ${GO_VERSION} directive from go.mod"
   fi
 }
 
 check_agents_minimum() {
-  local major_minor_pattern=${GO_MAJOR_MINOR//./\\.}
+  local version_pattern=${GO_VERSION//./\\.}
   local exact_reference="\`go ${GO_VERSION}\`"
 
-  if ! grep -E "[Ii]nstall[[:space:]]+Go[[:space:]]+${major_minor_pattern}\\+([^0-9.]|$)" "$ROOT/AGENTS.md" \
+  if ! grep -E "[Ii]nstall[[:space:]]+Go[[:space:]]+${version_pattern}\\+([^0-9.]|$)" "$ROOT/AGENTS.md" \
     | grep -F "$exact_reference" \
     | grep -Fq '`go.mod`'; then
-    fail "AGENTS.md must document a Go ${GO_MAJOR_MINOR}+ install minimum and reference the exact go ${GO_VERSION} directive from go.mod"
+    fail "AGENTS.md must document a Go ${GO_VERSION}+ install minimum and reference the exact go ${GO_VERSION} directive from go.mod"
   fi
 }
 
