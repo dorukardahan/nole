@@ -5,6 +5,10 @@ import (
 )
 
 func NewRootCommand() *cobra.Command {
+	return newRootCommand(newMCPCommand())
+}
+
+func newRootCommand(mcpCommand *cobra.Command) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "nole",
 		Short:         "Nólë: BYOK free-tier search/retrieval router for AI agents",
@@ -20,7 +24,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newProvidersCommand())
 	cmd.AddCommand(newDoctorCommand())
 	cmd.AddCommand(newConfigCommand())
-	cmd.AddCommand(newMCPCommand())
+	cmd.AddCommand(mcpCommand)
 	cmd.AddCommand(newServeCommand())
 	cmd.AddCommand(newSetupCommand())
 	cmd.AddCommand(newVersionCommand())
