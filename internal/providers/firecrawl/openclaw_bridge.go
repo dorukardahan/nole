@@ -21,7 +21,10 @@ const (
 	openClawStderrLimit   = 4096
 )
 
-var errOpenClawOutputTooLarge = errors.New("openclaw output exceeded limit")
+var (
+	errOpenClawOutputTooLarge = errors.New("openclaw output exceeded limit")
+	errOpenClawPolicyRefusal  = errors.New("openclaw policy refused tool call")
+)
 
 // OpenClawCommandRunner executes the authenticated OpenClaw CLI. Production
 // uses exec.CommandContext; tests inject a deterministic runner. The bridge is
@@ -199,6 +202,10 @@ func (p Provider) invokeOpenClawTool(ctx context.Context, toolName string, args 
 			p.breaker.RecordCancellation(generation)
 			return
 		}
+		if errors.Is(err, errOpenClawPolicyRefusal) {
+			p.breaker.RecordSuccess(generation)
+			return
+		}
 		p.breaker.RecordFailure(generation)
 	}()
 
@@ -238,10 +245,24 @@ func (p Provider) invokeOpenClawTool(ctx context.Context, toolName string, args 
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return openClawAgentToolResult{}, fmt.Errorf("firecrawl: OpenClaw bridge returned invalid JSON")
 	}
-	if !result.OK || result.ToolName != toolName || len(result.Output.Details) == 0 || string(result.Output.Details) == "null" {
+	if !result.OK {
+		if result.Error != nil && isOpenClawPolicyRefusalCode(result.Error.Code) {
+			return openClawAgentToolResult{}, fmt.Errorf("%w: firecrawl: OpenClaw bridge tool call was refused", errOpenClawPolicyRefusal)
+		}
+		return openClawAgentToolResult{}, fmt.Errorf("firecrawl: OpenClaw bridge tool call failed")
+	}
+	if result.ToolName != toolName || len(result.Output.Details) == 0 || string(result.Output.Details) == "null" {
 		return openClawAgentToolResult{}, fmt.Errorf("firecrawl: OpenClaw bridge tool call failed")
 	}
 	return result.Output, nil
+}
+
+func isOpenClawPolicyRefusalCode(code string) bool {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	return strings.HasPrefix(code, "APPROVAL_") ||
+		strings.Contains(code, "POLICY") ||
+		code == "PERMISSION_DENIED" ||
+		code == "FORBIDDEN"
 }
 
 func isOpenClawFirecrawlProvider(provider string) bool {

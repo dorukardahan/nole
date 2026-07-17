@@ -168,14 +168,19 @@ func TestEnsureOpenClawFirecrawlPluginInstallsOfficialCompatiblePackage(t *testi
 	originalRun := runOpenClawSetupCommand
 	listCalls := 0
 	runOpenClawSetupOutput = func(_ string, args ...string) ([]byte, error) {
-		if strings.Join(args, " ") != "plugins list --json" {
+		switch strings.Join(args, " ") {
+		case "plugins list --json":
+			listCalls++
+			if listCalls == 1 {
+				return []byte(`{"plugins":[]}`), nil
+			}
+			return []byte(`{"plugins":[{"id":"firecrawl","origin":"global","webSearchProviderIds":["firecrawl"],"webFetchProviderIds":["firecrawl"]}]}`), nil
+		case "plugins inspect firecrawl --json":
+			return []byte(`{"plugin":{"id":"firecrawl","packageName":"@openclaw/firecrawl-plugin","trustedOfficialInstall":true},"install":{"source":"npm","resolvedName":"@openclaw/firecrawl-plugin","integrity":"sha512-test"}}`), nil
+		default:
 			t.Fatalf("unexpected inspect args: %#v", args)
+			return nil, nil
 		}
-		listCalls++
-		if listCalls == 1 {
-			return []byte(`{"plugins":[]}`), nil
-		}
-		return []byte(`{"plugins":[{"id":"firecrawl","origin":"global","source":"/tmp/openclaw/node_modules/@openclaw/firecrawl-plugin/dist/index.js","webSearchProviderIds":["firecrawl"],"webFetchProviderIds":["firecrawl"]}]}`), nil
 	}
 	var actions [][]string
 	runOpenClawSetupCommand = func(name string, args ...string) error {
@@ -205,11 +210,19 @@ func TestEnsureOpenClawFirecrawlPluginInstallsOfficialCompatiblePackage(t *testi
 	}
 }
 
-func TestEnsureOpenClawFirecrawlPluginRejectsNonOfficialIDCollision(t *testing.T) {
+func TestEnsureOpenClawFirecrawlPluginRejectsUntrustedOfficialNameSpoof(t *testing.T) {
 	originalOutput := runOpenClawSetupOutput
 	originalRun := runOpenClawSetupCommand
-	runOpenClawSetupOutput = func(string, ...string) ([]byte, error) {
-		return []byte(`{"plugins":[{"id":"firecrawl","origin":"global","source":"/tmp/node_modules/@openclaw/firecrawl-plugin/../../evil.js","webSearchProviderIds":["firecrawl-free"],"webFetchProviderIds":["firecrawl"]}]}`), nil
+	runOpenClawSetupOutput = func(_ string, args ...string) ([]byte, error) {
+		switch strings.Join(args, " ") {
+		case "plugins list --json":
+			return []byte(`{"plugins":[{"id":"firecrawl","origin":"global","webSearchProviderIds":["firecrawl-free"],"webFetchProviderIds":["firecrawl"]}]}`), nil
+		case "plugins inspect firecrawl --json":
+			return []byte(`{"plugin":{"id":"firecrawl","packageName":"@openclaw/firecrawl-plugin","trustedOfficialInstall":false},"install":{"source":"path","resolvedName":"@openclaw/firecrawl-plugin","integrity":""}}`), nil
+		default:
+			t.Fatalf("unexpected inspect args: %#v", args)
+			return nil, nil
+		}
 	}
 	called := false
 	runOpenClawSetupCommand = func(string, ...string) error {

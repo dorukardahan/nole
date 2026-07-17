@@ -27,10 +27,22 @@ type openClawPluginList struct {
 	Plugins []struct {
 		ID                   string   `json:"id"`
 		Origin               string   `json:"origin"`
-		Source               string   `json:"source"`
 		WebSearchProviderIDs []string `json:"webSearchProviderIds"`
 		WebFetchProviderIDs  []string `json:"webFetchProviderIds"`
 	} `json:"plugins"`
+}
+
+type openClawPluginInspect struct {
+	Plugin struct {
+		ID                     string `json:"id"`
+		PackageName            string `json:"packageName"`
+		TrustedOfficialInstall bool   `json:"trustedOfficialInstall"`
+	} `json:"plugin"`
+	Install struct {
+		Source       string `json:"source"`
+		ResolvedName string `json:"resolvedName"`
+		Integrity    string `json:"integrity"`
+	} `json:"install"`
 }
 
 type openClawSetupOptions struct {
@@ -136,7 +148,11 @@ func inspectOpenClawFirecrawlPlugin(cliPath string) ([]string, bool, error) {
 		if plugin.ID != "firecrawl" {
 			continue
 		}
-		if !trustedOpenClawFirecrawlPlugin(plugin.Origin, plugin.Source) {
+		trusted, err := trustedOpenClawFirecrawlPlugin(cliPath, plugin.Origin)
+		if err != nil {
+			return nil, true, err
+		}
+		if !trusted {
 			return nil, true, fmt.Errorf("refusing to enable non-official OpenClaw plugin with id firecrawl")
 		}
 		if !openClawContainsString(plugin.WebFetchProviderIDs, "firecrawl") {
@@ -147,12 +163,24 @@ func inspectOpenClawFirecrawlPlugin(cliPath string) ([]string, bool, error) {
 	return nil, false, nil
 }
 
-func trustedOpenClawFirecrawlPlugin(origin, source string) bool {
+func trustedOpenClawFirecrawlPlugin(cliPath, origin string) (bool, error) {
 	if strings.EqualFold(strings.TrimSpace(origin), "bundled") {
-		return true
+		return true, nil
 	}
-	source = filepath.ToSlash(filepath.Clean(strings.TrimSpace(source)))
-	return source == "@openclaw/firecrawl-plugin" || strings.Contains(source, "/node_modules/@openclaw/firecrawl-plugin/")
+	raw, err := runOpenClawSetupOutput(cliPath, "plugins", "inspect", "firecrawl", "--json")
+	if err != nil {
+		return false, fmt.Errorf("inspect OpenClaw Firecrawl plugin provenance: %w", err)
+	}
+	var inspected openClawPluginInspect
+	if err := json.Unmarshal(raw, &inspected); err != nil {
+		return false, fmt.Errorf("decode OpenClaw Firecrawl plugin provenance")
+	}
+	return inspected.Plugin.ID == "firecrawl" &&
+		inspected.Plugin.PackageName == "@openclaw/firecrawl-plugin" &&
+		inspected.Plugin.TrustedOfficialInstall &&
+		inspected.Install.Source == "npm" &&
+		inspected.Install.ResolvedName == "@openclaw/firecrawl-plugin" &&
+		strings.TrimSpace(inspected.Install.Integrity) != "", nil
 }
 
 func openClawContainsString(values []string, want string) bool {

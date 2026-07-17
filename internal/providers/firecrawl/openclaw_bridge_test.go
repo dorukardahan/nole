@@ -279,6 +279,43 @@ func TestOpenClawBridgeSanitizesFailureAndTripsBreaker(t *testing.T) {
 	}
 }
 
+func TestOpenClawBridgePolicyRefusalDoesNotTripBreaker(t *testing.T) {
+	breaker := providerhttp.NewBreaker(providerhttp.BreakerOptions{Threshold: 1, Cooldown: 0})
+	allowed, generation := breaker.Allow()
+	if !allowed {
+		t.Fatal("fresh breaker unexpectedly denied setup call")
+	}
+	breaker.RecordFailure(generation)
+	if breaker.State() != "open" {
+		t.Fatalf("test setup did not open breaker: state=%s", breaker.State())
+	}
+	calls := 0
+	runner := func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+		calls++
+		return []byte(`{"ok":false,"toolName":"web_search","error":{"code":"APPROVAL_DENIED","message":"private policy details"}}`), nil
+	}
+	p := New(
+		WithOpenClawBridge("openclaw"),
+		WithOpenClawCommandRunner(runner),
+		WithBreaker(breaker),
+	)
+	for i := 0; i < 2; i++ {
+		_, err := p.Search(context.Background(), core.SearchRequest{Query: "nole"})
+		if err == nil || !strings.Contains(err.Error(), "tool call was refused") {
+			t.Fatalf("call %d: expected sanitized policy refusal, got %v", i+1, err)
+		}
+		if strings.Contains(err.Error(), "private policy details") {
+			t.Fatalf("call %d: policy details leaked: %v", i+1, err)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("policy refusal opened breaker: calls=%d", calls)
+	}
+	if breaker.State() != "closed" {
+		t.Fatalf("policy refusal did not close half-open breaker: state=%s", breaker.State())
+	}
+}
+
 func TestOpenClawBridgeCallerCancellationDoesNotTripBreaker(t *testing.T) {
 	breaker := providerhttp.NewBreaker(providerhttp.BreakerOptions{Threshold: 1, Cooldown: time.Hour})
 	runner := func(ctx context.Context, _ string, _ ...string) ([]byte, error) {
