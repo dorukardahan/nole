@@ -47,14 +47,16 @@ On a VPS, use the same steps over SSH. Keep the binary on that VPS; do not route
 Nólë reads provider keys from environment variables:
 
 ```bash
+# Optional account-backed quota/quality upgrades; export only keys the user
+# already owns or explicitly wants to configure.
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
 ```
 
-Do not ask the user to paste real keys into chat. Tell the user to create keys in provider dashboards and set them locally. If a GUI app does not inherit shell env, use a local env file such as `~/.config/nole/.env` with mode `0600` and configure the client launcher to source it.
+Do not ask the user to paste real keys into chat. Generic Nólë can use its keyless routes without them, including Firecrawl keyless mode when selected and DDGS fallback. Only direct the user to provider dashboards when they explicitly want an account-backed quota/quality upgrade, then have them set keys locally. If a GUI app does not inherit shell env, use a local env file such as `~/.config/nole/.env` with mode `0600` and configure the client launcher to source it.
 
-**OpenClaw-only exception:** use `nole setup --openclaw` and do not ask for `FIRECRAWL_API_KEY`. That command creates a dedicated `nole-mcp-openclaw` wrapper and delegates supported Firecrawl operations through OpenClaw's authenticated `tools.invoke` gateway. If OpenClaw advertises `firecrawl-free`, search and extract are delegated; current stable releases use OpenClaw `web_fetch` with keyless Firecrawl fallback and keep Nólë's existing search fallbacks. The mode is scoped to that wrapper; generic Nólë CLI and every other MCP client keep the existing direct Firecrawl API/BYOK behavior.
+**OpenClaw-only exception:** use `nole setup --openclaw` and do not ask for `FIRECRAWL_API_KEY`. That command creates a dedicated `nole-mcp-openclaw` wrapper and delegates supported host search/fetch operations through OpenClaw's authenticated `tools.invoke` gateway. If OpenClaw advertises `firecrawl-free`, Firecrawl search and OpenClaw host fetch are delegated; current stable releases use OpenClaw `web_fetch` with keyless Firecrawl fallback and keep Nólë's existing search fallbacks. The mode is scoped to that wrapper; generic Nólë CLI and every other MCP client keep the existing direct Firecrawl API/BYOK behavior.
 
 For details and overage cautions, read `docs/PROVIDER-KEYS.md`.
 

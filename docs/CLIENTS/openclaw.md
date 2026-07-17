@@ -40,7 +40,7 @@ The saved OpenClaw entry contains no provider key or Gateway token:
 }
 ```
 
-When this wrapper is active, Nólë delegates supported Firecrawl operations through
+When this wrapper is active, Nólë delegates supported host search/fetch operations through
 OpenClaw's authenticated `gateway call tools.invoke` RPC. The OpenClaw CLI
 resolves Gateway authentication from OpenClaw's own configuration, so Nólë does
 not copy or persist a Gateway token. Do not ask the user for

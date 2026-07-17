@@ -151,7 +151,7 @@ func trustedOpenClawFirecrawlPlugin(origin, source string) bool {
 	if strings.EqualFold(strings.TrimSpace(origin), "bundled") {
 		return true
 	}
-	source = filepath.ToSlash(strings.TrimSpace(source))
+	source = filepath.ToSlash(filepath.Clean(strings.TrimSpace(source)))
 	return source == "@openclaw/firecrawl-plugin" || strings.Contains(source, "/node_modules/@openclaw/firecrawl-plugin/")
 }
 

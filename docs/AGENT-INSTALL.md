@@ -171,7 +171,7 @@ Use a VPS only if that is where the agent runs or where the user explicitly want
 
 ## Provider keys
 
-Nólë works best with user-owned provider keys but can still use DDGS as a keyless fallback.
+Nólë works without provider keys through its keyless routes, including generic Firecrawl when selected and DDGS as the final search fallback. User-owned keys are optional account-backed quota/quality upgrades.
 
 Environment variables:
 

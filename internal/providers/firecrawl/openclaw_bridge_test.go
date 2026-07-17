@@ -159,16 +159,21 @@ func TestOpenClawFetchOnlyBridgeDoesNotAdvertiseOrInvokeSearch(t *testing.T) {
 }
 
 func TestOpenClawBridgeRejectsUnexpectedSearchProvider(t *testing.T) {
+	const untrustedProvider = "private-marker"
 	runner := func(_ context.Context, _ string, _ ...string) ([]byte, error) {
 		return []byte(`{
 			"ok": true,
 			"toolName": "web_search",
-			"output": {"details":{"provider":"brave","results":[]}}
+			"output": {"details":{"provider":"private-marker","results":[]}}
 		}`), nil
 	}
 	p := New(WithOpenClawBridge("openclaw"), WithOpenClawCommandRunner(runner))
-	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "nole"}); err == nil || !strings.Contains(err.Error(), "unexpected OpenClaw web_search provider") {
+	_, err := p.Search(context.Background(), core.SearchRequest{Query: "nole"})
+	if err == nil || !strings.Contains(err.Error(), "unexpected OpenClaw web_search provider") {
 		t.Fatalf("expected provider mismatch error, got %v", err)
+	}
+	if strings.Contains(err.Error(), untrustedProvider) {
+		t.Fatalf("provider mismatch leaked subprocess value: %v", err)
 	}
 }
 
@@ -222,6 +227,30 @@ printf '%s' '{"ok":true,"toolName":"web_search","output":{"details":{"provider":
 	}
 	if len(resp.Results) != 1 || resp.Results[0].Title != "CLI" {
 		t.Fatalf("unexpected subprocess response: %+v", resp)
+	}
+}
+
+func TestOpenClawBridgeProductionRunnerRejectsOverflowAfterValidJSON(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is POSIX-only")
+	}
+	validJSON := `{"ok":true,"toolName":"web_search","output":{"details":{"provider":"firecrawl-free","results":[]}}}`
+	script := filepath.Join(t.TempDir(), "openclaw")
+	body := "#!/bin/sh\nprintf '%s' '" + validJSON + "'\nprintf ' trailing-output'\n"
+	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
+		t.Fatalf("write oversized fake OpenClaw CLI: %v", err)
+	}
+	runner := func(ctx context.Context, command string, args ...string) ([]byte, error) {
+		return runOpenClawCommandWithLimit(ctx, int64(len(validJSON)), command, args...)
+	}
+	raw, err := runner(context.Background(), script)
+	if !errors.Is(err, errOpenClawOutputTooLarge) {
+		t.Fatalf("production runner did not report overflow: err=%v retained=%d limit=%d", err, len(raw), len(validJSON))
+	}
+	p := New(WithOpenClawBridge(script), WithOpenClawCommandRunner(runner))
+	_, err = p.Search(context.Background(), core.SearchRequest{Query: "nole"})
+	if err == nil || !strings.Contains(err.Error(), "response too large") {
+		t.Fatalf("expected sanitized overflow error, got %v", err)
 	}
 }
 

@@ -209,7 +209,7 @@ func TestEnsureOpenClawFirecrawlPluginRejectsNonOfficialIDCollision(t *testing.T
 	originalOutput := runOpenClawSetupOutput
 	originalRun := runOpenClawSetupCommand
 	runOpenClawSetupOutput = func(string, ...string) ([]byte, error) {
-		return []byte(`{"plugins":[{"id":"firecrawl","origin":"global","source":"/tmp/evil/firecrawl.js","webSearchProviderIds":["firecrawl-free"],"webFetchProviderIds":["firecrawl"]}]}`), nil
+		return []byte(`{"plugins":[{"id":"firecrawl","origin":"global","source":"/tmp/node_modules/@openclaw/firecrawl-plugin/../../evil.js","webSearchProviderIds":["firecrawl-free"],"webFetchProviderIds":["firecrawl"]}]}`), nil
 	}
 	called := false
 	runOpenClawSetupCommand = func(string, ...string) error {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,6 +20,8 @@ const (
 	openClawBridgeTimeout = 30 * time.Second
 	openClawStderrLimit   = 4096
 )
+
+var errOpenClawOutputTooLarge = errors.New("openclaw output exceeded limit")
 
 // OpenClawCommandRunner executes the authenticated OpenClaw CLI. Production
 // uses exec.CommandContext; tests inject a deterministic runner. The bridge is
@@ -56,14 +59,21 @@ func WithOpenClawCommandRunner(runner OpenClawCommandRunner) Option {
 }
 
 func runOpenClawCommand(ctx context.Context, command string, args ...string) ([]byte, error) {
+	return runOpenClawCommandWithLimit(ctx, providerhttp.MaxExtractResponseBytes, command, args...)
+}
+
+func runOpenClawCommandWithLimit(ctx context.Context, outputLimit int64, command string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = sanitizedOpenClawCommandEnv(os.Environ())
-	stdout := &boundedCommandBuffer{limit: providerhttp.MaxExtractResponseBytes}
+	stdout := &boundedCommandBuffer{limit: outputLimit}
 	stderr := &boundedCommandBuffer{limit: openClawStderrLimit}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		return nil, err
+	}
+	if stdout.Overflowed() {
+		return nil, errOpenClawOutputTooLarge
 	}
 	return append([]byte(nil), stdout.Bytes()...), nil
 }
@@ -96,23 +106,30 @@ func sanitizedOpenClawCommandEnv(environ []string) []string {
 }
 
 type boundedCommandBuffer struct {
-	bytes.Buffer
-	limit int64
+	buffer   bytes.Buffer
+	limit    int64
+	overflow bool
 }
 
 func (b *boundedCommandBuffer) Write(p []byte) (int, error) {
 	original := len(p)
-	remaining := b.limit - int64(b.Len())
+	remaining := b.limit - int64(b.buffer.Len())
 	if remaining > 0 {
 		if int64(len(p)) > remaining {
+			b.overflow = true
 			p = p[:remaining]
 		}
-		_, _ = b.Buffer.Write(p)
+		_, _ = b.buffer.Write(p)
+	} else if original > 0 {
+		b.overflow = true
 	}
 	// Report the original length so a child process cannot fail only because
 	// diagnostic output exceeded our local retention cap.
 	return original, nil
 }
+
+func (b *boundedCommandBuffer) Bytes() []byte    { return b.buffer.Bytes() }
+func (b *boundedCommandBuffer) Overflowed() bool { return b.overflow }
 
 type openClawToolsInvokeParams struct {
 	Name string         `json:"name"`
@@ -209,6 +226,9 @@ func (p Provider) invokeOpenClawTool(ctx context.Context, toolName string, args 
 		if bridgeCtx.Err() != nil {
 			return openClawAgentToolResult{}, fmt.Errorf("firecrawl: OpenClaw bridge timed out")
 		}
+		if errors.Is(err, errOpenClawOutputTooLarge) {
+			return openClawAgentToolResult{}, fmt.Errorf("firecrawl: OpenClaw bridge response too large")
+		}
 		return openClawAgentToolResult{}, fmt.Errorf("firecrawl: OpenClaw bridge invocation failed")
 	}
 	if len(raw) == 0 || int64(len(raw)) > providerhttp.MaxExtractResponseBytes {
@@ -246,7 +266,7 @@ func (p Provider) searchViaOpenClaw(ctx context.Context, req core.SearchRequest,
 		return core.SearchResponse{}, fmt.Errorf("firecrawl: OpenClaw web_search details were invalid")
 	}
 	if !isOpenClawFirecrawlProvider(details.Provider) {
-		return core.SearchResponse{}, fmt.Errorf("firecrawl: unexpected OpenClaw web_search provider %q", details.Provider)
+		return core.SearchResponse{}, fmt.Errorf("firecrawl: unexpected OpenClaw web_search provider")
 	}
 	results := make([]core.SearchResult, 0, len(details.Results))
 	for _, item := range details.Results {

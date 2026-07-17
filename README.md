@@ -48,7 +48,7 @@ Current agent support matrix:
 | Codex CLI | Verified on macOS via `codex mcp list/get` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --codex --local-extract` inlines `~/.config/nole/.env` sourcing in TOML output and prepares local Scrapling; `--mcp-wrapper` emits wrapper-direct config. |
 | OpenCode | Verified on macOS via `opencode mcp list` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --opencode` writes OpenCode's native `{type, command, enabled, environment}` schema. |
 | Kimi | Verified on macOS via `kimi mcp list` and `kimi mcp test` (M11); see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --kimi` writes the same shape that `kimi mcp add` produces. |
-| OpenClaw | Verified on OpenClaw 2026.5.18 via the Gateway/agent MCP path; compatibility re-checked on OpenClaw 2026.5.27 with the wrapper-backed MCP registry; see `docs/CLIENTS/LIVE-VERIFICATION.md` | Run `nole setup --openclaw`. It installs/enables the official Firecrawl plugin, writes a dedicated OpenClaw-mode wrapper and selects full (`firecrawl-free` search + host fetch) or OpenClaw `web_fetch` compatibility mode with keyless Firecrawl fallback without requesting a Firecrawl key. Other Nólë clients keep direct API/BYOK behavior. |
+| OpenClaw | Verified on OpenClaw 2026.5.18 via the Gateway/agent MCP path; compatibility re-checked on OpenClaw 2026.5.27 with the wrapper-backed MCP registry; OpenClaw 2026.7.1 live-verified the version-aware host bridge and fetch-only compatibility path; see `docs/CLIENTS/openclaw.md` | Run `nole setup --openclaw`. It installs/enables the official Firecrawl plugin, writes a dedicated OpenClaw-mode wrapper and selects full (`firecrawl-free` search + host fetch) or OpenClaw `web_fetch` compatibility mode with keyless Firecrawl fallback without requesting a Firecrawl key. Other Nólë clients keep direct API/BYOK behavior. |
 | Hermes Agent | Verified on Hermes Agent v0.14.0 via disposable profile MCP path and chat-agent dispatch; v2026.5.28 / v0.15.0 source compatibility reviewed; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --hermes --local-extract` writes `~/.hermes/config.yaml`, prepares local Scrapling, uses the env-sourcing wrapper and preserves unrelated config. |
 | Cursor | Verified on macOS Cursor 3.4.20 via GUI MCP path and chat-agent dispatch; see `docs/CLIENTS/LIVE-VERIFICATION.md` | `nole setup --cursor --local-extract` preserves unrelated MCP servers and emits wrapper-direct config through the generated wrapper. |
 | Antigravity CLI | Repo-tested: the `nole setup --antigravity` writer and config merge are covered by repo tests; authenticated `agy` tool visibility was not observed here. See `docs/CLIENTS/antigravity.md` | `nole setup --antigravity` writes `~/.gemini/config/mcp_config.json` with an object-keyed `mcpServers.nole` local stdio entry, preserving sibling servers, remote `serverUrl` entries and unknown fields. |
@@ -83,7 +83,7 @@ Prerequisites:
 - Go 1.25+ for building from source (matches the `go 1.25.12` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily and Firecrawl.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
-- No provider key is required for the deterministic benchmark, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback.
+- No provider key is required for generic Firecrawl keyless API mode, the deterministic benchmark, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback.
 
 Build and run locally:
 
@@ -258,7 +258,7 @@ A key by itself is enough to start using a provider under the default policy; yo
 
 Cost status classes exposed in `provider_status`, `budget_status`, `route_trace` and JSON CLI/MCP surfaces are:
 
-- `keyless-free` — no key required, currently used for the DDGS search fallback, the Wikipedia/MediaWiki and arXiv search providers, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback.
+- `keyless-free` — no key required, currently used for generic Firecrawl without `FIRECRAWL_API_KEY`, the DDGS search fallback, the Wikipedia/MediaWiki and arXiv search providers, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback.
 - `free-tier-BYOK` — user-keyed provider running against the local free-tier quota. Default for keyed Brave / Tavily / Firecrawl.
 - `premium-capable` — keyed provider that may incur paid usage depending on account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost` — fail-closed unless an explicit quality-first policy is selected.
