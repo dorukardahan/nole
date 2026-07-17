@@ -199,9 +199,13 @@ func isOpenClawFirecrawlProvider(provider string) bool {
 }
 
 func (p Provider) searchViaOpenClaw(ctx context.Context, req core.SearchRequest, limit int) (core.SearchResponse, error) {
+	hostLimit := limit
+	if hostLimit > 10 {
+		hostLimit = 10
+	}
 	args := map[string]any{
 		"query": req.Query,
-		"count": limit,
+		"count": hostLimit,
 	}
 	if country := strings.TrimSpace(req.Options.Country); country != "" {
 		args["country"] = country

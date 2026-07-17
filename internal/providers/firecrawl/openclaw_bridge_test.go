@@ -50,9 +50,9 @@ func TestOpenClawBridgeSearchUsesGatewayToolAndMapsResults(t *testing.T) {
 	)
 
 	resp, err := p.Search(context.Background(), core.SearchRequest{
-		Query: "nole",
+		Query: "nole openclaw",
 		Task:  core.TaskNews,
-		Limit: 3,
+		Limit: 20,
 		Options: core.SearchOptions{
 			Country:   "tr",
 			Freshness: "pd",
@@ -68,7 +68,7 @@ func TestOpenClawBridgeSearchUsesGatewayToolAndMapsResults(t *testing.T) {
 	if params.Name != "web_search" {
 		t.Fatalf("tool name = %q", params.Name)
 	}
-	if params.Args["query"] != "nole" || params.Args["count"] != float64(3) {
+	if params.Args["query"] != "nole openclaw" || params.Args["count"] != float64(10) {
 		t.Fatalf("unexpected web_search args: %#v", params.Args)
 	}
 	if params.Args["country"] != "tr" || params.Args["freshness"] != "day" {
