@@ -5,6 +5,8 @@ set -euo pipefail
 # This script does not create GitHub releases, tags, or uploads by itself.
 
 ROOT=$(git rev-parse --show-toplevel)
+"$ROOT/scripts/check-go-version-requirements.sh" "$ROOT"
+
 OUT_DIR=${NOLE_BUILD_OUT:-"$(mktemp -d)"}
 VERSION=${NOLE_BUILD_VERSION:-"dev-build-check"}
 COMMIT=${NOLE_BUILD_COMMIT:-"$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"}
