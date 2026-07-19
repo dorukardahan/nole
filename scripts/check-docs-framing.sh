@@ -46,7 +46,10 @@ head -n 8 README.md | grep -Fq "Local, free-first/BYOK web search and page extra
 grep -Fq "Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools." AGENTS.md \
   || fail "AGENTS product framing must match the primary one-liner"
 
-stale_primary_framing=$(grep -R -nF "free, local web search router for AI agents and coding CLI tools" README.md AGENTS.md docs || true)
+stale_primary_framing=$({
+  grep -R -nF "free, local web search router for AI agents and coding CLI tools" README.md AGENTS.md docs
+  grep -R -nF "Free web search router for AI agents and coding CLI tools" README.md AGENTS.md docs
+} || true)
 if [ -n "$stale_primary_framing" ]; then
   fail "public docs contain stale primary product framing: $stale_primary_framing"
 fi

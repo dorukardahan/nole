@@ -40,7 +40,7 @@ selected.
 
 Goals:
 
-- README first screen says: `Free web search router for AI agents and coding CLI tools`.
+- README first screen says: `Local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools`.
 - MCP is described as an entrypoint, not the product category.
 - AGENTS.md and install docs let an AI agent clone, build, install, configure and verify Nólë.
 - Provider key docs explain BYOK, free-tier and overage cautions.
