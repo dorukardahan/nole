@@ -40,7 +40,7 @@ for path in "${required[@]}"; do
   [[ -f "$path" ]] || fail "missing required doc $path"
 done
 
-head -n 8 README.md | grep -Fq "Free web search router for AI agents and coding CLI tools." \
+head -n 8 README.md | grep -Fq "Local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools." \
   || fail "README first screen must contain the primary one-liner"
 
 head -n 20 README.md | grep -Fq "not a hosted SaaS" \
