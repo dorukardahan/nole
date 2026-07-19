@@ -14,7 +14,7 @@ publish a GitHub Release, upload assets, publish packages or deploy anything.
 
 ## Suggested title
 
-Nólë v0.1.x — local web search router for AI agents
+Nólë v0.1.x — local, free-first/BYOK web search and page extraction router for AI agents
 
 Use the approved tag in the final title. Do not move or reuse an existing tag.
 
