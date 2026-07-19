@@ -49,7 +49,13 @@ grep -Fq "Nólë is a local, free-first/BYOK web search and page extraction rout
 grep -Fq -- "- Local, free-first/BYOK web search and page extraction router." docs/PRODUCT.md \
   || fail "product category labels must include the primary search-and-extraction framing"
 
-stale_primary_framing=$(grep -R -nF "web search router for AI agents" README.md AGENTS.md docs || true)
+grep -Fq '"description": "Local, free-first/BYOK web search and page extraction router for AI agents"' packaging/scoop/nole.json.tmpl \
+  || fail "Scoop package description must match the primary search-and-extraction framing"
+
+grep -Fq 'desc "Local, free-first/BYOK web search and page extraction router for AI agents"' packaging/homebrew/nole.rb.tmpl \
+  || fail "Homebrew package description must match the primary search-and-extraction framing"
+
+stale_primary_framing=$(git grep -niE 'web[- ]search router' -- README.md AGENTS.md docs packaging || true)
 if [ -n "$stale_primary_framing" ]; then
   fail "public docs contain stale primary product framing: $stale_primary_framing"
 fi
