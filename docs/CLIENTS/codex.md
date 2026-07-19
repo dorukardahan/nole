@@ -2,7 +2,7 @@
 
 Status: verified (CLI MCP manager). Live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md`.
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Codex CLI can use Nólë through MCP stdio by launching `nole mcp`. Codex is the easiest target because its setup writer already inlines `~/.config/nole/.env` sourcing in the generated TOML.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Codex CLI can use Nólë through MCP stdio by launching `nole mcp`. Codex is the easiest target because its setup writer already inlines `~/.config/nole/.env` sourcing in the generated TOML.
 
 ## What is verified
 

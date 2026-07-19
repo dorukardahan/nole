@@ -2,7 +2,7 @@
 
 Status: repo-tested. The `nole setup --antigravity` writer and its config-merge behavior are covered by repo tests. A local unauthenticated Antigravity CLI 1.1.1 binary was used only for `--version`/`--help` evidence; authenticated tool visibility was not observed here. Keep this status at `repo-tested` until an authenticated Antigravity `/mcp` or `agy -p` smoke confirms Nólë's tools are visible.
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Antigravity CLI is Google's native Go CLI binary (`agy`) and can use local stdio MCP servers by launching `nole mcp` or an env-sourcing wrapper around it.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Antigravity CLI is Google's native Go CLI binary (`agy`) and can use local stdio MCP servers by launching `nole mcp` or an env-sourcing wrapper around it.
 
 ## What is repo-tested
 

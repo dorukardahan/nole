@@ -2,7 +2,7 @@
 
 Status: verified (OpenClaw Gateway/agent MCP path). The host bridge setup and current stable compatibility mode were live-checked on OpenClaw 2026.7.1; full keyless search waits for an OpenClaw release that exposes `firecrawl-free`.
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. OpenClaw can use Nólë through its saved outbound MCP server registry and Gateway-backed agent runtime.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. OpenClaw can use Nólë through its saved outbound MCP server registry and Gateway-backed agent runtime.
 
 Live verification for OpenClaw 2026.5.18 and a compatibility re-check for OpenClaw 2026.5.27 are recorded in `docs/CLIENTS/LIVE-VERIFICATION.md`.
 

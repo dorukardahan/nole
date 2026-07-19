@@ -2,7 +2,7 @@
 
 Status: verified (GUI MCP path + chat-agent tool dispatch).
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Cursor-style MCP clients can launch Nólë through `nole mcp`. Live verification on macOS Cursor 3.4.20 is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` (2026-05-20 follow-up run).
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Cursor-style MCP clients can launch Nólë through `nole mcp`. Live verification on macOS Cursor 3.4.20 is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` (2026-05-20 follow-up run).
 
 ## Setup
 

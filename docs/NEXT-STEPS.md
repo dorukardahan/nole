@@ -1,6 +1,6 @@
 # Next steps after v0.1 release prep
 
-Nólë is now positioned as a free, local web search router for AI agents and coding CLI tools. The goal is not to build a hosted search SaaS or replace an agent's research workflow. The goal is to improve the internet/search/extract layer used by Claude Code, Codex, OpenClaw, Hermes, OpenCode and similar tools.
+Nólë is now positioned as a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. The goal is not to build a hosted search SaaS or replace an agent's research workflow. The goal is to improve the internet/search/extract layer used by Claude Code, Codex, OpenClaw, Hermes, OpenCode and similar tools.
 
 ## Current baseline
 

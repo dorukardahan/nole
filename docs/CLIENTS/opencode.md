@@ -2,7 +2,7 @@
 
 Status: verified (CLI MCP manager). Live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md`.
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. OpenCode can use Nólë through MCP stdio by launching `nole mcp` (or an env-sourcing wrapper around it).
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. OpenCode can use Nólë through MCP stdio by launching `nole mcp` (or an env-sourcing wrapper around it).
 
 ## What is verified
 

@@ -2,7 +2,7 @@
 
 > Phase 1 mapping. Anchors are file:line at time of writing; verify before relying on stale anchors.
 
-Nole is a free, local web search router for AI agents and coding CLI tools. It is BYOK and free-tier-first: it routes a search/extract request to the best available provider under a spend-safe quota policy, without making any hidden paid calls. The router core is deterministic and LLM-free. MCP is one entrypoint (the `mcp` stdio server and `serve --mcp` HTTP server expose the same engine to coding agents), not the whole product — the same `core.Service` is reachable from the plain CLI subcommands (`search`, `extract`, `research`, etc.), an HTTP REST surface, and the bench harness.
+Nole is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. It routes search and extraction requests to the best available provider under a spend-safe quota policy, without making any hidden paid calls. The router core is deterministic and LLM-free. MCP is one entrypoint (the `mcp` stdio server and `serve --mcp` HTTP server expose the same engine to coding agents), not the whole product — the same `core.Service` is reachable from the plain CLI subcommands (`search`, `extract`, `research`, etc.), an HTTP REST surface, and the bench harness.
 
 ---
 
