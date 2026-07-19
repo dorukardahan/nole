@@ -2,16 +2,17 @@
 
 **Date:** 2026-06-01
 **Status:** Draft for owner review
-**Theme:** Make the router actually route, return clean evidence, and stay a
-dumb-but-excellent pipe for frontier agents.
+**Theme:** Make the local, free-first/BYOK search and extraction router actually
+route, return clean evidence, and stay transparent to frontier agents.
 
 ---
 
 ## North star (read this first)
 
-Nólë is the **internet gateway for frontier AI agents and personal assistants**
-(Claude Code, Codex, Hermes, OpenClaw, OpenCode, Cursor, …). Its job is to
-*strengthen those tools' web-search capability* — not to be smart itself.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI
+agents and coding CLI tools (Claude Code, Codex, Hermes, OpenClaw, OpenCode,
+Cursor, …). Its job is to *strengthen those tools' web-search and page-extraction
+capabilities* — not to be smart itself.
 
 > Nólë is not an AI. It does not think, synthesize, or answer. The agent thinks;
 > Nólë hands the agent the cleanest possible raw material from the web, routed
@@ -19,11 +20,11 @@ Nólë is the **internet gateway for frontier AI agents and personal assistants*
 
 Every change in this roadmap is judged by a single question:
 
-> **Does this make Claude Code / Codex / Hermes / OpenClaw's web search
-> measurably better, cheaper, fresher, or more citable?**
+> **Does this make Claude Code / Codex / Hermes / OpenClaw's web search and page
+> extraction measurably better, cheaper, fresher, or more citable?**
 
-If a feature makes *Nólë* cleverer but does not make the *agent's* search better,
-it does not belong here.
+If a feature makes *Nólë* cleverer but does not make the *agent's* web context
+retrieval better, it does not belong here.
 
 ## Why this roadmap exists
 

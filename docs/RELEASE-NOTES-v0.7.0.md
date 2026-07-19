@@ -1,9 +1,10 @@
 # Nólë v0.7.0 release notes
 
-Nólë v0.7.0 makes the **center trustworthy**: every number the gateway reports
+Nólë v0.7.0 makes the **center trustworthy**: every number the router reports
 about money and health is now labelled true, estimated, or unknown. Nólë stays a
-dumb-but-honest gateway — it surfaces raw signals (a provider's 429, a tripped
-breaker, a missing cost cap) and lets the agent decide what to do. No new MCP
+dumb-but-honest search and extraction routing layer — it surfaces raw signals (a
+provider's 429, a tripped breaker, a missing cost cap) and lets the agent decide
+what to do. No new MCP
 tools; this release adds fields to the existing `provider_status` /
 `budget_status` envelopes and turns `/health` into a real readiness check.
 
