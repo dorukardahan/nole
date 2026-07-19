@@ -60,7 +60,7 @@ if [ -n "$stale_primary_framing" ]; then
   fail "public docs contain stale primary product framing: $stale_primary_framing"
 fi
 
-stale_gateway_framing=$(git grep -niE 'internet gateway|dumb-but.*gateway|dumb-but-excellent pipe' -- README.md AGENTS.md docs packaging || true)
+stale_gateway_framing=$(git grep -niE 'internet[^[:alnum:]]+gateway|dumb[^[:space:]]*[^[:alnum:]]+gateway|dumb-but-excellent[^[:alnum:]]+pipe' -- README.md AGENTS.md docs packaging || true)
 if [ -n "$stale_gateway_framing" ]; then
   fail "public docs contain stale gateway-era product framing: $stale_gateway_framing"
 fi

@@ -1,4 +1,4 @@
-# Agent Gateway Roadmap (v0.5.0 → v0.7.0)
+# Agent Search-and-Extraction Roadmap (v0.5.0 → v0.7.0)
 
 **Date:** 2026-06-01
 **Status:** Draft for owner review
@@ -66,7 +66,7 @@ word **router** is largely unwired on the hot path:
 
 ## Design principles
 
-- **Gateway, not brain.** Deterministic, reproducible behavior. No LLM, no ML,
+- **Routing layer, not brain.** Deterministic, reproducible behavior. No LLM, no ML,
   no self-tuning. The planner is a fast keyword router, not "intelligence."
 - **Evidence, not answers.** Nólë returns sources + extracts + the signals it
   was given (relevance, date). It never composes the answer.
@@ -189,8 +189,9 @@ code analysis was accurate, not misleading.
 
 ## Status & what happens next
 
-The owner (Doruk) reviewed this direction, sharpened the north star ("Nólë is a
-dumb gateway, not an AI; it never judges quality"), and **delegated autonomous,
+The owner (Doruk) reviewed this direction and sharpened the north star: Nólë is
+a local, free-first/BYOK web search and page extraction router, not an AI; it
+never judges quality. Doruk then **delegated autonomous,
 quality-first execution**. This roadmap spans three releases — too large for one
 plan — so it is executed one release at a time.
 
