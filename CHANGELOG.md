@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-20
+
+Theme: **untrusted-content safety receipts + OpenClaw-hosted Firecrawl.** This is
+a backward-compatible MINOR release: successful web-content records gain an
+additive `content_safety` object and `setup` gains an explicit OpenClaw bridge
+path. No existing stable command, flag, request parameter, response field, MCP
+tool, REST route, or generic-client routing default is removed or renamed.
+
+### Added
+
+- **OpenClaw-hosted Firecrawl bridge.** `nole setup --openclaw` installs and pins
+  the official Firecrawl plugin when needed, verifies its provenance, enables it,
+  writes a dedicated `nole-mcp-openclaw` wrapper, and registers that wrapper with
+  OpenClaw. The setup selects full `firecrawl-free` search + host fetch when the
+  host advertises it, or a fetch-only compatibility mode that keeps Nólë's existing
+  search fallbacks on current stable OpenClaw releases. Host calls go through
+  OpenClaw's authenticated `tools.invoke` path without copying Firecrawl keys or
+  Gateway credentials into the wrapper/MCP entry. The mode is explicit-only (not
+  enabled by `setup --all`); `--openclaw-cli` and `--openclaw-wrapper` provide path
+  overrides. Generic Nólë CLI and other MCP clients stay on the existing direct
+  Firecrawl API/BYOK path.
+
 ### Security
 
 - **Deterministic untrusted-content safety receipts across every web-data path.**
@@ -18,6 +40,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   channels and excludes closed hidden elements from readable output. Human CLI and
   MCP tool descriptions preserve the same untrusted-data contract without repeating
   suspected payloads.
+
+### Fixed
+
+- **Keyless Firecrawl onboarding and request identity.** Zero-key setup output,
+  `provider_status` suggestions, and the one-time MCP setup tip no longer prompt for
+  `FIRECRAWL_API_KEY`, because the direct adapter already has a best-effort keyless
+  mode. No-auth search, academic-search, and extract calls now identify Nólë with a
+  sanitized versioned user agent/origin; status text distinguishes upstream
+  client/IP eligibility and daily limits from Nólë's local quota ledger. Rejected,
+  exhausted, or unavailable keyless calls still use the normal route fallbacks.
+- **Fail-closed OpenClaw bridge behavior.** Search now uses OpenClaw's supported
+  `query`/`count` arguments, clamps host counts to 10, and preserves host-published
+  dates. Unknown bridge modes, unexpected provider/tool responses, oversized or
+  malformed output, and non-official plugin ID collisions are rejected without
+  echoing untrusted subprocess details. Fetch-only mode does not advertise search;
+  inherited provider keys are stripped from bridge subprocesses; host policy or
+  approval refusals remain sanitized and do not incorrectly trip the upstream
+  circuit breaker.
+
+### Documentation
+
+- The supported-agent matrix now describes current support rather than the old
+  v0.1 priority set, including the OpenClaw 2026.7.1 host-bridge verification and
+  its current fetch-only compatibility path.
+- Build-from-source guidance now states the exact Go 1.25.12+ requirement, with a
+  release gate that keeps active install docs and CI/release workflows aligned to
+  `go.mod`.
+- Product copy consistently describes Nólë as a local, free-first/BYOK web search
+  **and page extraction** router; MCP remains one entrypoint rather than the whole
+  product.
 
 ## [1.8.1] - 2026-07-12
 
@@ -1443,7 +1495,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/dorukardahan/nole/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/dorukardahan/nole/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/dorukardahan/nole/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/dorukardahan/nole/compare/v1.6.2...v1.7.0
