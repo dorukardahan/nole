@@ -1,6 +1,6 @@
 # Plan: quality, stability, latency & platform-coverage improvements (2026-05-30)
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. This plan turns the
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. This plan turns the
 adversarially-verified findings in `docs/RESEARCH-FINDINGS.md` (Phase 2) into scoped, reversible,
 test-backed changes. It adds first-class `nole setup` support for **Gemini** and **Grok** and lands
 a set of correctness/stability/coverage wins, while keeping the route matrix frozen and the local

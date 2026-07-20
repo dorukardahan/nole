@@ -40,8 +40,30 @@ for path in "${required[@]}"; do
   [[ -f "$path" ]] || fail "missing required doc $path"
 done
 
-head -n 8 README.md | grep -Fq "Free web search router for AI agents and coding CLI tools." \
+head -n 8 README.md | grep -Fq "Local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools." \
   || fail "README first screen must contain the primary one-liner"
+
+grep -Fq "Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools." AGENTS.md \
+  || fail "AGENTS product framing must match the primary one-liner"
+
+grep -Fq -- "- Local, free-first/BYOK web search and page extraction router." docs/PRODUCT.md \
+  || fail "product category labels must include the primary search-and-extraction framing"
+
+grep -Fq '"description": "Local, free-first/BYOK web search and page extraction router for AI agents"' packaging/scoop/nole.json.tmpl \
+  || fail "Scoop package description must match the primary search-and-extraction framing"
+
+grep -Fq 'desc "Local, free-first/BYOK web search and page extraction router for AI agents"' packaging/homebrew/nole.rb.tmpl \
+  || fail "Homebrew package description must match the primary search-and-extraction framing"
+
+stale_primary_framing=$(git grep -niE 'web[- ]search router' -- README.md AGENTS.md docs packaging || true)
+if [ -n "$stale_primary_framing" ]; then
+  fail "public docs contain stale primary product framing: $stale_primary_framing"
+fi
+
+stale_gateway_framing=$(git grep -niE 'internet[^[:alnum:]]+gateway|dumb[^[:space:]]*[^[:alnum:]]+gateway|dumb-but-excellent[^[:alnum:]]+pipe' -- README.md AGENTS.md docs packaging || true)
+if [ -n "$stale_gateway_framing" ]; then
+  fail "public docs contain stale gateway-era product framing: $stale_gateway_framing"
+fi
 
 head -n 20 README.md | grep -Fq "not a hosted SaaS" \
   || fail "README first screen must say Nólë is not hosted SaaS"

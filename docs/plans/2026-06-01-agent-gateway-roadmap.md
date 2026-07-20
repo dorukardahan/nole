@@ -1,17 +1,18 @@
-# Agent Gateway Roadmap (v0.5.0 → v0.7.0)
+# Agent Search-and-Extraction Roadmap (v0.5.0 → v0.7.0)
 
 **Date:** 2026-06-01
 **Status:** Draft for owner review
-**Theme:** Make the router actually route, return clean evidence, and stay a
-dumb-but-excellent pipe for frontier agents.
+**Theme:** Make the local, free-first/BYOK search and extraction router actually
+route, return clean evidence, and stay transparent to frontier agents.
 
 ---
 
 ## North star (read this first)
 
-Nólë is the **internet gateway for frontier AI agents and personal assistants**
-(Claude Code, Codex, Hermes, OpenClaw, OpenCode, Cursor, …). Its job is to
-*strengthen those tools' web-search capability* — not to be smart itself.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI
+agents and coding CLI tools (Claude Code, Codex, Hermes, OpenClaw, OpenCode,
+Cursor, …). Its job is to *strengthen those tools' web-search and page-extraction
+capabilities* — not to be smart itself.
 
 > Nólë is not an AI. It does not think, synthesize, or answer. The agent thinks;
 > Nólë hands the agent the cleanest possible raw material from the web, routed
@@ -19,11 +20,11 @@ Nólë is the **internet gateway for frontier AI agents and personal assistants*
 
 Every change in this roadmap is judged by a single question:
 
-> **Does this make Claude Code / Codex / Hermes / OpenClaw's web search
-> measurably better, cheaper, fresher, or more citable?**
+> **Does this make Claude Code / Codex / Hermes / OpenClaw's web search and page
+> extraction measurably better, cheaper, fresher, or more citable?**
 
-If a feature makes *Nólë* cleverer but does not make the *agent's* search better,
-it does not belong here.
+If a feature makes *Nólë* cleverer but does not make the *agent's* web context
+retrieval better, it does not belong here.
 
 ## Why this roadmap exists
 
@@ -65,7 +66,7 @@ word **router** is largely unwired on the hot path:
 
 ## Design principles
 
-- **Gateway, not brain.** Deterministic, reproducible behavior. No LLM, no ML,
+- **Routing layer, not brain.** Deterministic, reproducible behavior. No LLM, no ML,
   no self-tuning. The planner is a fast keyword router, not "intelligence."
 - **Evidence, not answers.** Nólë returns sources + extracts + the signals it
   was given (relevance, date). It never composes the answer.
@@ -188,8 +189,9 @@ code analysis was accurate, not misleading.
 
 ## Status & what happens next
 
-The owner (Doruk) reviewed this direction, sharpened the north star ("Nólë is a
-dumb gateway, not an AI; it never judges quality"), and **delegated autonomous,
+The owner (Doruk) reviewed this direction and sharpened the north star: Nólë is
+a local, free-first/BYOK web search and page extraction router, not an AI; it
+never judges quality. Doruk then **delegated autonomous,
 quality-first execution**. This roadmap spans three releases — too large for one
 plan — so it is executed one release at a time.
 

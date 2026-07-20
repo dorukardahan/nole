@@ -2,7 +2,7 @@
 
 Status: verified (Hermes Agent MCP profile path + chat-agent tool dispatch).
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Hermes Agent live verification is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` from a 2026-05-20 run on an Ubuntu x86_64 host with Hermes Agent installed. Hermes Agent v2026.5.28 / v0.15.0 source compatibility was reviewed on 2026-05-28; keep the status label at v0.14 live-verified until a real v0.15 client run is recorded.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Hermes Agent live verification is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` from a 2026-05-20 run on an Ubuntu x86_64 host with Hermes Agent installed. Hermes Agent v2026.5.28 / v0.15.0 source compatibility was reviewed on 2026-05-28; keep the status label at v0.14 live-verified until a real v0.15 client run is recorded.
 
 The verified path used a disposable Hermes profile, not the active default gateway profile. The Nólë MCP server was registered as `nole` with a direct absolute Nólë binary command and `args: ["mcp"]`; committed docs use placeholder paths only.
 

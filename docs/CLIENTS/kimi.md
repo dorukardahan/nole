@@ -2,7 +2,7 @@
 
 Status: verified (CLI MCP manager). Live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md`.
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Kimi can use Nólë through MCP stdio by launching `nole mcp` (or an env-sourcing wrapper around it). Kimi has a first-class MCP manager CLI (`kimi mcp add/list/test`), which makes it straightforward to register and verify Nólë.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Kimi can use Nólë through MCP stdio by launching `nole mcp` (or an env-sourcing wrapper around it). Kimi has a first-class MCP manager CLI (`kimi mcp add/list/test`), which makes it straightforward to register and verify Nólë.
 
 ## What is verified
 

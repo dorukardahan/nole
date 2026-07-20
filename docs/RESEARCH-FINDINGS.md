@@ -1,6 +1,6 @@
 # Nólë improvement research findings (Phase 2)
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. MCP is an
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. MCP is an
 entrypoint, not the whole product. This document records the evidence-cited research that
 drives the Phase 3 plan and Phase 4 execution.
 

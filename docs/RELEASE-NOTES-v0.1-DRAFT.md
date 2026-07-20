@@ -14,13 +14,13 @@ publish a GitHub Release, upload assets, publish packages or deploy anything.
 
 ## Suggested title
 
-Nólë v0.1.x — local web search router for AI agents
+Nólë v0.1.x — local, free-first/BYOK web search and page extraction router for AI agents
 
 Use the approved tag in the final title. Do not move or reuse an existing tag.
 
 ## Summary
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. It gives Claude Code, Codex CLI, OpenClaw, Hermes Agent, OpenCode, Cursor, Kimi and generic MCP clients a local CLI/MCP search and extraction layer backed by BYOK/free-tier providers.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. It gives Claude Code, Codex CLI, OpenClaw, Hermes Agent, OpenCode, Cursor, Kimi and generic MCP clients a local CLI/MCP search and extraction layer backed by BYOK/free-tier providers.
 
 The release focuses on truthful integration evidence, deterministic routing
 tests, default no-hidden-paid-spend policy and agent-readable installation docs.

@@ -2,8 +2,8 @@
 
 Nólë v0.6.0 makes the pipe **cheaper and easier for agents to consume**: fewer
 wasted tokens, fewer round-trips, and the richest output (multi-source evidence)
-finally reachable over MCP and REST. Nólë stays a dumb-but-honest gateway — it
-hands the agent evidence, never a composed answer.
+finally reachable over MCP and REST. Nólë stays a dumb-but-honest search and
+extraction routing layer — it hands the agent evidence, never a composed answer.
 
 ## New for agents
 

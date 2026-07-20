@@ -2,7 +2,7 @@
 
 Status: generic/unverified index.
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. Client support is documented conservatively: a client is `verified` only after the real client was configured, Nólë MCP tools were visible, one low-limit search worked, and no credentials appeared in config, logs or chat.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Client support is documented conservatively: a client is `verified` only after the real client was configured, Nólë MCP tools were visible, one low-limit search worked, and no credentials appeared in config, logs or chat.
 
 ## Client support matrix
 

@@ -2,7 +2,7 @@
 
 This guide is written for humans and AI agents that need to install Nólë on a local machine or VPS and connect it to an agent or coding CLI.
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. It should run where the user's agent runs, or on a VPS the user controls. It is not a hosted SaaS by default.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. It should run where the user's agent runs, or on a VPS the user controls. It is not a hosted SaaS by default.
 
 ## Install path overview
 

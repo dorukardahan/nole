@@ -1,16 +1,16 @@
 # Nólë
 
-Free web search router for AI agents and coding CLI tools.
+Local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools.
 
-Nólë gives Claude Code, Codex, OpenClaw, Hermes, OpenCode and other AI tools a local search/extract layer backed by multiple free or BYOK providers. It is not a hosted SaaS and it is not a replacement for your agent. Keep your existing agent, run Nólë on your own machine or VPS, and make that agent's web search better.
+Nólë gives Claude Code, Codex, OpenClaw, Hermes, OpenCode and other AI tools a local web search and page extraction layer backed by multiple free or BYOK providers. It is not a hosted SaaS and it is not a replacement for your agent. Keep your existing agent, run Nólë on your own machine or VPS, and make that agent's web search and page extraction better.
 
 Core idea: use your own keys, keep control of cost, route by task fit and evidence, and return enough routing context for the agent to explain what happened without clutter.
 
 ## What Nólë is
 
-Nólë is an agent web-search layer:
+Nólë is an agent web search and page extraction layer:
 
-- A free/local web search router for AI agents and coding CLI tools.
+- A local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools.
 - A BYOK provider router for search and page extraction.
 - A task and multi-intent routing substrate for docs, news, code, academic, pricing, fact-checking, social/community and research queries.
 - A benchmark/evidence-informed fallback layer for agents that need reliable internet context.

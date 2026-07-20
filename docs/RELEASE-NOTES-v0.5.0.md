@@ -4,9 +4,9 @@ Nólë v0.5.0 makes the **router actually route**. The deterministic task planne
 now fires on every search (previously it ran only in the inspection commands),
 task-fit shapes the request and the output, and the provider's own
 relevance/recency signals are passed through for the agent to judge. Nólë stays
-a dumb-but-honest gateway for the agent you already use — no LLM, no quality
-judgment, no synthesis. No breaking changes; all new response fields are
-additive.
+a dumb-but-honest local search and extraction routing layer for the agent you
+already use — no LLM, no quality judgment, no synthesis. No breaking changes;
+all new response fields are additive.
 
 ## Routing
 

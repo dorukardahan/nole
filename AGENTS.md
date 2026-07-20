@@ -1,6 +1,6 @@
 # AGENTS.md — installing and contributing to Nólë
 
-Nólë is a free, local web search router for AI agents and coding CLI tools. If a user gives you this repository link and asks you to install Nólë, your goal is to build a local binary, configure the user's chosen agent to launch `nole mcp`, verify tool visibility, and never expose credentials.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. If a user gives you this repository link and asks you to install Nólë, your goal is to build a local binary, configure the user's chosen agent to launch `nole mcp`, verify tool visibility, and never expose credentials.
 
 ## Non-negotiable safety rules
 
@@ -177,6 +177,6 @@ For each PR:
 
 Primary one-liner:
 
-Nólë is a free, local web search router for AI agents and coding CLI tools.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools.
 
-Use this framing in user-facing docs. MCP is an entrypoint, not the whole product. Nólë improves an existing agent's web-search layer; it does not replace the agent.
+Use this framing in user-facing docs. MCP is an entrypoint, not the whole product. Nólë improves an existing agent's web search and page extraction layer; it does not replace the agent.

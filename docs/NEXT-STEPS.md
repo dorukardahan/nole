@@ -1,6 +1,6 @@
 # Next steps after v0.1 release prep
 
-Nólë is now positioned as a free, local web search router for AI agents and coding CLI tools. The goal is not to build a hosted search SaaS or replace an agent's research workflow. The goal is to improve the internet/search/extract layer used by Claude Code, Codex, OpenClaw, Hermes, OpenCode and similar tools.
+Nólë is now positioned as a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. The goal is not to build a hosted search SaaS or replace an agent's research workflow. The goal is to improve the internet/search/extract layer used by Claude Code, Codex, OpenClaw, Hermes, OpenCode and similar tools.
 
 ## Current baseline
 
@@ -40,7 +40,7 @@ selected.
 
 Goals:
 
-- README first screen says: `Free web search router for AI agents and coding CLI tools`.
+- README first screen says: `Local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools`.
 - MCP is described as an entrypoint, not the product category.
 - AGENTS.md and install docs let an AI agent clone, build, install, configure and verify Nólë.
 - Provider key docs explain BYOK, free-tier and overage cautions.
