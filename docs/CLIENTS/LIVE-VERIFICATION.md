@@ -24,7 +24,7 @@ The verification is conservative. A client is only labeled `verified` when its r
 
 ## Versions and binaries
 
-- Nólë built from this branch; `nole doctor --mcp` reports `mcp: ok`, `stdout: startup-clean (0 bytes before protocol input)`, `protocol: initialize/tools/list (… non-json stdout lines: 0)`, `tools: [budget_status extract provider_status search]`.
+- For the 2026-05-19 M11 run, Nólë was built from the then-current M11 branch; `nole doctor --mcp` reported `mcp: ok`, `stdout: startup-clean (0 bytes before protocol input)`, `protocol: initialize/tools/list (… non-json stdout lines: 0)`, `tools: [budget_status extract provider_status search]`.
 - Clients available on the verification hosts (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run); OpenClaw 2026.5.18 (2026-05-20 follow-up run); Hermes Agent v0.14.0 (2026-05-20 follow-up run); OpenClaw 2026.5.27 (2026-05-28 compatibility re-check); Hermes Agent v0.19.0 / v2026.7.20 (2026-07-21 real-client re-check).
 - Clients absent on the verification hosts (not exercised): generic MCP clients beyond the named clients above.
 
