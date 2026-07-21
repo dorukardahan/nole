@@ -1,8 +1,8 @@
 # Live client verification evidence (M11)
 
-Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs, plus a 2026-05-28 OpenClaw compatibility re-check and Hermes v2026.5.28 source compatibility review, plus a 2026-06-04 Gemini CLI + Grok CLI follow-up run.
+Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs, a 2026-05-28 OpenClaw compatibility re-check and Hermes v2026.5.28 source compatibility review, a 2026-06-04 Gemini CLI + Grok CLI follow-up run, and a 2026-07-21 Hermes Agent v0.19 real-client re-check.
 Run kind: local maintainer run, real clients launched.
-Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up); 2026-05-28 (OpenClaw 2026.5.27 compatibility re-check); 2026-05-28 (Hermes Agent v2026.5.28 source compatibility review); 2026-06-04 (Gemini CLI 0.40.1 + Grok CLI follow-up run).
+Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up); 2026-05-28 (OpenClaw 2026.5.27 compatibility re-check); 2026-05-28 (Hermes Agent v2026.5.28 source compatibility review); 2026-06-04 (Gemini CLI 0.40.1 + Grok CLI follow-up run); 2026-07-21 (Hermes Agent v0.19 real-client re-check).
 Host description: macOS arm64 workstation with Go toolchain installed for M11/Cursor, and Ubuntu x86_64 VPS hosts with OpenClaw or Hermes Agent installed for the follow-up runs.
 Cost policy: free-first (default; no policy change during the run).
 Live provider calls: low-limit keyless smoke searches via DDGS only; each follow-up run records its own single search where applicable.
@@ -17,15 +17,15 @@ This document records real-client verification for installable agents/CLIs that 
 1. Provider keys are read from a local-only `~/.config/nole/.env` file; values are not surfaced. `nole doctor` reports presence only.
 2. A local env-sourcing MCP wrapper at `~/.local/bin/nole-mcp` loads `~/.config/nole/.env` and execs `nole mcp`, so client configs do not have to embed key values or shell snippets.
 3. For each available client, the MCP server entry is registered with the client's first-class CLI (e.g. `claude mcp add`, `codex mcp` via `nole setup --codex`, `kimi mcp add`, `hermes mcp add`) or written directly into the client's documented config file. The MCP command points at the wrapper, at a wrapper-equivalent env-sourcing shell line, or at a direct absolute Nólë binary path when the verified client/profile already owns the safe launch environment.
-4. The client's own MCP management surface is then used to confirm the MCP server connects and exposes the four expected tools.
+4. The client's own MCP management surface is then used to confirm the MCP server connects and exposes the tool surface expected for that Nólë version (four tools in the early M11 receipts; six in current releases).
 5. For each live-search smoke recorded here, the run uses `limit=1`, `free-first`, and DDGS/keyless routing, then records only the compact `routing_insight` plus result URL.
 
-The verification is conservative. A client is only labeled `verified` when its real MCP client path reported or invoked a connected Nólë MCP server and the four expected tools were observable.
+The verification is conservative. A client is only labeled `verified` when its real MCP client path reported or invoked a connected Nólë MCP server and that version's expected tools were observable.
 
 ## Versions and binaries
 
 - Nólë built from this branch; `nole doctor --mcp` reports `mcp: ok`, `stdout: startup-clean (0 bytes before protocol input)`, `protocol: initialize/tools/list (… non-json stdout lines: 0)`, `tools: [budget_status extract provider_status search]`.
-- Clients available on the verification hosts (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run); OpenClaw 2026.5.18 (2026-05-20 follow-up run); Hermes Agent v0.14.0 (2026-05-20 follow-up run); OpenClaw 2026.5.27 (2026-05-28 compatibility re-check).
+- Clients available on the verification hosts (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run); OpenClaw 2026.5.18 (2026-05-20 follow-up run); Hermes Agent v0.14.0 (2026-05-20 follow-up run); OpenClaw 2026.5.27 (2026-05-28 compatibility re-check); Hermes Agent v0.19.0 / v2026.7.20 (2026-07-21 real-client re-check).
 - Clients absent on the verification hosts (not exercised): generic MCP clients beyond the named clients above.
 
 ## Wrapper and launch patterns used by verified clients
@@ -214,8 +214,20 @@ In addition, a single MCP stdio JSON-RPC round trip was performed against the wr
 - Relevant upstream MCP surfaces: `mcp_servers` remains the config root; stdio servers still use `command` and `args`; `timeout`, `connect_timeout`, `tools.resources`, `tools.prompts`, `enabled` and `supports_parallel_tool_calls` are documented config keys.
 - Nólë setup impact: `nole setup --hermes` remains compatible and now writes `tools.resources=false` and `tools.prompts=false` for new Nólë entries so Hermes does not add resource/prompt utility wrappers to Nólë's web-search tool surface.
 - Environment impact: Hermes v0.15 documents stdio MCP subprocess credential filtering. Prefer `nole setup --hermes --local-extract` or `--mcp-wrapper` so Nólë gets `~/.config/nole/.env` through the env-sourcing wrapper instead of putting provider key values in Hermes config.
-- Verification still required before upgrading this status to v0.15 live-verified: run a disposable Hermes v0.15 profile, `hermes mcp test nole`, confirm tools visible, dispatch `mcp_nole_provider_status` and one low-limit search, then record sanitized evidence.
+- Historical outcome: a v0.15 live-client run was not performed in this 2026-05-28 review. The 2026-07-21 v0.19 real-client receipt below supersedes that evidence gap for current support.
 - Secret-safety: this review records only public source/config shapes and no provider key values, bearer tokens, auth headers, raw provider payloads, private URLs, private paths or chat transcripts.
+
+### Hermes Agent v0.19.0 real-client re-check (2026-07-21)
+
+- Status: verified (real Hermes MCP client path).
+- Exact client version read-back: Hermes Agent v0.19.0 (v2026.7.20).
+- Exact installed Nólë version line read back on the verification host: `nole v1.7.0`. This shell-selected binary check is recorded as compatibility context, not as proof of the image held by an already-running stdio child: that release did not expose its version through the callable `provider_status` result.
+- `hermes mcp test nole` connected successfully and exposed six native Nólë tools: `search`, `extract`, `search_and_extract`, `research`, `provider_status`, and `budget_status`.
+- Read-only client-path dispatch succeeded for `provider_status`, `budget_status`, and sanitized public-document search/extract calls.
+- No configuration was written and no binary was replaced. The run did not invoke `/reload-mcp`, start a fresh cutover session, restart a gateway/service, or make any production change.
+- Reconnect semantics: a stdio child keeps the binary image it started with. After a future binary or config change, Hermes `/reload-mcp` closes the old connection/child, rereads config, reconnects, and refreshes the active tool snapshot; a fresh session is a fallback. A file replacement alone does not update an already-running child.
+- Drift observability: the post-v1.9.0 code adds an additive MCP-only `provider_status.server_version`, sourced from the same build version as the initialize handshake. Once such a build is installed and the MCP subprocess reconnects, the agent can identify the loaded server directly; unstamped source builds report `dev`. This verification did not perform that installation or reconnect.
+- Secret-safety: the receipt contains no provider key values, bearer tokens, auth headers, raw provider payloads, private URLs, local absolute paths, profile names, or chat transcripts.
 
 ### Gemini CLI (2026-06-04 follow-up run)
 

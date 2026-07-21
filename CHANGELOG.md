@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The MCP `provider_status` result now includes an additive top-level
+  `server_version` field sourced from the server's build version. This lets an
+  agent identify the Nólë binary loaded by its MCP subprocess; unstamped source
+  builds report `dev`. The core `nole providers --json` envelope is unchanged.
+
+### Documentation
+
+- Hermes Agent compatibility evidence now records a real-client check on Hermes
+  Agent v0.19.0 (v2026.7.20), including all six native Nólë tools and the exact
+  `nole v1.7.0` host-binary read-back. The receipt explicitly distinguishes
+  compatibility testing from binary replacement, MCP reload, or service restart.
+
 ## [1.9.0] - 2026-07-20
 
 Theme: **untrusted-content safety receipts + OpenClaw-hosted Firecrawl.** This is

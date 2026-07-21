@@ -251,6 +251,14 @@ grep -Fq "| Hermes Agent | verified (Hermes Agent MCP profile path) |" docs/CLIE
   || fail "client support matrix must align Hermes Agent live verification status"
 grep -Fq "Status: verified (Hermes Agent MCP profile path + chat-agent tool dispatch)." docs/CLIENTS/hermes.md \
   || fail "Hermes Agent client doc must use the recorded verified status"
+grep -Fq "Hermes Agent v0.19.0 (v2026.7.20)" docs/CLIENTS/hermes.md \
+  || fail "Hermes Agent client doc must record the v0.19 live verification"
+grep -Fq 'exactly six native MCP tools: `search`, `extract`, `search_and_extract`, `research`, `provider_status`, and `budget_status`' docs/CLIENTS/hermes.md \
+  || fail "Hermes Agent client doc must name the complete six-tool Nólë surface"
+grep -Fq '`nole v1.7.0`' docs/CLIENTS/LIVE-VERIFICATION.md \
+  || fail "Hermes Agent live evidence must preserve the exact Nólë version read-back"
+grep -Fq '`server_version` to the MCP `provider_status` result' docs/STABILITY.md \
+  || fail "stability docs must record the additive MCP server version field"
 grep -Fq 'Codex CLI lists or can call Nólë MCP tools `search`, `provider_status`, `budget_status`, `extract`, and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop' docs/CLIENTS/codex.md \
   || fail "Codex verification checklist must name the tool surface incl. the always-on keyless extract"
 grep -Fq 'Nólë tools `search`, `provider_status`, `budget_status`, plus `extract` and `search_and_extract` (advertised out of the box via the keyless httpfetch backstop' docs/CLIENTS/cursor.md \

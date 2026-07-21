@@ -12,6 +12,7 @@ import (
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/safeerr"
+	"github.com/dorukardahan/nole/internal/version"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -34,6 +35,11 @@ const (
 // Mcp-Session-Id on every request, which would otherwise cause the map to grow
 // linearly with traffic volume.
 const tipStateMaxEntries = 1000
+
+type providerStatusToolResponse struct {
+	ServerVersion string `json:"server_version"`
+	core.ProviderStatusResponse
+}
 
 // hashSessionID reduces a client-supplied session ID to a fixed-length key so
 // the dedup map cannot be driven to large memory by long IDs. SHA-256 → hex
@@ -292,7 +298,11 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 	)
 	s.AddTool(statusTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		liveUsage := req.GetBool("live_usage", false)
-		b, err := json.MarshalIndent(svc.ProviderStatusWithOptions(ctx, core.ProviderStatusOptions{LiveUsage: liveUsage, SyncLedger: liveUsage}), "", "  ")
+		status := svc.ProviderStatusWithOptions(ctx, core.ProviderStatusOptions{LiveUsage: liveUsage, SyncLedger: liveUsage})
+		b, err := json.MarshalIndent(providerStatusToolResponse{
+			ServerVersion:          version.Version,
+			ProviderStatusResponse: status,
+		}, "", "  ")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
