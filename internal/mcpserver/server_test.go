@@ -124,12 +124,13 @@ func TestNewDispatchesToolCalls(t *testing.T) {
 	initializeTestSession(t, srv, ctx, session)
 
 	tests := []struct {
-		name    string
-		tool    string
-		wantKey string
+		name              string
+		tool              string
+		wantKey           string
+		wantServerVersion bool
 	}{
 		{name: "budget status", tool: "budget_status", wantKey: "policy"},
-		{name: "provider status", tool: "provider_status", wantKey: "providers"},
+		{name: "provider status", tool: "provider_status", wantKey: "providers", wantServerVersion: true},
 	}
 
 	for i, test := range tests {
@@ -183,6 +184,19 @@ func TestNewDispatchesToolCalls(t *testing.T) {
 			}
 			if _, ok := payload[test.wantKey]; !ok {
 				t.Errorf("%s payload is missing %q: %s", test.tool, test.wantKey, response.Result.Content[0].Text)
+			}
+			if test.wantServerVersion {
+				rawVersion, ok := payload["server_version"]
+				if !ok {
+					t.Fatalf("%s payload is missing server_version: %s", test.tool, response.Result.Content[0].Text)
+				}
+				var gotVersion string
+				if err := json.Unmarshal(rawVersion, &gotVersion); err != nil {
+					t.Fatalf("unmarshal %s server_version: %v", test.tool, err)
+				}
+				if gotVersion != version.Version {
+					t.Errorf("%s server_version = %q, want %q", test.tool, gotVersion, version.Version)
+				}
 			}
 		})
 	}

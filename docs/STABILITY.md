@@ -79,6 +79,12 @@ by the behaviour test suite and release review rather than a result-snapshot loc
 **MCP `stdout` carries JSON-RPC only** (logs go to stderr) — an invariant, not just
 a convention.
 
+The post-v1.9.0 provider-status expansion intentionally adds top-level
+`server_version` to the MCP `provider_status` result. It is populated from the
+same build version used by the MCP initialize handshake, so agents can identify
+the binary loaded by their MCP subprocess. Unstamped source builds truthfully
+report `dev`. The core `nole providers --json` response remains unchanged.
+
 The v1.7.0 SearchOptions expansion intentionally adds optional MCP params to
 `search`, `search_and_extract`, and `research`: `country`, `search_lang`,
 `ui_lang`, `safesearch`, and `freshness`. For `research`, they apply to internal
