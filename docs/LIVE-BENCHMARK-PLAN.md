@@ -51,6 +51,7 @@ Allowed provider-key status examples:
 | Brave | `present` / `absent` |
 | Tavily | `present` / `absent` |
 | Firecrawl | `present` / `absent` |
+| TinyFish | `present` / `absent`; never print the key value |
 | DDGS | `not required; keyless fallback/control` |
 | Scrapling | `configured` / `not configured`; local runtime, no remote key |
 
@@ -61,6 +62,7 @@ The controlled run may include:
 - Brave Search API for search tasks when configured and policy-allowed;
 - Tavily for search/extract tasks when configured and policy-allowed;
 - Firecrawl for search/extract tasks when configured and policy-allowed;
+- TinyFish Search + Fetch for direct experimental search/extract comparison only when `TINYFISH_API_KEY` is present and keyed live calls were explicitly approved; an absent key must produce no TinyFish network call;
 - DDGS as a keyless search fallback/control only;
 - Scrapling as a local keyless extract fallback when `nole setup --local-extract` has configured it.
 
@@ -69,6 +71,7 @@ DDGS must not be described as the benchmark-primary docs provider. Keyed provide
 ## Cost-policy rules
 
 - `free-first` is the default no-hidden-paid-spend policy.
+- TinyFish Search + Fetch is `keyed-free`: the key is required, all policy modes allow it, and Nólë models request-rate limits rather than a monthly credit balance. This classification does not waive the live-call approval gate.
 - `cost-capped` may allow premium-capable providers only when local cap and estimate settings keep the call inside the cap.
 - `quality-first` must be explicit and means the operator accepts provider-account cost risk for quality/task fit.
 - Nólë's quota/cost ledger is local accounting, not provider-dashboard balance.
@@ -101,7 +104,9 @@ A useful live-routing sample should cover these tasks when the harness supports 
 | People/company | `people` | public organization, team or funding lookup |
 | Code/GitHub/release notes | `code` | public repo, issue, example or release note |
 | Extraction | `extract` | public, non-private URL with safe content |
+| Rendered extraction | `extract` | static, JavaScript-heavy/SPA, redirect, error-path and structured-content public URLs |
 | Multilingual optional | mixed | Turkish or other non-English public query |
+| Search option mapping | mixed | localized country/language and freshness hints without claiming provider compliance from one sample |
 
 Do not use private user questions, private URLs, internal docs, local files or chat transcripts as fixtures.
 
@@ -172,6 +177,9 @@ Only after explicit approval, a minimal smoke run may use commands like:
 # Use the approved policy and case limit. Do not run without explicit approval.
 NOLE_COST_POLICY=free-first nole bench --live --max-live-cases 3 --json > live-bench.local.json
 NOLE_COST_POLICY=free-first nole bench --live --max-live-cases 3 --evidence-md > live-bench.summary.md
+# Direct every-provider matrix: bypasses router, policy and quota ledger.
+# Run only with the separate keyed/live approval gates above.
+NOLE_COST_POLICY=free-first nole bench --live --comprehensive --max-comprehensive-cases 3 --json > comprehensive-bench.local.json
 ```
 
 Before committing any summary, manually review and copy only public-safe, sanitized content into the summary template. Keep local scratch files untracked and remove them when no longer needed.

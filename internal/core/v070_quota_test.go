@@ -14,11 +14,11 @@ func TestByokMetadataFieldsPopulated(t *testing.T) {
 			t.Errorf("%s: MeteringModel must be set", p.Name)
 		}
 		switch p.MeteringModel {
-		case "call-count", "credit-based", "one-time-grant":
+		case "call-count", "credit-based", "one-time-grant", "request-rate":
 		default:
 			t.Errorf("%s: unexpected MeteringModel %q", p.Name, p.MeteringModel)
 		}
-		if !p.EstimateOnly {
+		if p.DefaultCostClass != CostClassKeyedFree && !p.EstimateOnly {
 			t.Errorf("%s: free-tier counts are an estimate; EstimateOnly must be true", p.Name)
 		}
 		if strings.TrimSpace(p.RateLimitNote) == "" {

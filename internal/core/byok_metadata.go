@@ -6,16 +6,19 @@ package core
 // provider means appending one entry here — the cli quota wiring, the setup
 // hints builder, and the docs all consume from this slice.
 type BYOKProvider struct {
-	Name            string
-	EnvVars         []string // primary first; the rest are accepted aliases
-	FreeQuota       int
-	RefreshWindow   RefreshWindow
-	SupportsSearch  bool
-	SupportsExtract bool
-	SignupURL       string
-	FreeTierNote    string
-	EnvExample      string
-	Unlocks         []string
+	Name    string
+	EnvVars []string // primary first; the rest are accepted aliases
+	// DefaultCostClass is empty for legacy free-tier BYOK entries. Key-required
+	// endpoints that are credit-free without a monthly allowance use keyed-free.
+	DefaultCostClass ProviderCostClass
+	FreeQuota        int
+	RefreshWindow    RefreshWindow
+	SupportsSearch   bool
+	SupportsExtract  bool
+	SignupURL        string
+	FreeTierNote     string
+	EnvExample       string
+	Unlocks          []string
 	// MeteringModel / RateLimitNote / EstimateOnly are STATIC, build-time
 	// descriptive metadata about how the provider's free tier actually meters.
 	// They must never be computed from observed runtime behaviour (429s,
@@ -23,7 +26,7 @@ type BYOKProvider struct {
 	// not. They describe the provider's published model so budget_status can be
 	// honest that FreeRemaining is Nólë's own issued-request estimate, not a
 	// live dashboard balance.
-	MeteringModel string // "call-count" | "credit-based" | "one-time-grant"
+	MeteringModel string // "call-count" | "credit-based" | "one-time-grant" | "request-rate"
 	RateLimitNote string
 	EstimateOnly  bool
 }
@@ -85,6 +88,22 @@ var byokProviders = []BYOKProvider{
 		MeteringModel:   "credit-based",
 		RateLimitNote:   "keyless mode may be shared/anonymous and can rate-limit independently of any local ledger; Nólë reports provider 429 drift but does not pretend to know remote balance. Keyed mode is credit-based: scrape ~1 credit/page, search ~2 credits per 10 results (up to 4 for a 20-result call; Nólë never issues the 5-credit Enhanced Mode); Nólë debits 1 per call against a 250-call floor. Free-tier rate limits /scrape 10 rpm, /search 5 rpm, not tracked.",
 		EstimateOnly:    true,
+	},
+	{
+		Name:             "tinyfish",
+		EnvVars:          []string{"TINYFISH_API_KEY"},
+		DefaultCostClass: CostClassKeyedFree,
+		FreeQuota:        0,
+		RefreshWindow:    RefreshNone,
+		SupportsSearch:   true,
+		SupportsExtract:  true,
+		SignupURL:        "https://agent.tinyfish.ai/api-keys",
+		FreeTierNote:     "Key required. TinyFish's current docs say Search and Fetch consume no credits; separately metered Agent and Browser products are outside Nólë. Pricing can change. Nólë does not invent a monthly Search/Fetch allowance or remaining-credit balance.",
+		EnvExample:       "export TINYFISH_API_KEY=...",
+		Unlocks:          []string{"experimental_search_fallback", "rendered_url_extraction_fallback"},
+		MeteringModel:    "request-rate",
+		RateLimitNote:    "request-rate only: current docs list Search requests/minute and Fetch URLs/minute limits; Nólë keeps those distinct from allowance accounting and does not infer a credit balance.",
+		EstimateOnly:     false,
 	},
 }
 

@@ -18,11 +18,12 @@ import (
 // low-burst probe: a generous per-call timeout, a short inter-call spacing per
 // provider, and no fixture cap.
 type ComprehensiveOptions struct {
-	MaxFixtures      int           // 0 = all
-	PerCallTimeout   time.Duration // default 30s
-	InterCallSpacing time.Duration // default 250ms per provider serial
-	NetworkContext   string        // free-text annotation for the artifact
-	CostPolicy       string        // metadata-only; comprehensive mode bypasses policy
+	MaxFixtures              int                      // 0 = all
+	PerCallTimeout           time.Duration            // default 30s
+	InterCallSpacing         time.Duration            // default 250ms per provider serial
+	ProviderInterCallSpacing map[string]time.Duration // optional provider-specific floor
+	NetworkContext           string                   // free-text annotation for the artifact
+	CostPolicy               string                   // metadata-only; comprehensive mode bypasses policy
 }
 
 func (o ComprehensiveOptions) normalize() ComprehensiveOptions {
@@ -36,6 +37,14 @@ func (o ComprehensiveOptions) normalize() ComprehensiveOptions {
 		o.InterCallSpacing = 250 * time.Millisecond
 	}
 	return o
+}
+
+func (o ComprehensiveOptions) spacingFor(provider string) time.Duration {
+	spacing := o.InterCallSpacing
+	if floor := o.ProviderInterCallSpacing[provider]; floor > spacing {
+		spacing = floor
+	}
+	return spacing
 }
 
 // RunComprehensiveLive exercises every (provider, fixture) pair the providers'
@@ -76,10 +85,11 @@ func RunComprehensiveLive(ctx context.Context, set FixtureSet, providers map[str
 				}
 				m := runComprehensiveOne(ctx, name, p, fx, opts.PerCallTimeout)
 				local = append(local, m)
-				if opts.InterCallSpacing > 0 {
+				spacing := opts.spacingFor(name)
+				if spacing > 0 {
 					select {
 					case <-ctx.Done():
-					case <-time.After(opts.InterCallSpacing):
+					case <-time.After(spacing):
 					}
 				}
 				if ctx.Err() != nil {
@@ -151,7 +161,16 @@ func runComprehensiveOne(parent context.Context, name string, p core.Provider, f
 		return m
 	}
 
-	resp, err := p.Search(ctx, core.SearchRequest{Query: fx.Query, Task: fx.Task, Limit: 5})
+	resp, err := p.Search(ctx, core.SearchRequest{
+		Query: fx.Query,
+		Task:  fx.Task,
+		Limit: 5,
+		Options: core.SearchOptions{
+			Country:    fx.Country,
+			SearchLang: fx.SearchLang,
+			Freshness:  fx.Freshness,
+		},
+	})
 	m.LatencyMS = time.Since(start).Milliseconds()
 	if err != nil {
 		m.ErrorClass = classifyComprehensiveError(err)

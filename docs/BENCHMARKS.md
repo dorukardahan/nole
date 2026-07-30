@@ -65,6 +65,14 @@ Rules:
 - Do not overstate the results; a smoke summary is not a scientific paper or a provider-ranking claim.
 - Cost policy still applies. A live run can consume quota or incur provider-account cost when the selected policy and provider dashboard allow it.
 
+The separate `--live --comprehensive` mode is more invasive: it bypasses the route matrix, policy and quota ledger so each provider can be compared directly on every capability-permitting fixture. It still never prints key values or raw payloads, and a TinyFish instance with no `TINYFISH_API_KEY` rejects locally before any provider call. Run it only after the explicit keyed/live approval gates in `docs/LIVE-BENCHMARK-PLAN.md`:
+
+```bash
+nole bench --live --comprehensive --max-comprehensive-cases 3 --json
+```
+
+Comprehensive live fixtures extend (but do not mutate) the deterministic offline set with localization/freshness search options plus static, JavaScript-heavy, redirect, error-path and structured-content extraction targets. TinyFish probes use a conservative two-second inter-call spacing floor. These are contract/smoke observations, not ranking evidence.
+
 ## Evidence fields to record
 
 A sanitized live summary should include:

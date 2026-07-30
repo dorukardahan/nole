@@ -596,6 +596,8 @@ func providerUsageStrategy(provider Provider, decision QuotaDecision) (strategy,
 		return RemoteUsageStrategyDisabledNoKey, "provider account usage requires configured credentials", false
 	case CostClassKeylessFree:
 		return RemoteUsageStrategyNotApplicable, "keyless/local provider has no provider-account quota for Nólë to query", false
+	case CostClassKeyedFree:
+		return RemoteUsageStrategyUnsupported, "provider publishes request-rate limits but no Search/Fetch credit balance for Nólë to query", false
 	}
 	entry := QuotaEntry{Provider: decision.Provider, CostClass: decision.CostClass}
 	canQuery = canQueryProviderUsage(provider, entry, true)

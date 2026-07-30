@@ -32,56 +32,56 @@ func TestBuildSetupSuggestionsExhaustive(t *testing.T) {
 		// disabled-feature unlock (high).
 		{
 			label:                "no keys, keyless extract baseline — keyed extract = fidelity upgrade",
-			configured:           configuredSet(),
+			configured:           configuredSet("tinyfish"),
 			extractAvailable:     true,
 			wantMissing:          []string{"brave", "firecrawl", "tavily"},
 			wantImpactByProvider: map[string]string{"brave": "medium", "tavily": "medium", "firecrawl": "medium"},
 		},
 		{
 			label:                "only brave, keyless extract baseline — keyed extract still MEDIUM upgrade",
-			configured:           configuredSet("brave"),
+			configured:           configuredSet("brave", "tinyfish"),
 			extractAvailable:     true,
 			wantMissing:          []string{"firecrawl", "tavily"},
 			wantImpactByProvider: map[string]string{"tavily": "medium", "firecrawl": "medium"},
 		},
 		{
 			label:                "only tavily — extract keyed via tavily, others MEDIUM/LOW",
-			configured:           configuredSet("tavily"),
+			configured:           configuredSet("tavily", "tinyfish"),
 			extractAvailable:     true,
 			wantMissing:          []string{"brave", "firecrawl"},
 			wantImpactByProvider: map[string]string{"brave": "medium", "firecrawl": "low"},
 		},
 		{
 			label:                "only firecrawl — extract keyed via firecrawl",
-			configured:           configuredSet("firecrawl"),
+			configured:           configuredSet("firecrawl", "tinyfish"),
 			extractAvailable:     true,
 			wantMissing:          []string{"brave", "tavily"},
 			wantImpactByProvider: map[string]string{"brave": "medium", "tavily": "medium"},
 		},
 		{
 			label:                "brave + tavily — only firecrawl missing, pure redundancy",
-			configured:           configuredSet("brave", "tavily"),
+			configured:           configuredSet("brave", "tavily", "tinyfish"),
 			extractAvailable:     true,
 			wantMissing:          []string{"firecrawl"},
 			wantImpactByProvider: map[string]string{"firecrawl": "low"},
 		},
 		{
 			label:                "brave + firecrawl — tavily missing, semantic quality MEDIUM",
-			configured:           configuredSet("brave", "firecrawl"),
+			configured:           configuredSet("brave", "firecrawl", "tinyfish"),
 			extractAvailable:     true,
 			wantMissing:          []string{"tavily"},
 			wantImpactByProvider: map[string]string{"tavily": "medium"},
 		},
 		{
 			label:                "tavily + firecrawl — brave missing, search slower",
-			configured:           configuredSet("tavily", "firecrawl"),
+			configured:           configuredSet("tavily", "firecrawl", "tinyfish"),
 			extractAvailable:     true,
 			wantMissing:          []string{"brave"},
 			wantImpactByProvider: map[string]string{"brave": "medium"},
 		},
 		{
 			label:                "all three configured — no suggestions",
-			configured:           configuredSet("brave", "tavily", "firecrawl"),
+			configured:           configuredSet("brave", "tavily", "firecrawl", "tinyfish"),
 			extractAvailable:     true,
 			wantMissing:          []string{},
 			wantImpactByProvider: map[string]string{},
@@ -92,14 +92,14 @@ func TestBuildSetupSuggestionsExhaustive(t *testing.T) {
 		// is not the default service, but the function must stay correct for it.
 		{
 			label:                "no keys AND no keyless extract — extract truly disabled, HIGH",
-			configured:           configuredSet(),
+			configured:           configuredSet("tinyfish"),
 			extractAvailable:     false,
 			wantMissing:          []string{"brave", "firecrawl", "tavily"},
 			wantImpactByProvider: map[string]string{"brave": "medium", "tavily": "high", "firecrawl": "high"},
 		},
 		{
 			label:                "only brave, no keyless extract — both extract providers HIGH",
-			configured:           configuredSet("brave"),
+			configured:           configuredSet("brave", "tinyfish"),
 			extractAvailable:     false,
 			wantMissing:          []string{"firecrawl", "tavily"},
 			wantImpactByProvider: map[string]string{"tavily": "high", "firecrawl": "high"},
@@ -153,7 +153,7 @@ func TestFilterSetupSuggestionsForClientIsOpenClawOnly(t *testing.T) {
 func TestBuildSetupSuggestionsFieldsArePopulated(t *testing.T) {
 	// Sanity check: when a suggestion is produced, all string fields are
 	// non-empty so the AI tool has enough to articulate.
-	got := BuildSetupSuggestions(configuredSet(), true) // worst case: 3 suggestions (keyless extract baseline)
+	got := BuildSetupSuggestions(configuredSet("tinyfish"), true) // isolate the three legacy suggestions
 	if len(got) == 0 {
 		t.Fatal("expected suggestions for zero-key case")
 	}
@@ -168,16 +168,16 @@ func TestBuildSetupSuggestionsFieldsArePopulated(t *testing.T) {
 func TestBuildSetupTipPresenceMatchesSuggestions(t *testing.T) {
 	// With no suggestions the tip must be nil. With suggestions present
 	// the tip Summary must mention at least one of the missing keys.
-	if tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave", "tavily", "firecrawl"), true)); tip != nil {
+	if tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave", "tavily", "firecrawl", "tinyfish"), true)); tip != nil {
 		t.Errorf("expected nil tip when nothing missing, got %+v", tip)
 	}
 	// LOW-only: brave + tavily configured, firecrawl missing at LOW — tip must be nil.
-	if tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave", "tavily"), true)); tip != nil {
+	if tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave", "tavily", "tinyfish"), true)); tip != nil {
 		t.Errorf("expected nil tip for LOW-only suggestions, got %+v", tip)
 	}
 	// Only brave: with the keyless extract baseline, tavily+firecrawl are MEDIUM
 	// fidelity upgrades, so the tip is present (a quality nudge, not "disabled").
-	tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave"), true))
+	tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("brave", "tinyfish"), true))
 	if tip == nil {
 		t.Fatal("expected non-nil tip when MEDIUM fidelity upgrades are available")
 	}
@@ -187,7 +187,7 @@ func TestBuildSetupTipPresenceMatchesSuggestions(t *testing.T) {
 }
 
 func TestBuildSetupTipFramesZeroKeyBaselineAsWorkingUpgradePath(t *testing.T) {
-	tip := BuildSetupTip(BuildSetupSuggestions(configuredSet(), true))
+	tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("tinyfish"), true))
 	if tip == nil {
 		t.Fatal("expected setup_tip for missing medium-impact provider upgrades")
 	}
@@ -218,7 +218,7 @@ func TestBuildSetupTipFramesZeroKeyBaselineAsWorkingUpgradePath(t *testing.T) {
 }
 
 func TestBuildSetupTipKeepsDisabledCopyForTrueHighImpactMissingFeature(t *testing.T) {
-	tip := BuildSetupTip(BuildSetupSuggestions(configuredSet(), false))
+	tip := BuildSetupTip(BuildSetupSuggestions(configuredSet("tinyfish"), false))
 	if tip == nil {
 		t.Fatal("expected setup_tip when extract is truly unavailable")
 	}

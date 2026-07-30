@@ -23,7 +23,9 @@ func BuildSetupSuggestions(configured map[string]bool, extractAvailable bool) []
 	providers := BYOKProviders()
 	hasKeyedExtract := false
 	for _, p := range providers {
-		if p.SupportsExtract && configured[p.Name] {
+		// Experimental tail fallbacks do not downgrade established provider
+		// suggestions to "redundancy" merely because their key is present.
+		if p.Name != "tinyfish" && p.SupportsExtract && configured[p.Name] {
 			hasKeyedExtract = true
 			break
 		}
@@ -70,6 +72,11 @@ func filterSetupSuggestionsForClient(suggestions []SetupSuggestion, clientMode s
 }
 
 func classifyImpact(p BYOKProvider, hasKeyedExtract, extractAvailable bool) string {
+	// TinyFish is an experimental tail fallback. Missing it never means an
+	// existing capability is disabled and must not create an ordinary setup nag.
+	if p.Name == "tinyfish" {
+		return "low"
+	}
 	// HIGH: the provider unlocks a capability NOTHING currently delivers. The only
 	// such case is url_extraction when extract is unavailable entirely — which does
 	// not happen in the default service (the keyless httpfetch backstop makes

@@ -22,6 +22,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 	"github.com/dorukardahan/nole/internal/providers/scrapling"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
+	"github.com/dorukardahan/nole/internal/providers/tinyfish"
 	"github.com/dorukardahan/nole/internal/providers/wikipedia"
 	"github.com/dorukardahan/nole/internal/safeerr"
 )
@@ -38,6 +39,7 @@ func defaultService() *core.Service {
 		braveKey = os.Getenv("BRAVE_SEARCH_API_KEY")
 	}
 	tavilyKey := os.Getenv("TAVILY_API_KEY")
+	tinyfishKey := os.Getenv("TINYFISH_API_KEY")
 
 	// One circuit breaker per remote provider that is NOT the last-resort
 	// fallback. In a long-lived `nole serve` / MCP process, a persistently-failing
@@ -90,6 +92,14 @@ func defaultService() *core.Service {
 		_ = registry.Register(mock.NewUnavailable("tavily"))
 	}
 
+	// TinyFish — optional experimental Search + Fetch adapter. It is registered
+	// for status observability without a key, but enters routes only when keyed.
+	if tinyfishKey != "" {
+		_ = registry.Register(tinyfish.New(tinyfish.WithAPIKey(tinyfishKey), tinyfish.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
+	} else {
+		_ = registry.Register(mock.NewUnavailable("tinyfish"))
+	}
+
 	// DDGS — keyless free, always available (last-resort general fallback)
 	_ = registry.Register(ddgs.New())
 
@@ -112,7 +122,7 @@ func defaultService() *core.Service {
 	// makes extract / search_and_extract work with zero keys and zero setup.
 	_ = registry.Register(httpfetch.New())
 
-	entries := defaultQuotaEntries(braveKey, tavilyKey, effectiveFirecrawlKey)
+	entries := defaultQuotaEntries(braveKey, tavilyKey, effectiveFirecrawlKey, tinyfishKey)
 	ledger := defaultQuotaLedger(defaultQuotaPolicyFromEnv(), entries)
 
 	opts := []core.ServiceOption{
@@ -125,20 +135,33 @@ func defaultService() *core.Service {
 	if cache := defaultResponseCacheFromEnv(); cache != nil {
 		opts = append(opts, core.WithResponseCache(cache))
 	}
-	return core.NewService(registry, ledger, core.DefaultRouteMatrix(), opts...)
+	return core.NewService(registry, ledger, configuredRouteMatrix(tinyfishKey), opts...)
 }
 
-func defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey string) []core.QuotaEntry {
+func defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey, tinyfishKey string) []core.QuotaEntry {
 	return []core.QuotaEntry{
 		providerQuotaEntry("brave", braveKey != ""),
 		providerQuotaEntry("tavily", tavilyKey != ""),
 		providerQuotaEntry("firecrawl", firecrawlKey != ""),
+		providerQuotaEntry("tinyfish", tinyfishKey != ""),
 		{Provider: "ddgs", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 		{Provider: "wikipedia", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 		{Provider: "arxiv", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 		{Provider: "scrapling", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 		{Provider: "httpfetch", CostClass: core.CostClassKeylessFree, KeylessFree: true},
 	}
+}
+
+func configuredRouteMatrix(tinyfishKey string) core.RouteMatrix {
+	base := core.DefaultRouteMatrix()
+	out := make(core.RouteMatrix, len(base))
+	for task, route := range base {
+		out[task] = append([]string(nil), route...)
+		if strings.TrimSpace(tinyfishKey) != "" {
+			out[task] = append(out[task], "tinyfish")
+		}
+	}
+	return out
 }
 
 func defaultQuotaLedger(policy core.QuotaPolicy, entries []core.QuotaEntry) core.QuotaLedger {
@@ -300,6 +323,13 @@ func providerQuotaEntry(provider string, keyPresent bool) core.QuotaEntry {
 			return core.QuotaEntry{Provider: provider, CostClass: core.CostClassKeylessFree, KeylessFree: true}
 		}
 		return core.QuotaEntry{Provider: provider, CostClass: core.CostClassDisabledNoKey}
+	}
+	if def, ok := core.LookupBYOK(provider); ok && def.DefaultCostClass == core.CostClassKeyedFree {
+		return core.QuotaEntry{
+			Provider:      provider,
+			CostClass:     core.CostClassKeyedFree,
+			MeteringModel: def.MeteringModel,
+		}
 	}
 	if isProviderPaidMode(provider) {
 		return core.QuotaEntry{

@@ -32,11 +32,17 @@ func TestBYOKProvidersInvariants(t *testing.T) {
 				t.Errorf("%s env var %q does not follow the *_API_KEY convention", p.Name, ev)
 			}
 		}
-		if p.FreeQuota <= 0 {
-			t.Errorf("%s has non-positive FreeQuota %d", p.Name, p.FreeQuota)
-		}
-		if p.RefreshWindow == "" {
-			t.Errorf("%s has empty RefreshWindow", p.Name)
+		if p.DefaultCostClass == CostClassKeyedFree {
+			if p.FreeQuota != 0 || p.RefreshWindow != RefreshNone {
+				t.Errorf("%s keyed-free metadata invents quota/refresh: %#v", p.Name, p)
+			}
+		} else {
+			if p.FreeQuota <= 0 {
+				t.Errorf("%s has non-positive FreeQuota %d", p.Name, p.FreeQuota)
+			}
+			if p.RefreshWindow == "" {
+				t.Errorf("%s has empty RefreshWindow", p.Name)
+			}
 		}
 		if p.SignupURL == "" {
 			t.Errorf("%s has empty SignupURL", p.Name)
@@ -48,7 +54,7 @@ func TestBYOKProvidersInvariants(t *testing.T) {
 			t.Errorf("%s supports neither search nor extract — what is it for?", p.Name)
 		}
 	}
-	for _, want := range []string{"brave", "tavily", "firecrawl"} {
+	for _, want := range []string{"brave", "tavily", "firecrawl", "tinyfish"} {
 		if !names[want] {
 			t.Errorf("missing required provider %q", want)
 		}

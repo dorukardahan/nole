@@ -34,6 +34,7 @@ var secretEnvKeys = []struct {
 	{"BRAVE_API_KEY", "brave"},
 	{"BRAVE_SEARCH_API_KEY", "brave (alt)"},
 	{"TAVILY_API_KEY", "tavily"},
+	{"TINYFISH_API_KEY", "tinyfish"},
 }
 
 func secretEnvStatuses() []secretStatus {
@@ -167,6 +168,9 @@ func buildConfigDump(ctx context.Context) configDump {
 		})
 	}
 	for _, b := range core.BYOKProviders() {
+		if b.FreeQuota <= 0 {
+			continue
+		}
 		dump.QuotaFloors = append(dump.QuotaFloors, quotaFloor{
 			Provider:      b.Name,
 			FreeQuota:     b.FreeQuota,

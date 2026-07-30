@@ -23,6 +23,7 @@ type ProviderCostClass string
 
 const (
 	CostClassKeylessFree    ProviderCostClass = "keyless-free"
+	CostClassKeyedFree      ProviderCostClass = "keyed-free"
 	CostClassFreeTierBYOK   ProviderCostClass = "free-tier-BYOK"
 	CostClassPremiumCapable ProviderCostClass = "premium-capable"
 	CostClassUnknownCost    ProviderCostClass = "unknown-cost"
@@ -275,11 +276,15 @@ func (l *MemoryQuotaLedger) decideLocked(provider string) QuotaDecision {
 		entry, ok := l.entries[provider]
 		if ok {
 			entry = normalizeQuotaEntry(entry)
-			if entry.CostClass == CostClassKeylessFree {
+			if entry.CostClass == CostClassKeylessFree || entry.CostClass == CostClassKeyedFree {
+				reason := "keyless_free"
+				if entry.CostClass == CostClassKeyedFree {
+					reason = "keyed_free"
+				}
 				return QuotaDecision{
 					Provider:           provider,
 					Allowed:            true,
-					Reason:             "keyless_free",
+					Reason:             reason,
 					Policy:             l.policy.Policy,
 					CostClass:          entry.CostClass,
 					FreeRemaining:      entry.FreeRemaining,
@@ -336,6 +341,9 @@ func (l *MemoryQuotaLedger) decideLocked(provider string) QuotaDecision {
 	case CostClassKeylessFree:
 		decision.Allowed = true
 		decision.Reason = "keyless_free"
+	case CostClassKeyedFree:
+		decision.Allowed = true
+		decision.Reason = "keyed_free"
 	case CostClassFreeTierBYOK:
 		if entry.FreeRemaining > 0 {
 			decision.Allowed = true
@@ -408,7 +416,7 @@ func (l *MemoryQuotaLedger) recordLocked(provider string) error {
 	oldEntry := entry
 	changed := refreshed
 	switch entry.CostClass {
-	case CostClassKeylessFree:
+	case CostClassKeylessFree, CostClassKeyedFree:
 		return nil
 	case CostClassFreeTierBYOK:
 		if entry.FreeRemaining <= 0 {

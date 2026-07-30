@@ -166,7 +166,7 @@ func isTransientStatus(status int) bool {
 	switch status {
 	// 408 is labelled "transient" by statusCategory (errors.go) and is
 	// retry-safe per RFC 9110; keep the retry policy aligned with that label.
-	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	default:
 		return false
