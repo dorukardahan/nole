@@ -21,7 +21,7 @@ Subcommands (registered `internal/cli/root.go:18-31`):
 |---|---|---|---|
 | `search` | `newSearchCommand` | `internal/cli/search.go:11` | Routed web search via `Service.Search`; text or `--json`, `--task`, `--limit`, `--insight`. |
 | `classify` | `newClassifyCommand` | `internal/cli/plan.go:11` | JSON-only deterministic intent classification (`core.ClassifyQuery`), no provider calls. |
-| `route-plan` | `newRoutePlanCommand` | `internal/cli/plan.go:44` | JSON-only deterministic route plan (`core.BuildRoutePlan`), no provider calls; reflects the configured TinyFish route tail when its key is present. |
+| `route-plan` | `newRoutePlanCommand` | `internal/cli/plan.go:44` | JSON-only deterministic route plan (`core.BuildRoutePlan`), no provider calls; TinyFish appears only through an explicit planning override, not key presence. |
 | `extract` | `newExtractCommand` | `internal/cli/extract.go:11` | URL extraction via `Service.Extract` (SSRF-gated). |
 | `research` | `newResearchCommand` | `internal/cli/research.go:15` | Multi-step Search+Extract pipeline, markdown synthesis, no LLM. |
 | `bench` | `newBenchCommand` | `internal/cli/bench.go:21` | Offline/live/comprehensive eval + sanitized route-evidence. |
@@ -48,7 +48,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 |---|---|---|---|
 | `main` | func | `main.go:11` | Entrypoint; builds root, executes, prints redacted error to stderr + `os.Exit(1)`. stdout clean on failure. |
 | `NewRootCommand` | func | `internal/cli/root.go:7` | Root cobra.Command; registers all 14 subcommands. |
-| `defaultService` | func | `internal/cli/app.go:24` | Central composition root: loads `.env`, builds `core.Registry`, registers real-or-mock providers + keyless ddgs/scrapling, assembles quota ledger + optional cache, and uses `configuredRouteMatrix` so a configured TinyFish adapter is appended at each route tail. Discards every `registry.Register` error via `_ =`. |
+| `defaultService` | func | `internal/cli/app.go:24` | Central composition root: loads `.env`, builds `core.Registry`, registers real-or-mock providers + keyless ddgs/scrapling, assembles quota ledger + optional cache, and keeps TinyFish registered but outside evidence-backed runtime routes. Discards every `registry.Register` error via `_ =`. |
 | `defaultQuotaLedger` | func | `internal/cli/app.go:83` | Selects ledger backend: memory/off/none → in-memory; else file-backed at `NOLE_QUOTA_LEDGER_PATH` or default path, with memory fallback. Has a redundant error branch (lines 120-125). |
 | `defaultQuotaLedgerPath` | func | `internal/cli/app.go:144` | Resolves on-disk ledger location; honors `XDG_STATE_HOME` only when absolute, else `~/.local/state/nole/quota-ledger.json`; "" when no home. |
 | `providerQuotaEntry` | func | `internal/cli/app.go:205` | Maps provider+key-presence to a `core.QuotaEntry` cost class, including TinyFish's key-required, non-decrementing `KeyedFree` class before paid-mode evaluation. |
@@ -60,7 +60,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `runSearch` | func | `internal/cli/app.go:388` | Thin search facade; rejects empty query, calls `defaultService().Search` with `context.Background()`. Builds a new Service per call. |
 | `version` vars | var | `internal/version/version.go:3` | Build-stamped `Version`/`Commit`/`Date`. `Version` is consumed by the MCP server and the `version` CLI command; `Commit`/`Date` are consumed by the `version` CLI command and stamped by release-shaped builds. |
 
-**Data flow.** `os/shell` → `main.main` → `cli.NewRootCommand().Execute()`. Service-backed commands call `defaultService()` → load provider-key presence → register real-or-mock adapters → seed the quota ledger → `configuredRouteMatrix(tinyfishKey)` → `core.NewService(...)`. `configuredRouteMatrix` deep-copies the canonical matrix: no TinyFish key is exactly equal to `DefaultRouteMatrix`, while a present key appends `tinyfish` without reordering the evidence-backed prefix. Output flows through the shared JSON/insight writers; errors are redacted before stderr.
+**Data flow.** `os/shell` → `main.main` → `cli.NewRootCommand().Execute()`. Service-backed commands call `defaultService()` → load provider-key presence → register real-or-mock adapters → seed the quota ledger → `configuredRouteMatrix(tinyfishKey)` → `core.NewService(...)`. `configuredRouteMatrix` always deep-copies the canonical evidence-backed matrix; TinyFish key presence affects registration/status/accounting but not runtime route membership. Output flows through the shared JSON/insight writers; errors are redacted before stderr.
 
 ### Area: core-routing — `internal/core` routing engine (route matrix, registry, deterministic planner, shared types, insight formatting)
 

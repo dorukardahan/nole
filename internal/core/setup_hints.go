@@ -72,8 +72,9 @@ func filterSetupSuggestionsForClient(suggestions []SetupSuggestion, clientMode s
 }
 
 func classifyImpact(p BYOKProvider, hasKeyedExtract, extractAvailable bool) string {
-	// TinyFish is an experimental tail fallback. Missing it never means an
-	// existing capability is disabled and must not create an ordinary setup nag.
+	// TinyFish is an experimental adapter held out of evidence-backed runtime
+	// routes. Missing it never disables an existing capability and must not create
+	// an ordinary setup nag.
 	if p.Name == "tinyfish" {
 		return "low"
 	}

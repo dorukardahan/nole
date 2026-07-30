@@ -93,7 +93,8 @@ func defaultService() *core.Service {
 	}
 
 	// TinyFish — optional experimental Search + Fetch adapter. It is registered
-	// for status observability without a key, but enters routes only when keyed.
+	// for status observability without a key, but remains outside evidence-backed
+	// runtime routes even when keyed.
 	if tinyfishKey != "" {
 		_ = registry.Register(tinyfish.New(tinyfish.WithAPIKey(tinyfishKey), tinyfish.WithBreaker(providerhttp.NewBreaker(breakerOpts))))
 	} else {
@@ -152,14 +153,11 @@ func defaultQuotaEntries(braveKey, tavilyKey, firecrawlKey, tinyfishKey string) 
 	}
 }
 
-func configuredRouteMatrix(tinyfishKey string) core.RouteMatrix {
+func configuredRouteMatrix(_ string) core.RouteMatrix {
 	base := core.DefaultRouteMatrix()
 	out := make(core.RouteMatrix, len(base))
 	for task, route := range base {
 		out[task] = append([]string(nil), route...)
-		if strings.TrimSpace(tinyfishKey) != "" {
-			out[task] = append(out[task], "tinyfish")
-		}
 	}
 	return out
 }

@@ -19,17 +19,11 @@ func TestConfiguredRouteMatrixWithoutTinyFishKeyEqualsDefaultExactly(t *testing.
 	}
 }
 
-func TestConfiguredRouteMatrixWithTinyFishKeyPreservesEveryPrefixAndAppendsTail(t *testing.T) {
-	base := core.DefaultRouteMatrix()
+func TestConfiguredRouteMatrixWithTinyFishKeyStillEqualsDefaultExactly(t *testing.T) {
+	want := core.DefaultRouteMatrix()
 	got := configuredRouteMatrix("configured")
-	if reflect.DeepEqual(got, base) {
-		t.Fatal("configured matrix did not append tinyfish")
-	}
-	for task, wantPrefix := range base {
-		route := got[task]
-		if len(route) != len(wantPrefix)+1 || route[len(route)-1] != "tinyfish" || !reflect.DeepEqual(route[:len(wantPrefix)], wantPrefix) {
-			t.Fatalf("task %s route=%v want prefix=%v + tinyfish", task, route, wantPrefix)
-		}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("key presence changed evidence-backed routes:\n got=%#v\nwant=%#v", got, want)
 	}
 	got[core.TaskGeneral][0] = "mutated"
 	if reflect.DeepEqual(got, core.DefaultRouteMatrix()) {
@@ -40,7 +34,7 @@ func TestConfiguredRouteMatrixWithTinyFishKeyPreservesEveryPrefixAndAppendsTail(
 	}
 }
 
-func TestRoutePlanCommandUsesConfiguredTinyFishTail(t *testing.T) {
+func TestRoutePlanCommandDoesNotInsertTinyFishFromKeyPresence(t *testing.T) {
 	t.Setenv("NOLE_DISABLE_ENV_FILE", "1")
 	t.Setenv("TINYFISH_API_KEY", "unit-test-key")
 	cmd := NewRootCommand()
@@ -55,8 +49,13 @@ func TestRoutePlanCommandUsesConfiguredTinyFishTail(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &plan); err != nil {
 		t.Fatalf("decode route-plan: %v", err)
 	}
-	if len(plan.Routes) != 1 || len(plan.Routes[0].Route) == 0 || plan.Routes[0].Route[len(plan.Routes[0].Route)-1] != "tinyfish" {
-		t.Fatalf("configured route-plan did not append TinyFish: %#v", plan.Routes)
+	if len(plan.Routes) != 1 || len(plan.Routes[0].Route) == 0 {
+		t.Fatalf("route-plan = %#v", plan.Routes)
+	}
+	for _, provider := range plan.Routes[0].Route {
+		if provider == "tinyfish" {
+			t.Fatalf("key presence inserted TinyFish without route evidence: %#v", plan.Routes)
+		}
 	}
 }
 

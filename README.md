@@ -66,7 +66,7 @@ Nólë currently supports these provider adapters:
 - Brave Search API: web search plus dedicated news/factcheck search, BYOK/free-tier capable.
 - Tavily: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - Firecrawl: search + extract; keyless API mode works without a key, BYOK/free-tier/premium-capable with `FIRECRAWL_API_KEY`.
-- TinyFish Search + Fetch: optional experimental search and rendered-extraction fallback. It requires `TINYFISH_API_KEY`; when present it is appended to the tail of every default route without changing the existing provider order. TinyFish documents Search and Fetch as credit-free but request-rate-limited, so Nólë classifies it as `keyed-free` rather than inventing a monthly credit balance.
+- TinyFish Search + Fetch: optional experimental search and rendered-extraction adapter. It requires `TINYFISH_API_KEY` and is available for explicit route planning and comprehensive live contract benchmarking, but key presence alone does not insert it into evidence-backed runtime routes. TinyFish documents Search and Fetch as credit-free but request-rate-limited, so Nólë classifies it as `keyed-free` rather than inventing a monthly credit balance.
 - DDGS: keyless search fallback (the last-resort general fallback on every search route).
 - Wikipedia/MediaWiki: keyless encyclopedic search via the official MediaWiki Action API. Reinforces the `factcheck`, `people`, and `academic` routes only (tried before the DDGS backstop); it is deliberately not a general fallback. No key, no setup.
 - arXiv: keyless academic search via the public arXiv Atom API. Reinforces the `academic` route only (tried before the DDGS backstop), with primary-source scholarly preprints; it is deliberately not a general fallback. No key, no setup.
@@ -82,7 +82,7 @@ See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 Prerequisites:
 
 - Go 1.25.12+ for building from source (matches the `go 1.25.12` directive in `go.mod`).
-- Optional provider keys for Brave, Tavily, Firecrawl and the experimental TinyFish fallback.
+- Optional provider keys for Brave, Tavily, Firecrawl and the experimental TinyFish adapter.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
 - No provider key is required for Firecrawl search + extract in keyless API mode (subject to Firecrawl's service availability and limits; `FIRECRAWL_API_KEY` remains optional for account-backed use), the deterministic benchmark, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback.
 
