@@ -3,6 +3,7 @@ package bench
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -149,6 +150,29 @@ func TestRunComprehensiveLive_ExpectedNotFoundScoresContractFidelity(t *testing.
 	}
 	if rep.ProviderSummary["swallows-error"].Successes != 0 || rep.ProviderSummary["swallows-error"].Failures != 1 {
 		t.Fatalf("swallowed aggregate = %#v", rep.ProviderSummary["swallows-error"])
+	}
+}
+
+func TestRunComprehensiveLive_ExpectedNotFoundNormalizesProviderNativeClasses(t *testing.T) {
+	for _, code := range []string{"page_not_found", "target_http_error"} {
+		t.Run(code, func(t *testing.T) {
+			provider := fakeProvider{
+				name:       "tinyfish",
+				caps:       []core.Capability{core.CapabilityExtract},
+				extractErr: fmt.Errorf("tinyfish: fetch failed (%s)", code),
+			}
+			fixture := Fixture{
+				ID:                 "expected-404",
+				Task:               core.TaskExtract,
+				Kind:               KindExtract,
+				TargetURL:          "https://example.com/missing",
+				ExpectedErrorClass: "not_found",
+			}
+			measurement := runComprehensiveOne(context.Background(), provider.name, provider, fixture, time.Second)
+			if !measurement.Success || measurement.ErrorClass != "not_found" {
+				t.Fatalf("provider-native %s measurement = %#v", code, measurement)
+			}
+		})
 	}
 }
 

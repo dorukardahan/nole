@@ -150,7 +150,7 @@ func runComprehensiveOne(parent context.Context, name string, p core.Provider, f
 		resp, err := p.Extract(ctx, core.ExtractRequest{URL: fx.TargetURL, Format: "markdown"})
 		m.LatencyMS = time.Since(start).Milliseconds()
 		if err != nil {
-			m.ErrorClass = classifyComprehensiveError(err)
+			m.ErrorClass = classifyComprehensiveFixtureError(err, m.ExpectedErrorClass)
 			m.Success = m.ExpectedErrorClass != "" && m.ErrorClass == m.ExpectedErrorClass
 			return m
 		}
@@ -179,7 +179,7 @@ func runComprehensiveOne(parent context.Context, name string, p core.Provider, f
 	})
 	m.LatencyMS = time.Since(start).Milliseconds()
 	if err != nil {
-		m.ErrorClass = classifyComprehensiveError(err)
+		m.ErrorClass = classifyComprehensiveFixtureError(err, m.ExpectedErrorClass)
 		m.Success = m.ExpectedErrorClass != "" && m.ErrorClass == m.ExpectedErrorClass
 		return m
 	}
@@ -251,6 +251,18 @@ func classifyComprehensiveError(err error) string {
 	default:
 		return "provider_error"
 	}
+}
+
+func classifyComprehensiveFixtureError(err error, expected string) string {
+	class := classifyComprehensiveError(err)
+	if expected != "not_found" || class != "provider_error" {
+		return class
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "(page_not_found)") || strings.Contains(msg, "(target_http_error)") {
+		return "not_found"
+	}
+	return class
 }
 
 func summarizeMeasurements(ms []Measurement) map[string]ProviderStat {
