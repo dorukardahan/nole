@@ -80,6 +80,27 @@ func (r *Router) Route(task TaskType) []string {
 	return append([]string(nil), route...)
 }
 
+// ProviderIsRouted reports whether a provider appears in an effective route for
+// the requested capability. Registration and policy status alone are not enough:
+// status-only or benchmark-only adapters must not be advertised as runtime-ready.
+func (r *Router) ProviderIsRouted(name string, capability Capability) bool {
+	tasks := TaskTypes()
+	for _, task := range tasks {
+		if capability == CapabilitySearch && task == TaskExtract {
+			continue
+		}
+		if capability == CapabilityExtract && task != TaskExtract {
+			continue
+		}
+		for _, provider := range r.Route(task) {
+			if provider == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Candidates returns the task route annotated with registration, capability, and
 // quota-policy gate results. It deliberately does not call Provider.Status() or
 // execute provider requests; those are runtime concerns handled by Service.

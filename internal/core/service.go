@@ -92,6 +92,12 @@ func NewService(registry *Registry, ledger QuotaLedger, matrix RouteMatrix, opts
 	return service
 }
 
+// ProviderIsRouted reports whether the active router can select provider for at
+// least one route of the requested capability.
+func (s *Service) ProviderIsRouted(provider string, capability Capability) bool {
+	return s.router.ProviderIsRouted(provider, capability)
+}
+
 func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
 	// Resolve the task as the very first step: an explicitly-supplied known task
 	// wins; otherwise the deterministic planner classifies the query so the

@@ -72,6 +72,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `DefaultRouteMatrix` | func | `internal/core/router.go:5` | Canonical per-task provider ordering (routing prior from benchmark evidence). Extract route excludes brave/ddgs, leads with local scrapling. |
 | `Router` | type | `internal/core/router.go` | Holds registry + QuotaLedger + matrix; the route decision unit. |
 | `Router.Route` | method | `internal/core/router.go` | Resolves task→route with TaskGeneral fallback and returns a defensive route copy. |
+| `Router.ProviderIsRouted` | method | `internal/core/router.go` | Reports whether a provider appears in an effective route for a capability; keeps status-only/benchmark-only adapters out of runtime readiness claims. |
 | `Router.Candidate` / `Router.Candidates` | methods | `internal/core/router.go` | Annotate provider slot(s) with registration, capability, and quota-policy gate results. `Service.Search`/`Extract` use the single-slot `Candidate` path lazily so later-provider quota decisions are not made after an earlier success. |
 | `Router.Select` | method | `internal/core/router.go` | Compatibility/convenience wrapper over `Route` + lazy `Candidate`; returns first routable provider + full route, else `NoFreeQuotaError`. |
 | `Registry` | type | `internal/core/registry.go:8` | `map[string]Provider` store. |
@@ -134,6 +135,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 |---|---|---|---|
 | `Service` | type | `internal/core/service.go:26` | Orchestrator: registry, ledger, router, optional cache. |
 | `NewService` | func | `internal/core/service.go:47` | Builds Service + internal Router; applies variadic nil-guarded `ServiceOption`. |
+| `Service.ProviderIsRouted` | method | `internal/core/service.go` | Read-only delegate used by readiness surfaces to distinguish registered status providers from providers selectable by the active route matrix. |
 | `WithResponseCache` | func | `internal/core/service.go:41` | Option injecting a ResponseCache (otherwise nil/skipped). |
 | `Service.Search` | method | `internal/core/service.go:57` | Resolves/defaults task, validates + normalizes `SearchOptions`, checks cache keyed by canonical options, iterates route w/ registration/capability/quota/availability gates, calls `provider.Search`, falls back on error/empty, records quota only on success, returns response+trace or `NoFreeQuotaError`. |
 | `Service.Extract` | method | `internal/core/service.go:260` | Mirrors Search: trims URL, defaults Format→markdown, runs `safenet.ValidateURL` (SSRF guard) before routing, same pipeline on TaskExtract route. |
@@ -171,7 +173,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `Service.Research` / `Service.ResearchWithOptions` | methods | `internal/core/research.go` | Classifies the question, fans `Service.Search` across task-fit routes, passes normalized SearchOptions to each search leg, extracts `min(sources, max_steps, 5)` non-pdf/non-reddit URLs (truncate 2000); returns evidence (sources + extracts) — NO composed summary (the agent synthesizes). |
 | `Service.SearchAndExtract` | method | `internal/core/service.go` | One search + extract of the top `min(extract_top, 3)` result URLs; per-URL failure is non-fatal (`extract_errors`), URLs de-duplicated. |
 | `newHTTPHandler` | func | `internal/cli/http.go:37` | Wraps `core.Service` + `mcpserver.New` via `buildMCPServer`. |
-| `httpHandler.buildMux`/`start` | method | `internal/cli/http.go:57`/`276` | `buildMux` registers `/health`, `/mcp`, `/api/{providers,budget,search,extract,search_and_extract,research}` w/ 1MiB caps + slowloris timeouts; `start` runs it with graceful drain. `/health` is a REAL readiness check (v0.7.0): 200 iff ≥1 search-capable provider is Available && AllowedByPolicy (Available already folds breaker IsOpen), else 503; keyless DDGS keeps a zero-key deploy ready. |
+| `httpHandler.buildMux`/`start` | method | `internal/cli/http.go:57`/`276` | `buildMux` registers `/health`, `/mcp`, `/api/{providers,budget,search,extract,search_and_extract,research}` w/ 1MiB caps + slowloris timeouts; `start` runs it with graceful drain. `/health` is a REAL readiness check (v0.7.0): 200 iff ≥1 provider is search-capable, present in an active search route, Available, and AllowedByPolicy (Available already folds breaker IsOpen), else 503; keyless DDGS keeps a zero-key deploy ready. |
 | `httpHandler.handleMCP` | method | `internal/cli/http.go:334` | POST-only JSON-RPC bridge → `mcp.HandleMessage`; `-32700`/`-32603` envelopes on failure. |
 | `httpBuildContext` | func | `internal/cli/http.go:405` | Injects `InProcessSession` if `Mcp-Session-Id` present, else sets `mcpserver.EphemeralCtxKey`. |
 | `httpSessionForRequest` | func | `internal/cli/http.go:247` | Legacy helper retained only for tests (deprecated path). |

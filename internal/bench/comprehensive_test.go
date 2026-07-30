@@ -230,6 +230,10 @@ func TestClassifyComprehensiveError(t *testing.T) {
 		{errors.New("dial tcp: connection refused"), "network"},
 		{errors.New("status 500 internal server error"), "provider_5xx"},
 		{errors.New("something weird went wrong"), "provider_error"},
+		{errors.New("timeout fetching https://example.com/status/404"), "provider_error"},
+		{errors.New("timeout fetching https://example.com/status/401"), "provider_error"},
+		{errors.New("timeout fetching https://example.com/status/403"), "provider_error"},
+		{errors.New("timeout fetching https://example.com/status/429"), "provider_error"},
 		// Real provider HTTP errors come from providerhttp.NewHTTPStatusError,
 		// which emits "returned HTTP <code>" — the original "status 5" check
 		// missed this shape, mislabeling real 5xx as provider_error. Structured
@@ -251,6 +255,13 @@ func TestClassifyComprehensiveError(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("classify(%v) = %q, want %q", tc.err, got, tc.want)
 		}
+	}
+}
+
+func TestClassifyComprehensiveFixtureErrorDoesNotInferNotFoundFromTargetURL(t *testing.T) {
+	err := errors.New("scrapling: request timed out for https://httpbin.org/status/404")
+	if got := classifyComprehensiveFixtureError(err, "not_found"); got != "provider_error" {
+		t.Fatalf("target URL text fake-greened expected 404: got %q", got)
 	}
 }
 

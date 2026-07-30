@@ -230,15 +230,15 @@ func classifyComprehensiveError(err error) string {
 	}
 	msg := strings.ToLower(err.Error())
 	switch {
-	case strings.Contains(msg, "rate limited") || strings.Contains(msg, "429"):
+	case strings.Contains(msg, "rate limited") || strings.Contains(msg, "too many requests") || hasHTTPStatusMarker(msg, "429") || hasHTTPStatusMarker(msg, "202"):
 		return "rate_limited"
 	case strings.Contains(msg, "api key") || strings.Contains(msg, "apikey") || strings.Contains(msg, "not set"):
 		return "auth_missing_key"
-	case strings.Contains(msg, "unauthorized") || strings.Contains(msg, "401"):
+	case strings.Contains(msg, "unauthorized") || hasHTTPStatusMarker(msg, "401"):
 		return "auth_unauthorized"
-	case strings.Contains(msg, "forbidden") || strings.Contains(msg, "403"):
+	case strings.Contains(msg, "forbidden") || hasHTTPStatusMarker(msg, "403"):
 		return "auth_forbidden"
-	case strings.Contains(msg, "not found") || strings.Contains(msg, "404"):
+	case strings.Contains(msg, "not found") || hasHTTPStatusMarker(msg, "404"):
 		return "not_found"
 	// providerhttp emits "returned HTTP 5xx (...)" rather than "status 5xx";
 	// keep both spellings so plain fmt.Errorf strings keep classifying too.
@@ -251,6 +251,12 @@ func classifyComprehensiveError(err error) string {
 	default:
 		return "provider_error"
 	}
+}
+
+func hasHTTPStatusMarker(msg, code string) bool {
+	return strings.Contains(msg, "returned http "+code) ||
+		strings.Contains(msg, "http status "+code) ||
+		strings.Contains(msg, "status "+code)
 }
 
 func classifyComprehensiveFixtureError(err error, expected string) string {
