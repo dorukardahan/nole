@@ -220,6 +220,20 @@ func TestSearchRetries500(t *testing.T) {
 	}
 }
 
+func TestSearchRejectsResultWithoutURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{{"title": "partial", "snippet": "missing URL"}},
+		})
+	}))
+	defer srv.Close()
+
+	p := testProvider(srv)
+	if _, err := p.Search(context.Background(), core.SearchRequest{Query: "q", Limit: 1}); err == nil {
+		t.Fatal("partial search result without URL was accepted")
+	}
+}
+
 func TestSearchResponseBodyBoundAndCancellation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"results":[{"snippet":"` + strings.Repeat("x", 200) + `"}]}`))

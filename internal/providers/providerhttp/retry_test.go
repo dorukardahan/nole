@@ -71,6 +71,49 @@ func TestDoWithRetryDoesNotRetryNonTransientStatus(t *testing.T) {
 	}
 }
 
+type countingRetryBody struct {
+	read  int64
+	total int64
+}
+
+func (b *countingRetryBody) Read(p []byte) (int, error) {
+	if b.read >= b.total {
+		return 0, io.EOF
+	}
+	n := int64(len(p))
+	if remaining := b.total - b.read; n > remaining {
+		n = remaining
+	}
+	b.read += n
+	return int(n), nil
+}
+
+func (*countingRetryBody) Close() error { return nil }
+
+func TestDoWithRetryBoundsTransientResponseDrain(t *testing.T) {
+	body := &countingRetryBody{total: MaxSearchResponseBytes + 1}
+	attempts := 0
+	client := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		attempts++
+		if attempts == 1 {
+			return &http.Response{StatusCode: http.StatusInternalServerError, Header: make(http.Header), Body: body}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: http.NoBody}, nil
+	})}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://provider.invalid", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := DoWithRetry(context.Background(), client, req, RetryOptions{MaxAttempts: 2, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, Sleep: noSleep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if body.read > MaxSearchResponseBytes {
+		t.Fatalf("retry drain exceeded shared response cap: read=%d cap=%d", body.read, MaxSearchResponseBytes)
+	}
+}
+
 func TestDoWithRetryRespectsRetryAfterHeader(t *testing.T) {
 	var slept []time.Duration
 	attempts := 0

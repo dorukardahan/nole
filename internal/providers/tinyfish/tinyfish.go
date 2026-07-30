@@ -154,6 +154,10 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	}
 	results := make([]core.SearchResult, 0, len(upstream.Results))
 	for _, result := range upstream.Results {
+		result.URL = strings.TrimSpace(result.URL)
+		if result.URL == "" {
+			return core.SearchResponse{}, fmt.Errorf("tinyfish: decode search response: result URL is required")
+		}
 		results = append(results, core.SearchResult{
 			Title:       result.Title,
 			URL:         result.URL,

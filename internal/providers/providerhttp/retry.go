@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const maxRetryDrainBytes int64 = 64 << 10
+
 type RetryOptions struct {
 	MaxAttempts int
 	BaseDelay   time.Duration
@@ -91,7 +93,10 @@ func DoWithRetry(ctx context.Context, client *http.Client, req *http.Request, op
 			return resp, nil
 		}
 		delay := retryDelay(resp.Header, opts, attempt)
-		_, _ = io.Copy(io.Discard, resp.Body)
+		// Drain only a small bounded prefix before closing. Small transient
+		// responses can still reuse their connection, while a hostile or runaway
+		// body cannot make the retry path read without limit.
+		_, _ = io.CopyN(io.Discard, resp.Body, maxRetryDrainBytes)
 		_ = resp.Body.Close()
 		if err := opts.Sleep(ctx, delay); err != nil {
 			return nil, err

@@ -259,7 +259,7 @@ func classifyComprehensiveFixtureError(err error, expected string) string {
 		return class
 	}
 	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "(page_not_found)") || strings.Contains(msg, "(target_http_error)") {
+	if strings.Contains(msg, "(page_not_found)") {
 		return "not_found"
 	}
 	return class

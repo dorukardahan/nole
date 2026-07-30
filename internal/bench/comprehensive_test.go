@@ -153,26 +153,41 @@ func TestRunComprehensiveLive_ExpectedNotFoundScoresContractFidelity(t *testing.
 	}
 }
 
-func TestRunComprehensiveLive_ExpectedNotFoundNormalizesProviderNativeClasses(t *testing.T) {
-	for _, code := range []string{"page_not_found", "target_http_error"} {
-		t.Run(code, func(t *testing.T) {
-			provider := fakeProvider{
-				name:       "tinyfish",
-				caps:       []core.Capability{core.CapabilityExtract},
-				extractErr: fmt.Errorf("tinyfish: fetch failed (%s)", code),
-			}
-			fixture := Fixture{
-				ID:                 "expected-404",
-				Task:               core.TaskExtract,
-				Kind:               KindExtract,
-				TargetURL:          "https://example.com/missing",
-				ExpectedErrorClass: "not_found",
-			}
-			measurement := runComprehensiveOne(context.Background(), provider.name, provider, fixture, time.Second)
-			if !measurement.Success || measurement.ErrorClass != "not_found" {
-				t.Fatalf("provider-native %s measurement = %#v", code, measurement)
-			}
-		})
+func TestRunComprehensiveLive_ExpectedNotFoundNormalizesPageNotFound(t *testing.T) {
+	provider := fakeProvider{
+		name:       "tinyfish",
+		caps:       []core.Capability{core.CapabilityExtract},
+		extractErr: fmt.Errorf("tinyfish: fetch failed (page_not_found)"),
+	}
+	fixture := Fixture{
+		ID:                 "expected-404",
+		Task:               core.TaskExtract,
+		Kind:               KindExtract,
+		TargetURL:          "https://example.com/missing",
+		ExpectedErrorClass: "not_found",
+	}
+	measurement := runComprehensiveOne(context.Background(), provider.name, provider, fixture, time.Second)
+	if !measurement.Success || measurement.ErrorClass != "not_found" {
+		t.Fatalf("provider-native page_not_found measurement = %#v", measurement)
+	}
+}
+
+func TestRunComprehensiveLive_TargetHTTPErrorDoesNotMasqueradeAsNotFound(t *testing.T) {
+	provider := fakeProvider{
+		name:       "tinyfish",
+		caps:       []core.Capability{core.CapabilityExtract},
+		extractErr: fmt.Errorf("tinyfish: fetch failed (target_http_error)"),
+	}
+	fixture := Fixture{
+		ID:                 "expected-404",
+		Task:               core.TaskExtract,
+		Kind:               KindExtract,
+		TargetURL:          "https://example.com/missing",
+		ExpectedErrorClass: "not_found",
+	}
+	measurement := runComprehensiveOne(context.Background(), provider.name, provider, fixture, time.Second)
+	if measurement.Success || measurement.ErrorClass == "not_found" {
+		t.Fatalf("generic target_http_error was promoted to expected not_found: %#v", measurement)
 	}
 }
 

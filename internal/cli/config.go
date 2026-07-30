@@ -274,7 +274,7 @@ func writeConfigDumpHuman(w io.Writer, d configDump) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "- providers (cost class / policy):")
 	for _, p := range d.Providers {
-		fmt.Fprintf(w, "  %-12s %-16s allowed_by_policy=%t free_remaining=%d\n", p.Name, p.CostClass, p.AllowedByPolicy, p.FreeRemaining)
+		fmt.Fprintf(w, "  %-12s %-16s allowed_by_policy=%t %s\n", p.Name, p.CostClass, p.AllowedByPolicy, humanQuotaField(core.ProviderCostClass(p.CostClass), p.FreeRemaining))
 	}
 
 	fmt.Fprintln(w, "")

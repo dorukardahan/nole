@@ -114,6 +114,102 @@ func TestTinyFishConfigDumpIsPresenceOnlyAndHasNoQuotaFloor(t *testing.T) {
 	}
 }
 
+func TestTinyFishHumanStatusMarksMonthlyQuotaNotApplicable(t *testing.T) {
+	setTinyFishOnlyStatusEnv(t)
+
+	doctor := runTinyFishStatusCommand(t, "doctor")
+	doctorBudgetLine := lineContainingAll(t, doctor, "tinyfish", "metering=request-rate")
+	assertQuotaNotApplicableLine(t, "doctor budget", doctorBudgetLine)
+	if strings.Contains(doctor, "resets monthly") {
+		t.Fatalf("doctor must not apply monthly-reset wording when no quota-tracked provider is configured:\n%s", doctor)
+	}
+
+	config := runTinyFishStatusCommand(t, "config", "dump")
+	configLine := lineContainingAll(t, config, "tinyfish", "keyed-free")
+	assertQuotaNotApplicableLine(t, "config dump", configLine)
+
+	providers := runTinyFishStatusCommand(t, "providers")
+	providerLine := lineContainingAll(t, providers, "tinyfish", "keyed-free")
+	assertQuotaNotApplicableLine(t, "providers", providerLine)
+}
+
+func TestTinyFishMachineStatusKeepsCompatibleZeroWithoutMonthlyQuota(t *testing.T) {
+	setTinyFishOnlyStatusEnv(t)
+
+	doctorJSON := runTinyFishStatusCommand(t, "doctor", "--json")
+	var report doctorReport
+	if err := json.Unmarshal([]byte(doctorJSON), &report); err != nil {
+		t.Fatalf("decode doctor JSON: %v\n%s", err, doctorJSON)
+	}
+	var budgetEntry core.QuotaEntry
+	for _, entry := range report.Budget.Entries {
+		if entry.Provider == "tinyfish" {
+			budgetEntry = entry
+			break
+		}
+	}
+	if budgetEntry.Provider == "" || budgetEntry.CostClass != core.CostClassKeyedFree || budgetEntry.FreeRemaining != 0 || budgetEntry.FreeQuota != 0 || budgetEntry.RefreshWindow != core.RefreshNone || budgetEntry.MeteringModel != "request-rate" {
+		t.Fatalf("TinyFish budget_status compatibility drift: %#v", budgetEntry)
+	}
+
+	providers := decodeProvidersJSON(t)
+	status, ok := providers["tinyfish"]
+	if !ok || status.CostClass != core.CostClassKeyedFree || status.FreeRemaining != 0 || status.PolicyReason != "keyed_free" {
+		t.Fatalf("TinyFish provider_status compatibility drift: %#v", status)
+	}
+}
+
+func setTinyFishOnlyStatusEnv(t *testing.T) {
+	t.Helper()
+	clearProviderPolicyEnv(t)
+	t.Setenv("NOLE_DISABLE_ENV_FILE", "1")
+	t.Setenv("TINYFISH_API_KEY", "placeholder-value-never-print")
+}
+
+func runTinyFishStatusCommand(t *testing.T, args ...string) string {
+	t.Helper()
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("nole %s failed: %v\n%s", strings.Join(args, " "), err, out.String())
+	}
+	if strings.Contains(out.String(), "placeholder-value-never-print") {
+		t.Fatalf("nole %s leaked the placeholder key:\n%s", strings.Join(args, " "), out.String())
+	}
+	return out.String()
+}
+
+func lineContainingAll(t *testing.T, text string, needles ...string) string {
+	t.Helper()
+	for _, line := range strings.Split(text, "\n") {
+		matched := true
+		for _, needle := range needles {
+			if !strings.Contains(line, needle) {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return line
+		}
+	}
+	t.Fatalf("no line contains %q:\n%s", needles, text)
+	return ""
+}
+
+func assertQuotaNotApplicableLine(t *testing.T, surface, line string) {
+	t.Helper()
+	if !strings.Contains(line, "quota=not-applicable") {
+		t.Fatalf("%s must make TinyFish quota non-applicability explicit: %q", surface, line)
+	}
+	if strings.Contains(line, "free_remaining") {
+		t.Fatalf("%s must not present TinyFish as a remaining-balance counter: %q", surface, line)
+	}
+}
+
 func TestRoutePlannerAcceptsTinyFishOnlyAsExplicitSearchOverride(t *testing.T) {
 	if !validPlannerProvider("tinyfish") {
 		t.Fatal("tinyfish explicit search override rejected")
