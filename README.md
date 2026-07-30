@@ -256,7 +256,7 @@ For unverified or generic clients, use the MCP command template:
 
 Default stance: `free-first`. Nólë treats supported keyed provider accounts as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, 500 for Tavily, and 250 for keyed Firecrawl, reset at the start of each UTC calendar month — the lower floors reflect those providers' variable per-credit metering, where the ledger debits 1 per call but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4). TinyFish is different: it requires a key, but its Search and Fetch docs describe those APIs as credit-free and request-rate-limited, so Nólë uses `keyed-free` with no fabricated monthly allowance, decrement or spend. Any separate “500 starting credits” pricing/account wording concerns the metered Agent/Browser products; Nólë neither calls those products nor treats those starting credits as a verified monthly replenishment. Firecrawl without `FIRECRAWL_API_KEY`, DDGS, Wikipedia, arXiv, the keyless httpfetch extraction backstop, and a configured local Scrapling runtime are keyless-free: no local free-tier quota ledger, no hidden paid usage inside Nólë, and no claim that Nólë knows remote balance. Keyless remote providers can still be shared, rate-limited or unavailable upstream; Nólë reports those 429/provider errors as route/provider drift, not as local ledger exhaustion.
 
-A key by itself is enough to start using a provider under the default policy. For quota-tracked providers, flip the documented `NOLE_<PROVIDER>_PAID=1` only when you want premium-capable treatment (e.g. a paid plan under cost-capped or quality-first). TinyFish has no paid toggle because Nólë calls only its `keyed-free` Search + Fetch APIs. See `docs/PROVIDER-KEYS.md` for sourcing and cautions.
+For providers present in an active runtime route, a key is enough to make the free/default class eligible under the default policy. TinyFish is the held-out exception: its key enables provider status and comprehensive live Search + Fetch contract benchmarking, not ordinary routed search/extract. For quota-tracked providers, flip the documented `NOLE_<PROVIDER>_PAID=1` only when you want premium-capable treatment (e.g. a paid plan under cost-capped or quality-first). TinyFish has no paid toggle because Nólë calls only its `keyed-free` Search + Fetch APIs. See `docs/PROVIDER-KEYS.md` for sourcing and cautions.
 
 Cost status classes exposed in `provider_status`, `budget_status`, `route_trace` and JSON CLI/MCP surfaces are:
 
@@ -279,7 +279,7 @@ Environment variables:
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
-export TINYFISH_API_KEY="..."        # optional experimental search/rendered-extract fallback
+export TINYFISH_API_KEY="..."        # optional held-out Search + Fetch contract benchmarking
 export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"  # written by `nole setup --local-extract`
 
 # Opt into paid mode for a specific provider (default: free-tier-BYOK).

@@ -52,7 +52,7 @@ Nólë reads provider keys from environment variables:
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
-export TINYFISH_API_KEY="..."       # optional experimental Search + Fetch fallback
+export TINYFISH_API_KEY="..."       # optional held-out Search + Fetch contract benchmarking
 ```
 
 Do not ask the user to paste real keys into chat. Generic Nólë can use its keyless routes without them, including Firecrawl keyless mode when selected and DDGS fallback. Only direct the user to provider dashboards when they explicitly want an account-backed quota/quality upgrade, then have them set keys locally. If a GUI app does not inherit shell env, use a local env file such as `~/.config/nole/.env` with mode `0600` and configure the client launcher to source it.

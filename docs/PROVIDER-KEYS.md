@@ -78,7 +78,7 @@ Nólë currently reads:
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."       # optional: account-backed Firecrawl quota; omitted = keyless mode
-export TINYFISH_API_KEY="..."        # optional experimental Search + Fetch fallback
+export TINYFISH_API_KEY="..."        # optional held-out Search + Fetch contract benchmarking
 export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"  # written by `nole setup --local-extract`
 ```
 
