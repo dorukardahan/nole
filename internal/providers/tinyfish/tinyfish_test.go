@@ -16,7 +16,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/providerhttp"
 )
 
-const testAPIKey = "unit-test-key"
+const testAPIKey = "TEST-KEY"
 
 func testProvider(srv *httptest.Server) Provider {
 	p := New(WithAPIKey(testAPIKey))
