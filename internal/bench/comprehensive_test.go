@@ -112,6 +112,46 @@ func TestRunComprehensiveLive_RecordsSuccessAndError(t *testing.T) {
 	}
 }
 
+func TestRunComprehensiveLive_ExpectedNotFoundScoresContractFidelity(t *testing.T) {
+	providers := map[string]core.Provider{
+		"correct": fakeProvider{
+			name:       "correct",
+			caps:       []core.Capability{core.CapabilityExtract},
+			extractErr: providerhttp.NewHTTPStatusError("correct", "extract", 404, nil),
+		},
+		"swallows-error": fakeProvider{
+			name: "swallows-error",
+			caps: []core.Capability{core.CapabilityExtract},
+		},
+	}
+	set := FixtureSet{Version: "test.v1", Fixtures: []Fixture{{
+		ID:                 "expected-404",
+		Task:               core.TaskExtract,
+		Kind:               KindExtract,
+		TargetURL:          "https://example.com/missing",
+		ExpectedErrorClass: "not_found",
+	}}}
+	rep := RunComprehensiveLive(context.Background(), set, providers, ComprehensiveOptions{InterCallSpacing: time.Millisecond})
+	byProvider := make(map[string]Measurement, len(rep.Measurements))
+	for _, measurement := range rep.Measurements {
+		byProvider[measurement.Provider] = measurement
+	}
+	correct := byProvider["correct"]
+	if !correct.Success || correct.ExpectedErrorClass != "not_found" || correct.ErrorClass != "not_found" {
+		t.Fatalf("expected 404 contract match = %#v", correct)
+	}
+	swallowed := byProvider["swallows-error"]
+	if swallowed.Success || swallowed.ExpectedErrorClass != "not_found" || swallowed.ErrorClass != "unexpected_success" {
+		t.Fatalf("swallowed 404 must fail contract probe: %#v", swallowed)
+	}
+	if rep.ProviderSummary["correct"].Successes != 1 || rep.ProviderSummary["correct"].Failures != 0 {
+		t.Fatalf("correct aggregate = %#v", rep.ProviderSummary["correct"])
+	}
+	if rep.ProviderSummary["swallows-error"].Successes != 0 || rep.ProviderSummary["swallows-error"].Failures != 1 {
+		t.Fatalf("swallowed aggregate = %#v", rep.ProviderSummary["swallows-error"])
+	}
+}
+
 func TestSanitizationOfMeasurementFields(t *testing.T) {
 	// Even though the provider returns SearchResults containing URLs and
 	// snippets, the Measurement must surface only counts/latency/classification

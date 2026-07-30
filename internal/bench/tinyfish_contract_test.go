@@ -66,6 +66,9 @@ func TestComprehensiveFixtureSetAddsLiveOnlyContractCoverage(t *testing.T) {
 		if _, ok := wantCategories[fixture.Category]; ok {
 			wantCategories[fixture.Category] = true
 		}
+		if fixture.ID == "extract-error" && fixture.ExpectedErrorClass != "not_found" {
+			t.Errorf("extract-error expected class = %q, want not_found", fixture.ExpectedErrorClass)
+		}
 	}
 	for category, found := range wantCategories {
 		if !found {

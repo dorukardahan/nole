@@ -135,11 +135,12 @@ func RunComprehensiveLive(ctx context.Context, set FixtureSet, providers map[str
 
 func runComprehensiveOne(parent context.Context, name string, p core.Provider, fx Fixture, timeout time.Duration) Measurement {
 	m := Measurement{
-		Provider:  name,
-		Task:      fx.Task,
-		FixtureID: fx.ID,
-		Language:  fx.Language,
-		Kind:      fx.Kind,
+		Provider:           name,
+		Task:               fx.Task,
+		FixtureID:          fx.ID,
+		Language:           fx.Language,
+		Kind:               fx.Kind,
+		ExpectedErrorClass: fx.ExpectedErrorClass,
 	}
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
@@ -150,6 +151,11 @@ func runComprehensiveOne(parent context.Context, name string, p core.Provider, f
 		m.LatencyMS = time.Since(start).Milliseconds()
 		if err != nil {
 			m.ErrorClass = classifyComprehensiveError(err)
+			m.Success = m.ExpectedErrorClass != "" && m.ErrorClass == m.ExpectedErrorClass
+			return m
+		}
+		if m.ExpectedErrorClass != "" {
+			m.ErrorClass = "unexpected_success"
 			return m
 		}
 		if strings.TrimSpace(resp.Content) == "" {
@@ -174,6 +180,11 @@ func runComprehensiveOne(parent context.Context, name string, p core.Provider, f
 	m.LatencyMS = time.Since(start).Milliseconds()
 	if err != nil {
 		m.ErrorClass = classifyComprehensiveError(err)
+		m.Success = m.ExpectedErrorClass != "" && m.ErrorClass == m.ExpectedErrorClass
+		return m
+	}
+	if m.ExpectedErrorClass != "" {
+		m.ErrorClass = "unexpected_success"
 		return m
 	}
 	m.ResultCount = len(resp.Results)
@@ -209,6 +220,8 @@ func classifyComprehensiveError(err error) string {
 			return "auth_unauthorized"
 		case statusErr.StatusCode == 403:
 			return "auth_forbidden"
+		case statusErr.StatusCode == 404:
+			return "not_found"
 		case statusErr.StatusCode == 429 || statusErr.StatusCode == 202:
 			return "rate_limited"
 		case statusErr.StatusCode >= 500:
@@ -225,6 +238,8 @@ func classifyComprehensiveError(err error) string {
 		return "auth_unauthorized"
 	case strings.Contains(msg, "forbidden") || strings.Contains(msg, "403"):
 		return "auth_forbidden"
+	case strings.Contains(msg, "not found") || strings.Contains(msg, "404"):
+		return "not_found"
 	// providerhttp emits "returned HTTP 5xx (...)" rather than "status 5xx";
 	// keep both spellings so plain fmt.Errorf strings keep classifying too.
 	case strings.Contains(msg, "returned http 5") || strings.Contains(msg, "status 5"):

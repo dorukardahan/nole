@@ -45,16 +45,17 @@ type FixtureSet struct {
 }
 
 type Fixture struct {
-	ID         string        `json:"id"`
-	Task       core.TaskType `json:"task"`
-	Kind       Kind          `json:"kind"`
-	Query      string        `json:"query,omitempty"`
-	TargetURL  string        `json:"target_url,omitempty"`
-	Language   string        `json:"language"`
-	Category   string        `json:"category"`
-	Country    string        `json:"country,omitempty"`
-	SearchLang string        `json:"search_lang,omitempty"`
-	Freshness  string        `json:"freshness,omitempty"`
+	ID                 string        `json:"id"`
+	Task               core.TaskType `json:"task"`
+	Kind               Kind          `json:"kind"`
+	Query              string        `json:"query,omitempty"`
+	TargetURL          string        `json:"target_url,omitempty"`
+	Language           string        `json:"language"`
+	Category           string        `json:"category"`
+	Country            string        `json:"country,omitempty"`
+	SearchLang         string        `json:"search_lang,omitempty"`
+	Freshness          string        `json:"freshness,omitempty"`
+	ExpectedErrorClass string        `json:"expected_error_class,omitempty"`
 }
 
 type Observation struct {
@@ -134,15 +135,16 @@ type Report struct {
 // payloads — only the counts, classification, and latency a route-evidence
 // summary needs.
 type Measurement struct {
-	Provider    string        `json:"provider"`
-	Task        core.TaskType `json:"task"`
-	FixtureID   string        `json:"fixture_id"`
-	Language    string        `json:"language"`
-	Kind        Kind          `json:"kind"`
-	Success     bool          `json:"success"`
-	ResultCount int           `json:"result_count"`
-	LatencyMS   int64         `json:"latency_ms"`
-	ErrorClass  string        `json:"error_class,omitempty"`
+	Provider           string        `json:"provider"`
+	Task               core.TaskType `json:"task"`
+	FixtureID          string        `json:"fixture_id"`
+	Language           string        `json:"language"`
+	Kind               Kind          `json:"kind"`
+	Success            bool          `json:"success"`
+	ResultCount        int           `json:"result_count"`
+	LatencyMS          int64         `json:"latency_ms"`
+	ExpectedErrorClass string        `json:"expected_error_class,omitempty"`
+	ErrorClass         string        `json:"error_class,omitempty"`
 }
 
 // ProviderStat aggregates measurements for one provider. Latency stats are
@@ -510,7 +512,7 @@ func ComprehensiveFixtureSet() FixtureSet {
 		Fixture{ID: "fresh-news-en", Task: core.TaskNews, Kind: KindSearch, Query: "latest Go release notes", Language: "en", Category: "freshness search options", Freshness: "pd"},
 		Fixture{ID: "extract-js-heavy", Task: core.TaskExtract, Kind: KindExtract, TargetURL: "https://www.tinyfish.ai/", Language: "en", Category: "JavaScript-heavy extraction"},
 		Fixture{ID: "extract-redirect", Task: core.TaskExtract, Kind: KindExtract, TargetURL: "https://httpbin.org/redirect/1", Language: "en", Category: "redirect extraction"},
-		Fixture{ID: "extract-error", Task: core.TaskExtract, Kind: KindExtract, TargetURL: "https://httpbin.org/status/404", Language: "en", Category: "error-path extraction"},
+		Fixture{ID: "extract-error", Task: core.TaskExtract, Kind: KindExtract, TargetURL: "https://httpbin.org/status/404", Language: "en", Category: "error-path extraction", ExpectedErrorClass: "not_found"},
 		Fixture{ID: "extract-structured", Task: core.TaskExtract, Kind: KindExtract, TargetURL: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview", Language: "en", Category: "structured-content extraction"},
 	)
 	return FixtureSet{Version: base.Version + ".comprehensive.v1", Fixtures: fixtures}
