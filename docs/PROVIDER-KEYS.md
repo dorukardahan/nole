@@ -262,7 +262,7 @@ Notes:
 
 ## TinyFish Search + Fetch
 
-Use for: optional experimental Search + Fetch contract evaluation. `TINYFISH_API_KEY` makes the adapter available to provider status, explicit route planning, and comprehensive live benchmarking, but does not insert TinyFish into default runtime routes without sanitized ranking evidence. Search issues one page-0 request and trims locally to Nólë's limit. Fetch validates the public target URL before forwarding exactly one URL and returns only Nólë's safe document fields.
+Use for: optional experimental Search + Fetch contract evaluation. `TINYFISH_API_KEY` makes the adapter available to provider status and comprehensive live benchmarking; explicit route planning can model TinyFish independently, but the key does not insert it into default runtime routes without sanitized ranking evidence. Search issues one page-0 request and trims locally to Nólë's limit. Fetch validates the public target URL before forwarding exactly one URL and returns only Nólë's safe document fields.
 
 Default classification: `keyed-free`. The key is required, but TinyFish's current docs describe Search and Fetch as free and reserve credits for Agent and Browser. Nólë therefore stores no monthly allowance, remaining-credit estimate or spend for TinyFish, and `NOLE_TINYFISH_PAID` is intentionally not supported. Any separate “500 starting credits” pricing/account wording concerns those metered products and is not evidence of monthly replenishment; Nólë does not call or account for them. Current documented request-rate controls are 30 Search requests/minute and 150 Fetch URLs/minute; comprehensive probes enforce a conservative two-second per-provider spacing floor.
 

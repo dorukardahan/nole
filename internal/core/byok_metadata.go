@@ -100,7 +100,7 @@ var byokProviders = []BYOKProvider{
 		SignupURL:        "https://agent.tinyfish.ai/api-keys",
 		FreeTierNote:     "Key required. TinyFish's current docs say Search and Fetch consume no credits; separately metered Agent and Browser products are outside Nólë. Pricing can change. Nólë does not invent a monthly Search/Fetch allowance or remaining-credit balance.",
 		EnvExample:       "export TINYFISH_API_KEY=...",
-		Unlocks:          []string{"experimental_search_fallback", "rendered_url_extraction_fallback"},
+		Unlocks:          []string{"comprehensive_live_contract_benchmarking"},
 		MeteringModel:    "request-rate",
 		RateLimitNote:    "request-rate only: current docs list Search requests/minute and Fetch URLs/minute limits; Nólë keeps those distinct from allowance accounting and does not infer a credit balance.",
 		EstimateOnly:     false,

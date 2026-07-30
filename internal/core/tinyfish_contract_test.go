@@ -117,6 +117,9 @@ func TestTinyFishMissingKeySuggestionIsLowAndNeverBecomesSetupTip(t *testing.T) 
 	if len(suggestions) != 1 || suggestions[0].MissingKey != "TINYFISH_API_KEY" || suggestions[0].Impact != "low" {
 		t.Fatalf("suggestions = %#v", suggestions)
 	}
+	if len(suggestions[0].Unlocks) != 1 || suggestions[0].Unlocks[0] != "comprehensive_live_contract_benchmarking" {
+		t.Fatalf("held-out TinyFish setup suggestion must not claim a runtime fallback: %#v", suggestions[0])
+	}
 	if tip := BuildSetupTip(suggestions); tip != nil {
 		t.Fatalf("low experimental TinyFish suggestion must not nag: %#v", tip)
 	}

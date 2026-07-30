@@ -23,7 +23,7 @@ func BuildSetupSuggestions(configured map[string]bool, extractAvailable bool) []
 	providers := BYOKProviders()
 	hasKeyedExtract := false
 	for _, p := range providers {
-		// Experimental tail fallbacks do not downgrade established provider
+		// Experimental held-out adapters do not downgrade established provider
 		// suggestions to "redundancy" merely because their key is present.
 		if p.Name != "tinyfish" && p.SupportsExtract && configured[p.Name] {
 			hasKeyedExtract = true
