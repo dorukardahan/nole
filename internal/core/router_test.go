@@ -332,6 +332,49 @@ func TestDefaultRouteMatrixMatchesLatestTaskBenchmarkEvidence(t *testing.T) {
 	}
 }
 
+func TestRouterAllSearchRoutesEndWithDDGS(t *testing.T) {
+	matrix := DefaultRouteMatrix()
+	knownTasks := TaskTypes()
+	seen := make(map[TaskType]bool, len(knownTasks))
+
+	for _, task := range knownTasks {
+		if seen[task] {
+			t.Fatalf("TaskTypes contains duplicate task %q", task)
+		}
+		seen[task] = true
+
+		route, ok := matrix[task]
+		if !ok {
+			t.Fatalf("known task %q is missing from the default route catalog", task)
+		}
+		if task == TaskExtract {
+			// Extraction has its own httpfetch backstop and is intentionally outside
+			// the DDGS invariant that applies to search routes.
+			continue
+		}
+
+		ddgsCount := 0
+		for _, provider := range route {
+			if provider == "ddgs" {
+				ddgsCount++
+			}
+		}
+		if ddgsCount != 1 {
+			t.Errorf("search route %q contains DDGS %d times, want exactly once: %#v", task, ddgsCount, route)
+			continue
+		}
+		if len(route) == 0 || route[len(route)-1] != "ddgs" {
+			t.Errorf("search route %q must end with DDGS: %#v", task, route)
+		}
+	}
+
+	for task := range matrix {
+		if !seen[task] {
+			t.Errorf("default route catalog contains task %q missing from TaskTypes", task)
+		}
+	}
+}
+
 func TestRouterFreeFirstSkipsPremiumCapableAndUsesKeylessFallback(t *testing.T) {
 	registry := NewRegistry()
 	_ = registry.Register(fakeProvider{name: "brave"})
