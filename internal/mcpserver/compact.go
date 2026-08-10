@@ -33,7 +33,6 @@ func RegisterCompactTools(s *server.MCPServer, svc *core.Service) {
 		mcp.WithString("ui_lang", mcp.Description("Optional provider UI locale/language code")),
 		mcp.WithString("safesearch", mcp.Description("Optional safe search setting: off, moderate, or strict")),
 		mcp.WithString("freshness", mcp.Description("Optional freshness window: pd/day, pw/week, pm/month, or py/year")),
-		mcp.WithBoolean("include_trace", mcp.Description(includeTraceDescription)),
 	)
 
 	s.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -53,16 +52,16 @@ func RegisterCompactTools(s *server.MCPServer, svc *core.Service) {
 		if depth != "quick" && depth != "deep" {
 			return mcp.NewToolResultError("depth must be quick or deep"), nil
 		}
+		if hasHTTPURLCredentials(input) {
+			return mcp.NewToolResultError("public URL input must not contain embedded credentials"), nil
+		}
 
-		includeTrace := req.GetBool("include_trace", false)
 		if isExactHTTPURL(input) {
 			resp, extractErr := svc.Extract(ctx, core.ExtractRequest{URL: input, Format: "markdown"})
 			if extractErr != nil {
 				return mcp.NewToolResultError(string(toolErrorJSON("web_evidence", extractErr, resp.Route, resp.RouteTrace))), nil
 			}
-			if !includeTrace {
-				resp.RouteTrace = nil
-			}
+			resp.RouteTrace = nil
 			return compactToolResult(webEvidenceResponse{Operation: "extract", Extract: &resp})
 		}
 
@@ -88,11 +87,9 @@ func RegisterCompactTools(s *server.MCPServer, svc *core.Service) {
 		if searchErr != nil {
 			return mcp.NewToolResultError(string(toolErrorJSON("web_evidence", searchErr, resp.Search.Route, resp.Search.RouteTrace))), nil
 		}
-		if !includeTrace {
-			resp.Search.RouteTrace = nil
-			for i := range resp.Extracts {
-				resp.Extracts[i].RouteTrace = nil
-			}
+		resp.Search.RouteTrace = nil
+		for i := range resp.Extracts {
+			resp.Extracts[i].RouteTrace = nil
 		}
 		return compactToolResult(webEvidenceResponse{Operation: "search_and_extract", SearchAndExtract: &resp})
 	})
@@ -104,6 +101,11 @@ func isExactHTTPURL(input string) bool {
 	}
 	u, err := url.ParseRequestURI(input)
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+func hasHTTPURLCredentials(input string) bool {
+	u, err := url.ParseRequestURI(input)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User != nil
 }
 
 func compactToolResult(payload webEvidenceResponse) (*mcp.CallToolResult, error) {

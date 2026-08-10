@@ -39,7 +39,7 @@ var (
 		"provider_status":    {"live_usage"},
 		"budget_status":      {},
 	}
-	compactMCPToolParams = []string{"input", "depth", "limit", "country", "search_lang", "ui_lang", "safesearch", "freshness", "include_trace"}
+	compactMCPToolParams = []string{"input", "depth", "limit", "country", "search_lang", "ui_lang", "safesearch", "freshness"}
 
 	// stableTaskEnum pins the advertised `task` vocabulary (search tasks; extract is
 	// a routing key, not a search task, and is excluded).

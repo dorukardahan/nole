@@ -89,7 +89,7 @@ The post-v1.9.0 compact MCP expansion intentionally adds the optional
 `nole mcp --compact` launch mode. It advertises exactly one tool,
 `web_evidence`, rather than the standard six-tool surface. Its parameters are
 `input`, `depth`, `limit`, `country`, `search_lang`, `ui_lang`, `safesearch`,
-`freshness`, and `include_trace`. Exact public HTTP(S) URLs select extract,
+and `freshness`. Exact public HTTP(S) URLs select extract,
 normal text selects search + top-result extraction, and `depth: deep` selects
 multi-source research. The default `nole mcp` surface and behavior are
 unchanged; compact mode is opt-in and does not drive interactive browsers.

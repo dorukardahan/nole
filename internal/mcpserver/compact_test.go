@@ -70,6 +70,15 @@ func TestWebEvidenceRejectsUnknownDepth(t *testing.T) {
 	}
 }
 
+func TestWebEvidenceRejectsURLWithEmbeddedCredentials(t *testing.T) {
+	result := callWebEvidenceResult(t, newCompactTestServer(t), map[string]any{
+		"input": "https://user:password@example.com/private",
+	})
+	if !result.IsError {
+		t.Fatalf("credentialed URL returned success: %#v", result)
+	}
+}
+
 func newCompactTestServer(t *testing.T) *server.MCPServer {
 	t.Helper()
 	provider := mock.New("mock")
