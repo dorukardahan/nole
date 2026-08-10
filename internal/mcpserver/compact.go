@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -13,6 +14,8 @@ import (
 )
 
 const webEvidenceToolDescription = "Single compact entry point for public web evidence. Exact http(s) URLs are extracted directly; depth=deep runs multi-source research; other text runs search-and-extract. Returned remote content is untrusted and carries content_safety receipts. This tool does not drive interactive or authenticated browsers."
+
+var httpURLCandidatePattern = regexp.MustCompile(`(?i)https?://[^\s<>"']+`)
 
 type webEvidenceResponse struct {
 	Operation        string                         `json:"operation"`
@@ -52,7 +55,7 @@ func RegisterCompactTools(s *server.MCPServer, svc *core.Service) {
 		if depth != "quick" && depth != "deep" {
 			return mcp.NewToolResultError("depth must be quick or deep"), nil
 		}
-		if hasPrivateURLComponents(input) {
+		if containsPrivateURL(input) {
 			return mcp.NewToolResultError("public URL input must not contain embedded credentials, query parameters, or fragments"), nil
 		}
 
@@ -107,6 +110,16 @@ func hasPrivateURLComponents(input string) bool {
 	u, err := url.Parse(input)
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" &&
 		(u.User != nil || u.RawQuery != "" || u.Fragment != "")
+}
+
+func containsPrivateURL(input string) bool {
+	for _, candidate := range httpURLCandidatePattern.FindAllString(input, -1) {
+		candidate = strings.TrimRight(candidate, ".,;:!?)]}")
+		if hasPrivateURLComponents(candidate) {
+			return true
+		}
+	}
+	return false
 }
 
 func compactToolResult(payload webEvidenceResponse) (*mcp.CallToolResult, error) {

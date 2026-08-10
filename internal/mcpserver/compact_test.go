@@ -91,6 +91,19 @@ func TestWebEvidenceRejectsURLWithQueryOrFragment(t *testing.T) {
 	}
 }
 
+func TestWebEvidenceRejectsPrivateURLInsideText(t *testing.T) {
+	for _, input := range []string{
+		"summarize https://example.com/private?view=compact please",
+		"compare [this](https://example.com/private#section)",
+		"read https://user:password@example.com/private",
+	} {
+		result := callWebEvidenceResult(t, newCompactTestServer(t), map[string]any{"input": input})
+		if !result.IsError {
+			t.Fatalf("text with private URL %q returned success: %#v", input, result)
+		}
+	}
+}
+
 func newCompactTestServer(t *testing.T) *server.MCPServer {
 	t.Helper()
 	provider := mock.New("mock")
