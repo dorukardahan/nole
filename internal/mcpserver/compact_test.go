@@ -81,8 +81,8 @@ func TestWebEvidenceRejectsURLWithEmbeddedCredentials(t *testing.T) {
 
 func TestWebEvidenceRejectsURLWithQueryOrFragment(t *testing.T) {
 	for _, input := range []string{
-		"https://example.com/private?token=not-a-real-secret",
-		"https://example.com/private#token=not-a-real-secret",
+		"https://example.com/private?view=compact",
+		"https://example.com/private#section",
 	} {
 		result := callWebEvidenceResult(t, newCompactTestServer(t), map[string]any{"input": input})
 		if !result.IsError {
