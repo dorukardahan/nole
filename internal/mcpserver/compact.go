@@ -52,8 +52,8 @@ func RegisterCompactTools(s *server.MCPServer, svc *core.Service) {
 		if depth != "quick" && depth != "deep" {
 			return mcp.NewToolResultError("depth must be quick or deep"), nil
 		}
-		if hasHTTPURLCredentials(input) {
-			return mcp.NewToolResultError("public URL input must not contain embedded credentials"), nil
+		if hasPrivateURLComponents(input) {
+			return mcp.NewToolResultError("public URL input must not contain embedded credentials, query parameters, or fragments"), nil
 		}
 
 		if isExactHTTPURL(input) {
@@ -96,16 +96,17 @@ func RegisterCompactTools(s *server.MCPServer, svc *core.Service) {
 }
 
 func isExactHTTPURL(input string) bool {
-	if strings.ContainsAny(input, " \t\r\n") {
+	if strings.ContainsAny(input, " 	\r\n") {
 		return false
 	}
-	u, err := url.ParseRequestURI(input)
+	u, err := url.Parse(input)
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
-func hasHTTPURLCredentials(input string) bool {
-	u, err := url.ParseRequestURI(input)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User != nil
+func hasPrivateURLComponents(input string) bool {
+	u, err := url.Parse(input)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" &&
+		(u.User != nil || u.RawQuery != "" || u.Fragment != "")
 }
 
 func compactToolResult(payload webEvidenceResponse) (*mcp.CallToolResult, error) {

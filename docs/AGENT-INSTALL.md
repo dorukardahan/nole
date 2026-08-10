@@ -43,7 +43,7 @@ Use the smallest Nólë tool that gives the agent enough evidence. Nólë return
 
 Practical default: start with `search` for a single clear lookup, `search_and_extract` for “find + read the top result,” and `research` only when the answer would otherwise need multiple searches or source cross-checking. If `research` returns `evidence_steps`, use it as a compact receipt for what was found, skipped or failed; do not treat it as a quality score.
 
-For agents whose context budget benefits more from a single schema than from explicit tool choice, launch `nole mcp --compact`. It advertises only `web_evidence`: an exact public URL selects extract, normal text selects search + top-result extraction, and `depth: deep` selects research. The output still carries the underlying route, safety and evidence receipts. The compact surface does not drive interactive or authenticated browsers; escalate those workflows to the client's browser tool.
+For agents whose context budget benefits more from a single schema than from explicit tool choice, launch `nole mcp --compact`. It advertises only `web_evidence`: an exact public URL selects extract, normal text selects search + top-result extraction, and `depth: deep` selects research. Compact URL input rejects userinfo, query parameters, and fragments so signed/private URLs do not enter provider requests or MCP transcripts. The output still carries the underlying route, safety and evidence receipts. The compact surface does not drive interactive or authenticated browsers; escalate those workflows to the client's browser tool.
 
 ## Agent copy/paste install block
 

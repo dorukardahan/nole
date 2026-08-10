@@ -93,6 +93,8 @@ and `freshness`. Exact public HTTP(S) URLs select extract,
 normal text selects search + top-result extraction, and `depth: deep` selects
 multi-source research. The default `nole mcp` surface and behavior are
 unchanged; compact mode is opt-in and does not drive interactive browsers.
+To keep signed/private URLs out of provider requests and MCP transcripts, the
+compact URL path rejects userinfo, query parameters, and fragments.
 
 The v1.7.0 SearchOptions expansion intentionally adds optional MCP params to
 `search`, `search_and_extract`, and `research`: `country`, `search_lang`,

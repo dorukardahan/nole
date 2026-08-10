@@ -79,6 +79,18 @@ func TestWebEvidenceRejectsURLWithEmbeddedCredentials(t *testing.T) {
 	}
 }
 
+func TestWebEvidenceRejectsURLWithQueryOrFragment(t *testing.T) {
+	for _, input := range []string{
+		"https://example.com/private?token=not-a-real-secret",
+		"https://example.com/private#token=not-a-real-secret",
+	} {
+		result := callWebEvidenceResult(t, newCompactTestServer(t), map[string]any{"input": input})
+		if !result.IsError {
+			t.Fatalf("private URL %q returned success: %#v", input, result)
+		}
+	}
+}
+
 func newCompactTestServer(t *testing.T) *server.MCPServer {
 	t.Helper()
 	provider := mock.New("mock")
