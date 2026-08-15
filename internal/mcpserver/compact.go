@@ -17,6 +17,21 @@ const webEvidenceToolDescription = "Single compact entry point for public web ev
 
 var httpURLCandidatePattern = regexp.MustCompile(`(?i)https?://[^\s<>"']+`)
 
+// Credential-shaped text patterns are intentionally narrow: they match header
+// or assignment forms carrying an actual token value, not prose that merely
+// mentions credential words. Rejection messages must stay payload-free.
+var credentialShapePatterns = []*regexp.Regexp{
+	// Authorization header with a bearer token, e.g. "Authorization: Bearer xyz".
+	regexp.MustCompile(`(?i)authorization\s*:\s*bearer\s+[^\s,;]+`),
+	// Bare bearer token long enough to be a credential rather than prose
+	// ("bearer token best practices" must stay allowed).
+	regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._~+/=-]{16,}`),
+	// Common key/token assignment shapes with any non-empty value, e.g.
+	// "api_key=secret" or "token: example-tok-1". The explicit label and
+	// assignment delimiter make even short values credential-shaped.
+	regexp.MustCompile(`(?i)["']?(api[_-]?key|access[_-]?token|token|secret|password|passwd)["']?\s*[=:]\s*["']?[^\s"',;}]+`),
+}
+
 type webEvidenceResponse struct {
 	Operation        string                         `json:"operation"`
 	Extract          *core.ExtractResponse          `json:"extract,omitempty"`
@@ -57,6 +72,9 @@ func RegisterCompactTools(s *server.MCPServer, svc *core.Service) {
 		}
 		if containsPrivateURL(input) {
 			return mcp.NewToolResultError("public URL input must not contain embedded credentials, query parameters, or fragments"), nil
+		}
+		if containsCredentialShape(input) {
+			return mcp.NewToolResultError("input must not contain credential-shaped text such as authorization headers or key assignments"), nil
 		}
 
 		if isExactHTTPURL(input) {
@@ -116,6 +134,30 @@ func containsPrivateURL(input string) bool {
 	for _, candidate := range httpURLCandidatePattern.FindAllString(input, -1) {
 		candidate = strings.TrimRight(candidate, ".,;:!?)]}")
 		if hasPrivateURLComponents(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+// unicodeSpaceReplacer maps unicode whitespace separators to ASCII spaces so
+// NBSP-style evasion cannot defeat the ASCII \s in the shape patterns.
+var unicodeSpaceReplacer = strings.NewReplacer(
+	"\u0085", " ", "\u00a0", " ", "\u1680", " ",
+	"\u2000", " ", "\u2001", " ", "\u2002", " ", "\u2003", " ",
+	"\u2004", " ", "\u2005", " ", "\u2006", " ", "\u2007", " ",
+	"\u2008", " ", "\u2009", " ", "\u200a", " ", "\u2028", " ",
+	"\u2029", " ", "\u202f", " ", "\u205f", " ", "\u3000", " ",
+)
+
+// containsCredentialShape reports whether the raw input text carries a
+// credential-shaped value (authorization header or key/token assignment)
+// outside of any URL. The compact surface must fail closed before routing so
+// tokens are neither forwarded to providers nor echoed into the MCP transcript.
+func containsCredentialShape(input string) bool {
+	normalized := unicodeSpaceReplacer.Replace(input)
+	for _, pattern := range credentialShapePatterns {
+		if pattern.MatchString(normalized) {
 			return true
 		}
 	}

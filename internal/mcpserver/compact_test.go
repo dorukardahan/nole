@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -100,6 +101,58 @@ func TestWebEvidenceRejectsPrivateURLInsideText(t *testing.T) {
 		result := callWebEvidenceResult(t, newCompactTestServer(t), map[string]any{"input": input})
 		if !result.IsError {
 			t.Fatalf("text with private URL %q returned success: %#v", input, result)
+		}
+	}
+}
+
+func TestWebEvidenceRejectsCredentialShapedText(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		depth string
+	}{
+		{input: "Authorization: Bearer test-token-abcdef"},
+		{input: "summarize this api_key=test-key-123456 please"},
+		{input: "api_key=secret"},
+		{input: "research token: test-token-42 and report"},
+		{input: "Bearer abcdefghijklmnopqrstuvwxyz123456"},
+		{input: "compare auth approaches Authorization: Bearer example-token-x", depth: "deep"},
+		{input: "Authorization\u00a0:\u00a0Bearer\u00a0tok123"},
+		{input: "api_key\u2028=\u2028sk-abc123"},
+	} {
+		args := map[string]any{"input": tc.input}
+		if tc.depth != "" {
+			args["depth"] = tc.depth
+		}
+		result := callWebEvidenceResult(t, newCompactTestServer(t), args)
+		if !result.IsError {
+			t.Fatalf("credential-shaped input %q returned success: %#v", tc.input, result)
+		}
+	}
+}
+
+func TestWebEvidenceCredentialRejectionDoesNotEchoSecret(t *testing.T) {
+	result := callWebEvidenceResult(t, newCompactTestServer(t), map[string]any{
+		"input": "Authorization: Bearer test-secret-value-99",
+	})
+	if !result.IsError {
+		t.Fatalf("credential-shaped input returned success: %#v", result)
+	}
+	for _, content := range result.Content {
+		if strings.Contains(content.Text, "test-secret-value-99") || strings.Contains(content.Text, "Bearer test-secret") {
+			t.Fatalf("credential rejection echoed the suspected secret: %s", content.Text)
+		}
+	}
+}
+
+func TestWebEvidenceAllowsOrdinaryQueriesMentioningCredentialWords(t *testing.T) {
+	for _, input := range []string{
+		"bearer token best practices",
+		"how to rotate api keys safely",
+		"what is the secret to good documentation",
+	} {
+		result := callWebEvidenceResult(t, newCompactTestServer(t), map[string]any{"input": input})
+		if result.IsError {
+			t.Fatalf("ordinary query %q rejected: %#v", input, result)
 		}
 	}
 }
