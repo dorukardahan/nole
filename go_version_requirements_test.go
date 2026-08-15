@@ -12,12 +12,12 @@ func writeGoVersionFixture(t *testing.T, readmeRequirement string) string {
 	t.Helper()
 	root := t.TempDir()
 	files := map[string]string{
-		"go.mod":                        "module example.test/nole\n\ngo 1.25.12\n",
-		"README.md":                     "- " + readmeRequirement + " for building from source (matches the `go 1.25.12` directive in `go.mod`).\n\nElsewhere: Go 1.25.12+ (matches the `go 1.25.12` directive in `go.mod`).\n",
-		"AGENTS.md":                     "Install Go 1.25.12+ (matches the `go 1.25.12` directive in `go.mod`).\n",
-		"CONTRIBUTING.md":               "- Go 1.25.12+ (the project pins `go 1.25.12` in `go.mod`).\n",
-		"docs/AGENT-INSTALL.md":         "Install Go 1.25.12+ or use a user-local Go toolchain.\n",
-		".github/workflows/ci.yml":      "steps:\n  - uses: actions/setup-go@v6\n    with:\n      go-version: '1.25.12'\n",
+		"go.mod":                        "module example.test/nole\n\ngo 1.25.13\n",
+		"README.md":                     "- " + readmeRequirement + " for building from source (matches the `go 1.25.13` directive in `go.mod`).\n\nElsewhere: Go 1.25.13+ (matches the `go 1.25.13` directive in `go.mod`).\n",
+		"AGENTS.md":                     "Install Go 1.25.13+ (matches the `go 1.25.13` directive in `go.mod`).\n",
+		"CONTRIBUTING.md":               "- Go 1.25.13+ (the project pins `go 1.25.13` in `go.mod`).\n",
+		"docs/AGENT-INSTALL.md":         "Install Go 1.25.13+ or use a user-local Go toolchain.\n",
+		".github/workflows/ci.yml":      "steps:\n  - uses: actions/setup-go@v6\n    with:\n      go-version: '1.25.13'\n",
 		".github/workflows/release.yml": "steps:\n  - uses: actions/setup-go@v6\n    with:\n      go-version-file: 'go.mod'\n",
 	}
 	for name, content := range files {
@@ -44,7 +44,7 @@ func runGoVersionRequirements(t *testing.T, root string) (string, error) {
 }
 
 func TestGoVersionRequirementsGuardAcceptsCompatibleRequirements(t *testing.T) {
-	root := writeGoVersionFixture(t, "Go 1.25.12+")
+	root := writeGoVersionFixture(t, "Go 1.25.13+")
 	if out, err := runGoVersionRequirements(t, root); err != nil {
 		t.Fatalf("guard rejected compatible requirements: %v\n%s", err, out)
 	}
@@ -56,13 +56,13 @@ func TestGoVersionRequirementsGuardRejectsStaleReadmeMinimum(t *testing.T) {
 	if err == nil {
 		t.Fatalf("guard accepted a stale README minimum:\n%s", out)
 	}
-	if !strings.Contains(out, "README.md must document a Go 1.25.12+ minimum") {
+	if !strings.Contains(out, "README.md must document a Go 1.25.13+ minimum") {
 		t.Fatalf("guard failed for the wrong reason:\n%s", out)
 	}
 }
 
 func TestGoVersionRequirementsGuardRejectsStaleAgentInstallMinimum(t *testing.T) {
-	root := writeGoVersionFixture(t, "Go 1.25.12+")
+	root := writeGoVersionFixture(t, "Go 1.25.13+")
 	path := filepath.Join(root, "docs", "AGENT-INSTALL.md")
 	if err := os.WriteFile(path, []byte("Install Go 1.25+ or use a user-local Go toolchain.\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestGoVersionRequirementsGuardRejectsStaleAgentInstallMinimum(t *testing.T)
 	if err == nil {
 		t.Fatalf("guard accepted a stale agent install minimum:\n%s", out)
 	}
-	if !strings.Contains(out, "docs/AGENT-INSTALL.md must document a Go 1.25.12+ install minimum") {
+	if !strings.Contains(out, "docs/AGENT-INSTALL.md must document a Go 1.25.13+ install minimum") {
 		t.Fatalf("guard failed for the wrong reason:\n%s", out)
 	}
 }
