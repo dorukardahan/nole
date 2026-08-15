@@ -11,3 +11,11 @@ func New(svc *core.Service) *server.MCPServer {
 	RegisterTools(s, svc)
 	return s
 }
+
+// NewCompact creates the opt-in single-tool MCP surface. New retains the
+// stable six-tool 1.x surface unchanged for existing clients.
+func NewCompact(svc *core.Service) *server.MCPServer {
+	s := server.NewMCPServer("nole", version.Version, server.WithToolCapabilities(false))
+	RegisterCompactTools(s, svc)
+	return s
+}
