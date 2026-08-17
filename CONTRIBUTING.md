@@ -5,7 +5,7 @@ local audit gate that mirrors CI, and what to include in pull requests.
 
 ## Prerequisites
 
-- Go 1.25.12+ (the project pins `go 1.25.12` in `go.mod`; older toolchains will
+- Go 1.25.13+ (the project pins `go 1.25.13` in `go.mod`; older toolchains will
   fail to build).
 - Optional provider API keys for `Brave`, `Tavily`, `Firecrawl`. None are
   required to build, test or run the deterministic offline benchmark; `DDGS`

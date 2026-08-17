@@ -33,6 +33,9 @@ func TestMCPCommandIsExposedThroughRootHelp(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Start MCP stdio server") {
 		t.Fatalf("MCP help does not describe the stdio server:\n%s", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "--compact") {
+		t.Fatalf("MCP help does not expose the compact surface flag:\n%s", stdout.String())
+	}
 	if stderr.Len() != 0 {
 		t.Fatalf("MCP help wrote to stderr: %q", stderr.String())
 	}
@@ -45,9 +48,12 @@ func TestMCPCommandCancellationKeepsDiagnosticsOutOfStdout(t *testing.T) {
 	)
 
 	started := make(chan struct{})
-	runner := func(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) error {
+	runner := func(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, compact bool) error {
 		if stdin == nil {
 			return fmt.Errorf("stdin is nil")
+		}
+		if compact {
+			return fmt.Errorf("compact unexpectedly enabled")
 		}
 		if _, err := fmt.Fprintln(stdout, protocolLine); err != nil {
 			return err
@@ -100,5 +106,22 @@ func TestMCPCommandCancellationKeepsDiagnosticsOutOfStdout(t *testing.T) {
 	}
 	if got, want := stderr.String(), diagnostic+"\n"; got != want {
 		t.Fatalf("MCP diagnostic output = %q, want stderr output %q", got, want)
+	}
+}
+
+func TestMCPCommandPassesCompactFlagToRunner(t *testing.T) {
+	var gotCompact bool
+	runner := func(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, compact bool) error {
+		gotCompact = compact
+		return nil
+	}
+
+	cmd := newRootCommand(newMCPCommandWithRunner(runner))
+	cmd.SetArgs([]string{"mcp", "--compact"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute compact MCP command: %v", err)
+	}
+	if !gotCompact {
+		t.Fatal("compact flag was not passed to the MCP runner")
 	}
 }

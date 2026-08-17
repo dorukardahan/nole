@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing semantic version tag to publish, for example v0.1.1
+        description: Existing tag in vMAJOR.MINOR.PATCH form to publish, for example v1.2.3
         required: true
         type: string
       prerelease:
@@ -87,7 +87,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.12'
+          go-version: '1.25.13'
           cache: true
 
       - name: Verify release gates

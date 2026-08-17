@@ -81,7 +81,7 @@ See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 
 Prerequisites:
 
-- Go 1.25.12+ for building from source (matches the `go 1.25.12` directive in `go.mod`).
+- Go 1.25.13+ for building from source (matches the `go 1.25.13` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily, Firecrawl and the experimental TinyFish adapter.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
 - No provider key is required for Firecrawl search + extract in keyless API mode (subject to Firecrawl's service availability and limits; `FIRECRAWL_API_KEY` remains optional for account-backed use), the deterministic benchmark, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback.
@@ -374,6 +374,7 @@ Stable/core:
 
 - CLI: `nole search`, `nole extract`, `nole classify`, `nole route-plan`, `nole providers`, `nole doctor`, `nole bench`, `nole version`.
 - MCP stdio: `nole mcp` for agent tools `search`, `research`, `provider_status`, `budget_status`, `extract`, and `search_and_extract` — all advertised out of the box via the keyless httpfetch backstop (zero keys, zero setup); a keyed or local-Scrapling provider upgrades extract fidelity but is not required for the tools to appear. For tool selection, use `search` for a single lookup, `search_and_extract` for find-and-read, and `research` for multi-source evidence collection; see `docs/AGENT-INSTALL.md#tool-decision-recipe`.
+- Compact MCP stdio: `nole mcp --compact` advertises only `web_evidence`. Exact public URLs are extracted directly, normal text runs search + top-result extraction, and `depth: deep` runs multi-source research. To keep signed/private URLs out of provider requests and MCP transcripts, compact input rejects userinfo, query parameters, and fragments in exact and text-embedded HTTP(S) URLs. This opt-in surface reduces tool-schema context for agents that prefer one evidence primitive; the standard six-tool surface remains the default and is unchanged.
 - Routing insight: `routing_insight` is a compact user-facing explanation; `route_trace` remains the structured debugging surface. Agents should cite the compact insight in normal answers and reserve full traces for troubleshooting.
 
 Higher-level/aggregate:

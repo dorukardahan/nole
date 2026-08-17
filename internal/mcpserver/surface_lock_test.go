@@ -39,6 +39,7 @@ var (
 		"provider_status":    {"live_usage"},
 		"budget_status":      {},
 	}
+	compactMCPToolParams = []string{"input", "depth", "limit", "country", "search_lang", "ui_lang", "safesearch", "freshness"}
 
 	// stableTaskEnum pins the advertised `task` vocabulary (search tasks; extract is
 	// a routing key, not a search task, and is excluded).
@@ -135,6 +136,23 @@ func TestStableMCPToolParams(t *testing.T) {
 		if !reflect.DeepEqual(w, gotParams) {
 			t.Errorf("tool %q params drifted: want %v, got %v — a param add/remove/rename is a v1.0.0 surface change; update docs/STABILITY.md + this lock", tool, w, gotParams)
 		}
+	}
+}
+
+func TestCompactMCPToolSurfaceAndParams(t *testing.T) {
+	got := callToolParams(t, newCompactTestServer(t))
+	if len(got) != 1 {
+		t.Fatalf("compact surface advertised %d tools, want 1: %v", len(got), got)
+	}
+	gotParams, ok := got["web_evidence"]
+	if !ok {
+		t.Fatalf("compact surface is missing web_evidence: %v", got)
+	}
+	want := append([]string(nil), compactMCPToolParams...)
+	sort.Strings(want)
+	sort.Strings(gotParams)
+	if !reflect.DeepEqual(want, gotParams) {
+		t.Fatalf("web_evidence params drifted: want %v, got %v", want, gotParams)
 	}
 }
 

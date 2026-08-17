@@ -49,6 +49,7 @@ func TestToolDescriptionsSupportAgentIntentMatching(t *testing.T) {
 	for name, desc := range map[string]string{
 		"search": searchToolDescription, "extract": extractToolDescription,
 		"search_and_extract": searchAndExtractToolDescription, "research": researchToolDescription,
+		"web_evidence": webEvidenceToolDescription,
 	} {
 		if !strings.Contains(desc, "untrusted") || !strings.Contains(desc, "content_safety") {
 			t.Fatalf("%s description must preserve the untrusted content contract: %s", name, desc)
