@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Experimental TinyFish Search + Fetch.** Added optional search and fetch
+  support for held-out live contract benchmarking and explicit route planning.
+  TinyFish remains outside the default runtime routes and is not a stable API.
 - The opt-in `nole mcp --compact` mode advertises one `web_evidence` tool for
   agents that prefer a smaller evidence surface. This is additive; the standard
   six-tool MCP surface and default response schemas remain unchanged.
