@@ -54,6 +54,7 @@ func TestQuotaRecordDecrementsFreeCalls(t *testing.T) {
 func TestCostClassStringsMatchPublicContract(t *testing.T) {
 	cases := map[ProviderCostClass]string{
 		CostClassKeylessFree:    "keyless-free",
+		CostClassKeyedFree:      "keyed-free",
 		CostClassFreeTierBYOK:   "free-tier-BYOK",
 		CostClassPremiumCapable: "premium-capable",
 		CostClassUnknownCost:    "unknown-cost",

@@ -99,6 +99,35 @@ func TestHealthReadyWithKeylessProvider(t *testing.T) {
 	}
 }
 
+func TestHealthExcludesAvailableProviderOutsideActiveRoutes(t *testing.T) {
+	registry := core.NewRegistry()
+	for _, p := range []core.Provider{mock.New("routed"), mock.New("heldout")} {
+		if err := registry.Register(p); err != nil {
+			t.Fatalf("register %s: %v", p.Name(), err)
+		}
+	}
+	ledger := core.NewMemoryQuotaLedger()
+	for _, name := range []string{"routed", "heldout"} {
+		ledger.Set(core.QuotaEntry{Provider: name, CostClass: core.CostClassKeylessFree, KeylessFree: true})
+	}
+	svc := core.NewService(registry, ledger, core.RouteMatrix{core.TaskGeneral: {"routed"}})
+	h := &httpHandler{svc: svc, mcp: buildMCPServer(svc)}
+
+	rec := doREST(t, h, http.MethodGet, "/health", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /health = %d, want 200", rec.Code)
+	}
+	var body struct {
+		AvailableProviders []string `json:"available_providers"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode /health: %v", err)
+	}
+	if len(body.AvailableProviders) != 1 || body.AvailableProviders[0] != "routed" {
+		t.Fatalf("/health advertised non-routable provider: %#v", body.AvailableProviders)
+	}
+}
+
 func TestHealth503WhenNoReadyProvider(t *testing.T) {
 	registry := core.NewRegistry()
 	if err := registry.Register(mock.NewUnavailable("mock")); err != nil {

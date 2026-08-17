@@ -18,11 +18,12 @@ import (
 // low-burst probe: a generous per-call timeout, a short inter-call spacing per
 // provider, and no fixture cap.
 type ComprehensiveOptions struct {
-	MaxFixtures      int           // 0 = all
-	PerCallTimeout   time.Duration // default 30s
-	InterCallSpacing time.Duration // default 250ms per provider serial
-	NetworkContext   string        // free-text annotation for the artifact
-	CostPolicy       string        // metadata-only; comprehensive mode bypasses policy
+	MaxFixtures              int                      // 0 = all
+	PerCallTimeout           time.Duration            // default 30s
+	InterCallSpacing         time.Duration            // default 250ms per provider serial
+	ProviderInterCallSpacing map[string]time.Duration // optional provider-specific floor
+	NetworkContext           string                   // free-text annotation for the artifact
+	CostPolicy               string                   // metadata-only; comprehensive mode bypasses policy
 }
 
 func (o ComprehensiveOptions) normalize() ComprehensiveOptions {
@@ -36,6 +37,14 @@ func (o ComprehensiveOptions) normalize() ComprehensiveOptions {
 		o.InterCallSpacing = 250 * time.Millisecond
 	}
 	return o
+}
+
+func (o ComprehensiveOptions) spacingFor(provider string) time.Duration {
+	spacing := o.InterCallSpacing
+	if floor := o.ProviderInterCallSpacing[provider]; floor > spacing {
+		spacing = floor
+	}
+	return spacing
 }
 
 // RunComprehensiveLive exercises every (provider, fixture) pair the providers'
@@ -76,10 +85,11 @@ func RunComprehensiveLive(ctx context.Context, set FixtureSet, providers map[str
 				}
 				m := runComprehensiveOne(ctx, name, p, fx, opts.PerCallTimeout)
 				local = append(local, m)
-				if opts.InterCallSpacing > 0 {
+				spacing := opts.spacingFor(name)
+				if spacing > 0 {
 					select {
 					case <-ctx.Done():
-					case <-time.After(opts.InterCallSpacing):
+					case <-time.After(spacing):
 					}
 				}
 				if ctx.Err() != nil {
@@ -125,11 +135,12 @@ func RunComprehensiveLive(ctx context.Context, set FixtureSet, providers map[str
 
 func runComprehensiveOne(parent context.Context, name string, p core.Provider, fx Fixture, timeout time.Duration) Measurement {
 	m := Measurement{
-		Provider:  name,
-		Task:      fx.Task,
-		FixtureID: fx.ID,
-		Language:  fx.Language,
-		Kind:      fx.Kind,
+		Provider:           name,
+		Task:               fx.Task,
+		FixtureID:          fx.ID,
+		Language:           fx.Language,
+		Kind:               fx.Kind,
+		ExpectedErrorClass: fx.ExpectedErrorClass,
 	}
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
@@ -139,7 +150,12 @@ func runComprehensiveOne(parent context.Context, name string, p core.Provider, f
 		resp, err := p.Extract(ctx, core.ExtractRequest{URL: fx.TargetURL, Format: "markdown"})
 		m.LatencyMS = time.Since(start).Milliseconds()
 		if err != nil {
-			m.ErrorClass = classifyComprehensiveError(err)
+			m.ErrorClass = classifyComprehensiveFixtureError(err, m.ExpectedErrorClass)
+			m.Success = m.ExpectedErrorClass != "" && m.ErrorClass == m.ExpectedErrorClass
+			return m
+		}
+		if m.ExpectedErrorClass != "" {
+			m.ErrorClass = "unexpected_success"
 			return m
 		}
 		if strings.TrimSpace(resp.Content) == "" {
@@ -151,10 +167,24 @@ func runComprehensiveOne(parent context.Context, name string, p core.Provider, f
 		return m
 	}
 
-	resp, err := p.Search(ctx, core.SearchRequest{Query: fx.Query, Task: fx.Task, Limit: 5})
+	resp, err := p.Search(ctx, core.SearchRequest{
+		Query: fx.Query,
+		Task:  fx.Task,
+		Limit: 5,
+		Options: core.SearchOptions{
+			Country:    fx.Country,
+			SearchLang: fx.SearchLang,
+			Freshness:  fx.Freshness,
+		},
+	})
 	m.LatencyMS = time.Since(start).Milliseconds()
 	if err != nil {
-		m.ErrorClass = classifyComprehensiveError(err)
+		m.ErrorClass = classifyComprehensiveFixtureError(err, m.ExpectedErrorClass)
+		m.Success = m.ExpectedErrorClass != "" && m.ErrorClass == m.ExpectedErrorClass
+		return m
+	}
+	if m.ExpectedErrorClass != "" {
+		m.ErrorClass = "unexpected_success"
 		return m
 	}
 	m.ResultCount = len(resp.Results)
@@ -190,6 +220,8 @@ func classifyComprehensiveError(err error) string {
 			return "auth_unauthorized"
 		case statusErr.StatusCode == 403:
 			return "auth_forbidden"
+		case statusErr.StatusCode == 404:
+			return "not_found"
 		case statusErr.StatusCode == 429 || statusErr.StatusCode == 202:
 			return "rate_limited"
 		case statusErr.StatusCode >= 500:
@@ -198,14 +230,23 @@ func classifyComprehensiveError(err error) string {
 	}
 	msg := strings.ToLower(err.Error())
 	switch {
-	case strings.Contains(msg, "rate limited") || strings.Contains(msg, "429"):
+	case strings.Contains(msg, "rate limited") || strings.Contains(msg, "too many requests") || hasHTTPStatusMarker(msg, "429") || hasHTTPStatusMarker(msg, "202"):
 		return "rate_limited"
 	case strings.Contains(msg, "api key") || strings.Contains(msg, "apikey") || strings.Contains(msg, "not set"):
 		return "auth_missing_key"
-	case strings.Contains(msg, "unauthorized") || strings.Contains(msg, "401"):
+	case strings.Contains(msg, "unauthorized") || hasHTTPStatusMarker(msg, "401"):
 		return "auth_unauthorized"
-	case strings.Contains(msg, "forbidden") || strings.Contains(msg, "403"):
+	case strings.Contains(msg, "forbidden") || hasHTTPStatusMarker(msg, "403"):
 		return "auth_forbidden"
+	// Only an explicit HTTP status marker ("status 404", "returned HTTP 404")
+	// classifies as not_found. A generic "not found" phrase must NOT: e.g.
+	// os/exec reports `executable file not found in $PATH` when a provider
+	// binary is misconfigured, and treating that as a 404 fake-greens the
+	// expected-404 contract probe. Structured HTTPStatusError detection above
+	// and provider-native classes like "(page_not_found)" in the fixture
+	// classifier remain the authoritative signals.
+	case hasHTTPStatusMarker(msg, "404"):
+		return "not_found"
 	// providerhttp emits "returned HTTP 5xx (...)" rather than "status 5xx";
 	// keep both spellings so plain fmt.Errorf strings keep classifying too.
 	case strings.Contains(msg, "returned http 5") || strings.Contains(msg, "status 5"):
@@ -217,6 +258,24 @@ func classifyComprehensiveError(err error) string {
 	default:
 		return "provider_error"
 	}
+}
+
+func hasHTTPStatusMarker(msg, code string) bool {
+	return strings.Contains(msg, "returned http "+code) ||
+		strings.Contains(msg, "http status "+code) ||
+		strings.Contains(msg, "status "+code)
+}
+
+func classifyComprehensiveFixtureError(err error, expected string) string {
+	class := classifyComprehensiveError(err)
+	if expected != "not_found" || class != "provider_error" {
+		return class
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "(page_not_found)") {
+		return "not_found"
+	}
+	return class
 }
 
 func summarizeMeasurements(ms []Measurement) map[string]ProviderStat {

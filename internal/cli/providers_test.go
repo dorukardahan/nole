@@ -119,21 +119,22 @@ func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
 	t.Setenv("BRAVE_SEARCH_API_KEY", "")
 	t.Setenv("TAVILY_API_KEY", "")
 	t.Setenv("FIRECRAWL_API_KEY", "")
+	t.Setenv("TINYFISH_API_KEY", "")
 
 	envelope := decodeProvidersEnvelopeJSON(t)
 
 	if len(envelope.Providers) == 0 {
 		t.Fatal("expected providers in envelope")
 	}
-	if len(envelope.SetupSuggestions) != 2 {
-		t.Fatalf("expected 2 generic setup_suggestions (brave/tavily; direct Firecrawl is available), got %d: %#v",
+	if len(envelope.SetupSuggestions) != 3 {
+		t.Fatalf("expected 3 generic setup_suggestions (brave/tavily plus low-impact TinyFish; direct Firecrawl is available), got %d: %#v",
 			len(envelope.SetupSuggestions), envelope.SetupSuggestions)
 	}
 	byKey := map[string]core.SetupSuggestion{}
 	for _, s := range envelope.SetupSuggestions {
 		byKey[s.MissingKey] = s
 	}
-	for _, wantKey := range []string{"BRAVE_API_KEY", "TAVILY_API_KEY"} {
+	for _, wantKey := range []string{"BRAVE_API_KEY", "TAVILY_API_KEY", "TINYFISH_API_KEY"} {
 		if _, ok := byKey[wantKey]; !ok {
 			t.Errorf("expected setup_suggestions to contain missing key %q, got keys: %v",
 				wantKey, keysOf(byKey))
@@ -141,6 +142,9 @@ func TestProvidersCommandJSONEnvelopeIncludesSetupSuggestions(t *testing.T) {
 	}
 	if _, ok := byKey["FIRECRAWL_API_KEY"]; ok {
 		t.Fatalf("available direct Firecrawl path should not be a status blocker: %v", keysOf(byKey))
+	}
+	if byKey["TINYFISH_API_KEY"].Impact != "low" {
+		t.Fatalf("TinyFish suggestion must remain low-impact/experimental: %#v", byKey["TINYFISH_API_KEY"])
 	}
 	// Impact must be set for each suggestion.
 	for _, s := range envelope.SetupSuggestions {
@@ -177,8 +181,8 @@ func TestProvidersCommandOpenClawMissingModeFailsClosedToFetchOnly(t *testing.T)
 			t.Fatalf("OpenClaw mode must not suggest a Firecrawl key: %#v", envelope.SetupSuggestions)
 		}
 	}
-	if len(envelope.SetupSuggestions) != 2 {
-		t.Fatalf("OpenClaw mode should preserve Brave/Tavily suggestions only: %#v", envelope.SetupSuggestions)
+	if len(envelope.SetupSuggestions) != 3 {
+		t.Fatalf("OpenClaw mode should preserve Brave/Tavily plus low-impact TinyFish suggestions: %#v", envelope.SetupSuggestions)
 	}
 }
 
@@ -285,7 +289,7 @@ func decodeProvidersEnvelopeJSON(t *testing.T) core.ProviderStatusResponse {
 func clearProviderPolicyEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
-		"BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY", "TAVILY_API_KEY", "FIRECRAWL_API_KEY",
+		"BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY", "TAVILY_API_KEY", "FIRECRAWL_API_KEY", "TINYFISH_API_KEY",
 		"NOLE_COST_POLICY", "NOLE_HARD_CAP_CENTS", "NOLE_BRAVE_ESTIMATED_COST_CENTS", "NOLE_TAVILY_ESTIMATED_COST_CENTS",
 		"NOLE_FIRECRAWL_ESTIMATED_COST_CENTS", "NOLE_CLIENT", "NOLE_OPENCLAW_CLI", "NOLE_OPENCLAW_BRIDGE",
 		"NOLE_BRAVE_PAID", "NOLE_TAVILY_PAID", "NOLE_FIRECRAWL_PAID",

@@ -104,6 +104,7 @@ Use this template locally. It intentionally uses variable names and policy contr
 # export BRAVE_API_KEY="set-locally"
 # export TAVILY_API_KEY="set-locally"
 # export FIRECRAWL_API_KEY="set-locally"
+# export TINYFISH_API_KEY="set-locally"  # optional held-out contract benchmarking
 
 # Default no-hidden-paid-spend mode.
 export NOLE_COST_POLICY="free-first"
@@ -181,6 +182,7 @@ Environment variables:
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
+export TINYFISH_API_KEY="..."       # optional held-out Search + Fetch contract benchmarking
 ```
 
 Rules:
@@ -189,7 +191,7 @@ Rules:
 - Do not commit `.env` files.
 - Do not print key values while debugging.
 - Prefer provider dashboards with free-tier limits or overage disabled where available.
-- Default `NOLE_COST_POLICY` is `free-first`: a key alone is treated as `free-tier-BYOK` and tracked against the local monthly quota. A provider becomes `premium-capable` only when the user explicitly sets `NOLE_<PROVIDER>_PAID=1`.
+- Default `NOLE_COST_POLICY` is `free-first`: Brave/Tavily/keyed Firecrawl keys are treated as `free-tier-BYOK` and tracked against conservative local monthly floors. TinyFish is the explicit exception: its Search + Fetch APIs are `keyed-free` (key required, no local monthly-credit floor or decrement), and there is no `NOLE_TINYFISH_PAID` switch for the separately metered TinyFish products that Nólë does not call. A tracked provider becomes `premium-capable` only when the user explicitly sets its documented `NOLE_<PROVIDER>_PAID=1`.
 
 A local env file can be useful for GUI apps that do not inherit shell env:
 

@@ -25,6 +25,7 @@ Report presence/status only. Never include values.
 | Brave | yes/no | present/absent/not checked | free-tier-BYOK/premium-capable/disabled-no-key |  |
 | Tavily | yes/no | present/absent/not checked | free-tier-BYOK/premium-capable/disabled-no-key |  |
 | Firecrawl | yes/no | present/absent/not checked | keyless-free/free-tier-BYOK/premium-capable | absent key may still be included via keyless mode; present key means account-backed quota |
+| TinyFish | yes/no | present/absent/not checked | keyed-free/disabled-no-key | Search + Fetch only; no monthly-credit balance is modeled; absent key means no live TinyFish call |
 | DDGS | yes/no | not required | keyless-free fallback/control |  |
 | Scrapling | yes/no | configured/not configured/not checked | keyless-free local extract fallback |  |
 | httpfetch | yes/no | not required | keyless-free extract backstop | always available in normal builds; no JavaScript rendering |

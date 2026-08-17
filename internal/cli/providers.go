@@ -24,13 +24,17 @@ func newProvidersCommand() *cobra.Command {
 				if status.Available {
 					state = "available"
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), strings.Join([]string{
+				fields := []string{
 					status.Name,
 					state,
 					string(status.CostClass),
 					status.PolicyReason,
 					providerHumanReason(status, liveUsage),
-				}, string(rune(9))))
+				}
+				if status.CostClass == core.CostClassKeyedFree {
+					fields = append(fields, humanQuotaField(status.CostClass, status.FreeRemaining))
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), strings.Join(fields, string(rune(9))))
 			}
 			return nil
 		},
@@ -49,4 +53,11 @@ func providerHumanReason(status core.ProviderStatus, liveUsage bool) string {
 		return "remote_usage_error"
 	}
 	return reason + "; remote_usage_error"
+}
+
+func humanQuotaField(costClass core.ProviderCostClass, freeRemaining int) string {
+	if costClass == core.CostClassKeyedFree {
+		return "quota=not-applicable"
+	}
+	return fmt.Sprintf("free_remaining=%d", freeRemaining)
 }

@@ -152,7 +152,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 		resp := h.svc.ProviderStatus(r.Context())
 		ready := make([]string, 0, len(resp.Providers))
 		for _, p := range resp.Providers {
-			if core.HasCapability(p.Capabilities, core.CapabilitySearch) && p.Available && p.AllowedByPolicy {
+			if h.svc.ProviderIsRouted(p.Name, core.CapabilitySearch) && core.HasCapability(p.Capabilities, core.CapabilitySearch) && p.Available && p.AllowedByPolicy {
 				ready = append(ready, p.Name)
 			}
 		}

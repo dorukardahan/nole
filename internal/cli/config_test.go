@@ -21,6 +21,7 @@ func TestSecretEnvStatusesReportsProviderKeyPresence(t *testing.T) {
 		{env: "BRAVE_API_KEY", provider: "brave"},
 		{env: "BRAVE_SEARCH_API_KEY", provider: "brave (alt)"},
 		{env: "TAVILY_API_KEY", provider: "tavily"},
+		{env: "TINYFISH_API_KEY", provider: "tinyfish"},
 	}
 	expectedProviders := make(map[string]string, len(tests))
 	for _, tt := range tests {

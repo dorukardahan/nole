@@ -66,12 +66,21 @@ func DecodeJSONLimited(r io.Reader, max int64, v any) error {
 		}
 		return err
 	}
-	// A successful top-level Decode means the value fit within the cap. We do
-	// NOT reject here on counter.n > max: json.Decoder can buffer one trailing
-	// byte (e.g. an API's trailing '\n') past a value sitting exactly at the
-	// cap, which would spuriously fail an otherwise-valid response. The
-	// in-Decode branch above still catches a genuinely oversized (truncated
-	// mid-value) body, and LimitReader(r, max+1) remains the OOM bound.
+	// A second decode must reach EOF. json.Decoder.Decode accepts a valid JSON
+	// prefix and otherwise ignores malformed bytes or another top-level value;
+	// treating that as success lets partial provider payloads fake-green. Keep
+	// the same bounded reader and return only parser metadata, never body data.
+	var trailing any
+	err := dec.Decode(&trailing)
+	if counter.n > max {
+		return fmt.Errorf("response body too_large: exceeded %d bytes (trailing data crossed the limit)", max)
+	}
+	if err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("response contained multiple JSON values")
+		}
+		return err
+	}
 	return nil
 }
 

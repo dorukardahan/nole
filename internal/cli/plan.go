@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/dorukardahan/nole/internal/core"
@@ -63,7 +64,8 @@ func newRoutePlanCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			plan := core.BuildRoutePlan(args[0], core.DefaultRouteMatrix(), opts)
+			loadDefaultNoleEnvFile()
+			plan := core.BuildRoutePlan(args[0], configuredRouteMatrix(os.Getenv("TINYFISH_API_KEY")), opts)
 			plan = applyRoutePlanInsightMode(plan, insightMode)
 			return writeJSONTo(cmd.OutOrStdout(), plan)
 		},
@@ -126,7 +128,7 @@ func validPlannerProvider(provider string) bool {
 	// are intentionally NOT valid here — `--providers httpfetch` correctly errors
 	// rather than emitting an unusable search plan for a provider that never searches.
 	// "arxiv" IS search-capable (academic route), so it belongs here, like wikipedia.
-	case "brave", "tavily", "firecrawl", "wikipedia", "arxiv", "ddgs":
+	case "brave", "tavily", "firecrawl", "tinyfish", "wikipedia", "arxiv", "ddgs":
 		return true
 	default:
 		return false

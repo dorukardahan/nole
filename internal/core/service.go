@@ -92,6 +92,12 @@ func NewService(registry *Registry, ledger QuotaLedger, matrix RouteMatrix, opts
 	return service
 }
 
+// ProviderIsRouted reports whether the active router can select provider for at
+// least one route of the requested capability.
+func (s *Service) ProviderIsRouted(provider string, capability Capability) bool {
+	return s.router.ProviderIsRouted(provider, capability)
+}
+
 func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse, error) {
 	// Resolve the task as the very first step: an explicitly-supplied known task
 	// wins; otherwise the deterministic planner classifies the query so the
@@ -596,6 +602,8 @@ func providerUsageStrategy(provider Provider, decision QuotaDecision) (strategy,
 		return RemoteUsageStrategyDisabledNoKey, "provider account usage requires configured credentials", false
 	case CostClassKeylessFree:
 		return RemoteUsageStrategyNotApplicable, "keyless/local provider has no provider-account quota for Nólë to query", false
+	case CostClassKeyedFree:
+		return RemoteUsageStrategyUnsupported, "provider publishes request-rate limits but no Search/Fetch credit balance for Nólë to query", false
 	}
 	entry := QuotaEntry{Provider: decision.Provider, CostClass: decision.CostClass}
 	canQuery = canQueryProviderUsage(provider, entry, true)

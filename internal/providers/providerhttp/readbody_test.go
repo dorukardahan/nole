@@ -84,3 +84,25 @@ func TestDecodeJSONLimitedExactlyAtCapOK(t *testing.T) {
 		t.Fatalf("decoded name = %q, want x", v.Name)
 	}
 }
+
+func TestDecodeJSONLimitedRejectsTrailingMalformedData(t *testing.T) {
+	var v struct {
+		Name string `json:"name"`
+	}
+	err := DecodeJSONLimited(strings.NewReader(`{"name":"nole"} trailing-malformed`), 1000, &v)
+	if err == nil {
+		t.Fatal("valid JSON prefix plus malformed trailing data was accepted")
+	}
+}
+
+func TestDecodeJSONLimitedRejectsOverflowHiddenByTrailingWhitespace(t *testing.T) {
+	doc := `{"name":"nole"}`
+	body := doc + "  " + `{"name":"hidden"}`
+	var v struct {
+		Name string `json:"name"`
+	}
+	err := DecodeJSONLimited(strings.NewReader(body), int64(len(doc)+1), &v)
+	if err == nil || !strings.Contains(err.Error(), "too_large") {
+		t.Fatalf("overflow hidden behind trailing whitespace was accepted: %v", err)
+	}
+}

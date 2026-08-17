@@ -16,6 +16,7 @@ import (
 	"github.com/dorukardahan/nole/internal/providers/httpfetch"
 	"github.com/dorukardahan/nole/internal/providers/scrapling"
 	"github.com/dorukardahan/nole/internal/providers/tavily"
+	"github.com/dorukardahan/nole/internal/providers/tinyfish"
 	"github.com/dorukardahan/nole/internal/providers/wikipedia"
 	"github.com/dorukardahan/nole/internal/safeerr"
 	"github.com/spf13/cobra"
@@ -119,10 +120,11 @@ func sortedKeys[V any](m map[string]V) []string {
 
 func runComprehensiveBench(ctx context.Context, maxCases int) bench.Report {
 	loadDefaultNoleEnvFile()
-	return bench.RunComprehensiveLive(ctx, bench.DefaultFixtureSet(), comprehensiveBenchProviders(), bench.ComprehensiveOptions{
-		MaxFixtures:    maxCases,
-		NetworkContext: os.Getenv("BENCH_NETWORK_CONTEXT"),
-		CostPolicy:     string(defaultQuotaPolicyFromEnv().Policy),
+	return bench.RunComprehensiveLive(ctx, bench.ComprehensiveFixtureSet(), comprehensiveBenchProviders(), bench.ComprehensiveOptions{
+		MaxFixtures:              maxCases,
+		ProviderInterCallSpacing: map[string]time.Duration{"tinyfish": 2 * time.Second},
+		NetworkContext:           os.Getenv("BENCH_NETWORK_CONTEXT"),
+		CostPolicy:               string(defaultQuotaPolicyFromEnv().Policy),
 	})
 }
 
@@ -133,6 +135,7 @@ func comprehensiveBenchProviders() map[string]core.Provider {
 		"firecrawl": firecrawl.New(),
 		"scrapling": scrapling.New(),
 		"tavily":    tavily.New(),
+		"tinyfish":  tinyfish.New(),
 		"wikipedia": wikipedia.New(),
 		"arxiv":     arxiv.New(),
 		"httpfetch": httpfetch.New(),

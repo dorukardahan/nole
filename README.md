@@ -66,6 +66,7 @@ Nólë currently supports these provider adapters:
 - Brave Search API: web search plus dedicated news/factcheck search, BYOK/free-tier capable.
 - Tavily: search + extract, BYOK/free-tier/premium-capable depending on your account.
 - Firecrawl: search + extract; keyless API mode works without a key, BYOK/free-tier/premium-capable with `FIRECRAWL_API_KEY`.
+- TinyFish Search + Fetch: optional experimental search and rendered-extraction adapter. It requires `TINYFISH_API_KEY` for live contract benchmarking; explicit route planning can model it, but key presence alone does not insert it into evidence-backed runtime routes. TinyFish documents Search and Fetch as credit-free but request-rate-limited, so Nólë classifies it as `keyed-free` rather than inventing a monthly credit balance.
 - DDGS: keyless search fallback (the last-resort general fallback on every search route).
 - Wikipedia/MediaWiki: keyless encyclopedic search via the official MediaWiki Action API. Reinforces the `factcheck`, `people`, and `academic` routes only (tried before the DDGS backstop); it is deliberately not a general fallback. No key, no setup.
 - arXiv: keyless academic search via the public arXiv Atom API. Reinforces the `academic` route only (tried before the DDGS backstop), with primary-source scholarly preprints; it is deliberately not a general fallback. No key, no setup.
@@ -81,7 +82,7 @@ See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 Prerequisites:
 
 - Go 1.25.13+ for building from source (matches the `go 1.25.13` directive in `go.mod`).
-- Optional provider keys for Brave, Tavily and Firecrawl.
+- Optional provider keys for Brave, Tavily, Firecrawl and the experimental TinyFish adapter.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
 - No provider key is required for Firecrawl search + extract in keyless API mode (subject to Firecrawl's service availability and limits; `FIRECRAWL_API_KEY` remains optional for account-backed use), the deterministic benchmark, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback.
 
@@ -162,7 +163,8 @@ search request cannot collide with the same query using default options.
 
 Provider support is intentionally conservative: Brave forwards all five fields on
 the Search-plan Web/News endpoints; Tavily and Firecrawl forward only `country`
-plus a freshness/time-window mapping; DDGS, Wikipedia, arXiv and extract-only
+plus a freshness/time-window mapping; TinyFish forwards `country`, `search_lang`
+and `freshness` while mapping task to its documented `domain_type`; DDGS, Wikipedia, arXiv and extract-only
 providers ignore unsupported options. Nólë does not emulate unsupported behavior,
 fabricate rankings, or use Brave Answers/chat-completions for this surface.
 
@@ -252,13 +254,14 @@ For unverified or generic clients, use the MCP command template:
 
 ## Provider keys and cost control
 
-Default stance: `free-first`. Nólë treats supported keyed provider accounts as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, 500 for Tavily, and 250 for keyed Firecrawl, reset at the start of each UTC calendar month — the lower floors reflect those providers' variable per-credit metering, where the ledger debits 1 per call but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4). Firecrawl without `FIRECRAWL_API_KEY`, DDGS, Wikipedia, arXiv, the keyless httpfetch extraction backstop, and a configured local Scrapling runtime are keyless-free: no local free-tier quota ledger, no hidden paid usage inside Nólë, and no claim that Nólë knows remote balance. Keyless remote providers can still be shared, rate-limited or unavailable upstream; Nólë reports those 429/provider errors as route/provider drift, not as local ledger exhaustion.
+Default stance: `free-first`. Nólë treats supported keyed provider accounts as `free-tier-BYOK` by default and tracks a hardcoded monthly free quota locally (currently 1000 calls/month for Brave, 500 for Tavily, and 250 for keyed Firecrawl, reset at the start of each UTC calendar month — the lower floors reflect those providers' variable per-credit metering, where the ledger debits 1 per call but an advanced Tavily call costs 2 credits and a 20-result Firecrawl search costs 4). TinyFish is different: it requires a key, but its Search and Fetch docs describe those APIs as credit-free and request-rate-limited, so Nólë uses `keyed-free` with no fabricated monthly allowance, decrement or spend. Any separate “500 starting credits” pricing/account wording concerns the metered Agent/Browser products; Nólë neither calls those products nor treats those starting credits as a verified monthly replenishment. Firecrawl without `FIRECRAWL_API_KEY`, DDGS, Wikipedia, arXiv, the keyless httpfetch extraction backstop, and a configured local Scrapling runtime are keyless-free: no local free-tier quota ledger, no hidden paid usage inside Nólë, and no claim that Nólë knows remote balance. Keyless remote providers can still be shared, rate-limited or unavailable upstream; Nólë reports those 429/provider errors as route/provider drift, not as local ledger exhaustion.
 
-A key by itself is enough to start using a provider under the default policy; you only have to flip `NOLE_<PROVIDER>_PAID=1` when you want Nólë to treat that provider as premium-capable (e.g. you are on a paid plan and the cost-capped or quality-first policy should apply). See `docs/PROVIDER-KEYS.md` for per-provider free-tier sourcing and the Brave subscription/CC caveat.
+For providers present in an active runtime route, a key is enough to make the free/default class eligible under the default policy. TinyFish is the held-out exception: its key enables provider status and comprehensive live Search + Fetch contract benchmarking, not ordinary routed search/extract. For quota-tracked providers, flip the documented `NOLE_<PROVIDER>_PAID=1` only when you want premium-capable treatment (e.g. a paid plan under cost-capped or quality-first). TinyFish has no paid toggle because Nólë calls only its `keyed-free` Search + Fetch APIs. See `docs/PROVIDER-KEYS.md` for sourcing and cautions.
 
 Cost status classes exposed in `provider_status`, `budget_status`, `route_trace` and JSON CLI/MCP surfaces are:
 
 - `keyless-free` — no key required, currently used for generic Firecrawl without `FIRECRAWL_API_KEY`, the DDGS search fallback, the Wikipedia/MediaWiki and arXiv search providers, the keyless httpfetch extraction backstop, and the optional local Scrapling extraction fallback.
+- `keyed-free` — a key is required but Nólë models no monthly credit balance or spend. Currently used only for TinyFish Search + Fetch; all three policies allow it and the ledger does not decrement it.
 - `free-tier-BYOK` — user-keyed provider running against the local free-tier quota. Default for keyed Brave / Tavily / Firecrawl.
 - `premium-capable` — keyed provider that may incur paid usage depending on account/plan. Reached by setting `NOLE_<PROVIDER>_PAID=1`.
 - `unknown-cost` — fail-closed unless an explicit quality-first policy is selected.
@@ -266,7 +269,7 @@ Cost status classes exposed in `provider_status`, `budget_status`, `route_trace`
 
 Cost policy modes:
 
-- `free-first` (default): allow keyless and free-tier-BYOK routes; block premium-capable providers so there is no hidden paid spend.
+- `free-first` (default): allow keyless-free, keyed-free and free-tier-BYOK routes; block premium-capable providers so there is no hidden paid spend.
 - `cost-capped`: allow premium-capable providers only when a local hard cap, persisted ledger state when configured and explicit per-provider estimated cost keep the call inside the cap.
 - `quality-first`: explicitly allow premium-capable providers when the user accepts provider-account cost risk for quality/task fit.
 
@@ -276,6 +279,7 @@ Environment variables:
 export BRAVE_API_KEY="..."          # or BRAVE_SEARCH_API_KEY
 export TAVILY_API_KEY="..."
 export FIRECRAWL_API_KEY="..."
+export TINYFISH_API_KEY="..."        # optional held-out Search + Fetch contract benchmarking
 export NOLE_SCRAPLING_PYTHON="/absolute/path/to/python3"  # written by `nole setup --local-extract`
 
 # Opt into paid mode for a specific provider (default: free-tier-BYOK).
@@ -330,7 +334,8 @@ paid-usage ledger policy is added. Brave has no separate non-consuming usage
 endpoint, so Nólë syncs Brave from `X-RateLimit-*` headers on actual Brave
 responses (including 429s). All
 providers report a `remote_usage_strategy`: account endpoints for keyed
-Tavily/Firecrawl, response headers for keyed Brave, `not_applicable` for
+Tavily/Firecrawl, response headers for keyed Brave, `unsupported` for keyed-free
+TinyFish (its documented control is request rate rather than account credits), `not_applicable` for
 keyless/local providers (DDGS, Wikipedia, arXiv, Scrapling, httpfetch, Firecrawl
 keyless), and `disabled_no_key` for keyed providers whose credentials are absent.
 
@@ -355,6 +360,8 @@ nole bench --evidence-md
 # Optional, explicit, low-limit live smoke only:
 nole bench --live --max-live-cases 3 --json
 nole bench --live --max-live-cases 3 --evidence-md
+# Explicit direct provider matrix; bypasses router/policy/ledger and needs approval:
+nole bench --live --comprehensive --max-comprehensive-cases 3 --json
 ```
 
 Route matrix changes should be backed by sanitized evidence. `docs/ROUTE-EVIDENCE.md` records the current deterministic fixture summary, dated live task-provider evidence where available, and states what each artifact does not measure. Do not commit raw provider payloads, headers, private URLs or private queries.

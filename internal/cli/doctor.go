@@ -179,14 +179,20 @@ func newDoctorCommand() *cobra.Command {
 			if budget.LedgerWarning != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "  ledger_warning: %s\n", budget.LedgerWarning)
 			}
+			hasMonthlyQuota := false
 			for _, e := range budget.Entries {
-				line := fmt.Sprintf("  %-12s %s free_remaining=%d estimated_cost_cents=%d spent_cents=%d", e.Provider, e.CostClass, e.FreeRemaining, e.EstimatedCostCents, e.SpentCents)
+				line := fmt.Sprintf("  %-12s %s %s estimated_cost_cents=%d spent_cents=%d", e.Provider, e.CostClass, humanQuotaField(e.CostClass, e.FreeRemaining), e.EstimatedCostCents, e.SpentCents)
 				if e.MeteringModel != "" {
 					line += fmt.Sprintf(" metering=%s", e.MeteringModel)
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), line)
+				if e.FreeQuota > 0 && e.RefreshWindow == core.RefreshMonthly {
+					hasMonthlyQuota = true
+				}
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "  (free_remaining is a local quota counter; resets monthly)")
+			if hasMonthlyQuota {
+				fmt.Fprintln(cmd.OutOrStdout(), "  (free_remaining on monthly free-tier-BYOK entries is a local quota counter; resets monthly)")
+			}
 			if budget.EstimateNote != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "  estimate_note: %s\n", budget.EstimateNote)
 			}

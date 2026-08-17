@@ -3,6 +3,7 @@ package bench
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -112,6 +113,110 @@ func TestRunComprehensiveLive_RecordsSuccessAndError(t *testing.T) {
 	}
 }
 
+func TestRunComprehensiveLive_ExpectedNotFoundScoresContractFidelity(t *testing.T) {
+	providers := map[string]core.Provider{
+		"correct": fakeProvider{
+			name:       "correct",
+			caps:       []core.Capability{core.CapabilityExtract},
+			extractErr: providerhttp.NewHTTPStatusError("correct", "extract", 404, nil),
+		},
+		"swallows-error": fakeProvider{
+			name: "swallows-error",
+			caps: []core.Capability{core.CapabilityExtract},
+		},
+	}
+	set := FixtureSet{Version: "test.v1", Fixtures: []Fixture{{
+		ID:                 "expected-404",
+		Task:               core.TaskExtract,
+		Kind:               KindExtract,
+		TargetURL:          "https://example.com/missing",
+		ExpectedErrorClass: "not_found",
+	}}}
+	rep := RunComprehensiveLive(context.Background(), set, providers, ComprehensiveOptions{InterCallSpacing: time.Millisecond})
+	byProvider := make(map[string]Measurement, len(rep.Measurements))
+	for _, measurement := range rep.Measurements {
+		byProvider[measurement.Provider] = measurement
+	}
+	correct := byProvider["correct"]
+	if !correct.Success || correct.ExpectedErrorClass != "not_found" || correct.ErrorClass != "not_found" {
+		t.Fatalf("expected 404 contract match = %#v", correct)
+	}
+	swallowed := byProvider["swallows-error"]
+	if swallowed.Success || swallowed.ExpectedErrorClass != "not_found" || swallowed.ErrorClass != "unexpected_success" {
+		t.Fatalf("swallowed 404 must fail contract probe: %#v", swallowed)
+	}
+	if rep.ProviderSummary["correct"].Successes != 1 || rep.ProviderSummary["correct"].Failures != 0 {
+		t.Fatalf("correct aggregate = %#v", rep.ProviderSummary["correct"])
+	}
+	if rep.ProviderSummary["swallows-error"].Successes != 0 || rep.ProviderSummary["swallows-error"].Failures != 1 {
+		t.Fatalf("swallowed aggregate = %#v", rep.ProviderSummary["swallows-error"])
+	}
+}
+
+func TestRunComprehensiveLive_ExpectedNotFoundNormalizesPageNotFound(t *testing.T) {
+	provider := fakeProvider{
+		name:       "tinyfish",
+		caps:       []core.Capability{core.CapabilityExtract},
+		extractErr: fmt.Errorf("tinyfish: fetch failed (page_not_found)"),
+	}
+	fixture := Fixture{
+		ID:                 "expected-404",
+		Task:               core.TaskExtract,
+		Kind:               KindExtract,
+		TargetURL:          "https://example.com/missing",
+		ExpectedErrorClass: "not_found",
+	}
+	measurement := runComprehensiveOne(context.Background(), provider.name, provider, fixture, time.Second)
+	if !measurement.Success || measurement.ErrorClass != "not_found" {
+		t.Fatalf("provider-native page_not_found measurement = %#v", measurement)
+	}
+}
+
+func TestRunComprehensiveLive_TargetHTTPErrorDoesNotMasqueradeAsNotFound(t *testing.T) {
+	provider := fakeProvider{
+		name:       "tinyfish",
+		caps:       []core.Capability{core.CapabilityExtract},
+		extractErr: fmt.Errorf("tinyfish: fetch failed (target_http_error)"),
+	}
+	fixture := Fixture{
+		ID:                 "expected-404",
+		Task:               core.TaskExtract,
+		Kind:               KindExtract,
+		TargetURL:          "https://example.com/missing",
+		ExpectedErrorClass: "not_found",
+	}
+	measurement := runComprehensiveOne(context.Background(), provider.name, provider, fixture, time.Second)
+	if measurement.Success || measurement.ErrorClass == "not_found" {
+		t.Fatalf("generic target_http_error was promoted to expected not_found: %#v", measurement)
+	}
+}
+
+func TestRunComprehensiveLive_ExecutableNotFoundDoesNotFakeGreenExpected404(t *testing.T) {
+	// A misconfigured provider binary (os/exec "executable file not found in
+	// $PATH") wrapped in provider error text must not satisfy an expected-404
+	// contract probe: the probe never reached the target, so the fixture must
+	// fail rather than credit the broken provider with a correct 404.
+	provider := fakeProvider{
+		name:       "scrapling",
+		caps:       []core.Capability{core.CapabilityExtract},
+		extractErr: fmt.Errorf(`scrapling: exec: "scrapling-proxy": executable file not found in $PATH`),
+	}
+	fixture := Fixture{
+		ID:                 "expected-404",
+		Task:               core.TaskExtract,
+		Kind:               KindExtract,
+		TargetURL:          "https://example.com/missing",
+		ExpectedErrorClass: "not_found",
+	}
+	measurement := runComprehensiveOne(context.Background(), provider.name, provider, fixture, time.Second)
+	if measurement.Success {
+		t.Fatalf("executable-not-found text fake-greened expected 404: %#v", measurement)
+	}
+	if measurement.ErrorClass == "not_found" {
+		t.Fatalf("generic 'not found' phrase was promoted to not_found: %#v", measurement)
+	}
+}
+
 func TestSanitizationOfMeasurementFields(t *testing.T) {
 	// Even though the provider returns SearchResults containing URLs and
 	// snippets, the Measurement must surface only counts/latency/classification
@@ -151,6 +256,10 @@ func TestClassifyComprehensiveError(t *testing.T) {
 		{errors.New("dial tcp: connection refused"), "network"},
 		{errors.New("status 500 internal server error"), "provider_5xx"},
 		{errors.New("something weird went wrong"), "provider_error"},
+		{errors.New("timeout fetching https://example.com/status/404"), "provider_error"},
+		{errors.New("timeout fetching https://example.com/status/401"), "provider_error"},
+		{errors.New("timeout fetching https://example.com/status/403"), "provider_error"},
+		{errors.New("timeout fetching https://example.com/status/429"), "provider_error"},
 		// Real provider HTTP errors come from providerhttp.NewHTTPStatusError,
 		// which emits "returned HTTP <code>" — the original "status 5" check
 		// missed this shape, mislabeling real 5xx as provider_error. Structured
@@ -172,6 +281,13 @@ func TestClassifyComprehensiveError(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("classify(%v) = %q, want %q", tc.err, got, tc.want)
 		}
+	}
+}
+
+func TestClassifyComprehensiveFixtureErrorDoesNotInferNotFoundFromTargetURL(t *testing.T) {
+	err := errors.New("scrapling: request timed out for https://httpbin.org/status/404")
+	if got := classifyComprehensiveFixtureError(err, "not_found"); got != "provider_error" {
+		t.Fatalf("target URL text fake-greened expected 404: got %q", got)
 	}
 }
 

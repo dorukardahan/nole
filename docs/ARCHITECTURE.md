@@ -21,7 +21,7 @@ Subcommands (registered `internal/cli/root.go:18-31`):
 |---|---|---|---|
 | `search` | `newSearchCommand` | `internal/cli/search.go:11` | Routed web search via `Service.Search`; text or `--json`, `--task`, `--limit`, `--insight`. |
 | `classify` | `newClassifyCommand` | `internal/cli/plan.go:11` | JSON-only deterministic intent classification (`core.ClassifyQuery`), no provider calls. |
-| `route-plan` | `newRoutePlanCommand` | `internal/cli/plan.go:44` | JSON-only deterministic route plan (`core.BuildRoutePlan`), no provider calls. |
+| `route-plan` | `newRoutePlanCommand` | `internal/cli/plan.go:44` | JSON-only deterministic route plan (`core.BuildRoutePlan`), no provider calls; TinyFish appears only through an explicit planning override, not key presence. |
 | `extract` | `newExtractCommand` | `internal/cli/extract.go:11` | URL extraction via `Service.Extract` (SSRF-gated). |
 | `research` | `newResearchCommand` | `internal/cli/research.go:15` | Multi-step Search+Extract pipeline, markdown synthesis, no LLM. |
 | `bench` | `newBenchCommand` | `internal/cli/bench.go:21` | Offline/live/comprehensive eval + sanitized route-evidence. |
@@ -48,10 +48,10 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 |---|---|---|---|
 | `main` | func | `main.go:11` | Entrypoint; builds root, executes, prints redacted error to stderr + `os.Exit(1)`. stdout clean on failure. |
 | `NewRootCommand` | func | `internal/cli/root.go:7` | Root cobra.Command; registers all 14 subcommands. |
-| `defaultService` | func | `internal/cli/app.go:24` | Central composition root: loads `.env`, builds `core.Registry`, registers real-or-mock providers + keyless ddgs/scrapling, assembles quota ledger + optional cache, returns `core.NewService(...)`. Discards every `registry.Register` error via `_ =`. |
+| `defaultService` | func | `internal/cli/app.go:24` | Central composition root: loads `.env`, builds `core.Registry`, registers real-or-mock providers + keyless ddgs/scrapling, assembles quota ledger + optional cache, and keeps TinyFish registered but outside evidence-backed runtime routes. Discards every `registry.Register` error via `_ =`. |
 | `defaultQuotaLedger` | func | `internal/cli/app.go:83` | Selects ledger backend: memory/off/none → in-memory; else file-backed at `NOLE_QUOTA_LEDGER_PATH` or default path, with memory fallback. Has a redundant error branch (lines 120-125). |
 | `defaultQuotaLedgerPath` | func | `internal/cli/app.go:144` | Resolves on-disk ledger location; honors `XDG_STATE_HOME` only when absolute, else `~/.local/state/nole/quota-ledger.json`; "" when no home. |
-| `providerQuotaEntry` | func | `internal/cli/app.go:205` | Maps provider+key-presence to a `core.QuotaEntry` cost class (DisabledNoKey / PremiumCapable / FreeTierBYOK). |
+| `providerQuotaEntry` | func | `internal/cli/app.go:205` | Maps provider+key-presence to a `core.QuotaEntry` cost class, including TinyFish's key-required, non-decrementing `KeyedFree` class before paid-mode evaluation. |
 | `defaultCacheTTL` | func | `internal/cli/app.go:162` | Parses cache TTL from `NOLE_CACHE_TTL` or `NOLE_CACHE_TTL_SECONDS`; returns 0 (disabled) on parse failure / non-positive. |
 | `parseTaskStrict` / `parseTask` | func | `internal/cli/app.go:357` | Strict (validation, plan.go) vs lenient (forgiving fallback to TaskGeneral, search.go) task-string parsing. `parseTask` at 349. |
 | `buildCLIErrorWithInsightMode` | func | `internal/cli/app.go:268` | Builds `cliErrorEnvelope` JSON (operation, redacted error, defensively-copied route + route_trace, routing_insight). `buildCLIError` at 264. |
@@ -60,7 +60,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `runSearch` | func | `internal/cli/app.go:388` | Thin search facade; rejects empty query, calls `defaultService().Search` with `context.Background()`. Builds a new Service per call. |
 | `version` vars | var | `internal/version/version.go:3` | Build-stamped `Version`/`Commit`/`Date`. `Version` is consumed by the MCP server and the `version` CLI command; `Commit`/`Date` are consumed by the `version` CLI command and stamped by release-shaped builds. |
 
-**Data flow.** `os/shell` → `main.main` (`main.go:11`) → `cli.NewRootCommand().Execute()`. Cobra dispatches to one of 14 subcommands. Service-backed commands call `defaultService()` (`app.go:24`) → `loadDefaultNoleEnvFile()` reads provider keys → `core.NewRegistry()` + `registry.Register(real-or-mock)` → `defaultQuotaEntries` (`app.go:73`) → per-provider `providerQuotaEntry` (`app.go:205`) → `defaultQuotaLedger` (`app.go:83`) → `defaultResponseCacheFromEnv`/`defaultCacheTTL` (`app.go:155/162`) → `core.NewService(registry, ledger, core.DefaultRouteMatrix(), opts)`. Output flows through `writeJSON` or `applyXxxInsightMode` + `writeHumanRoutingInsight` (`app.go:290-347`). Errors bubble to `main`, get redacted by `safeerr.Message` (`safeerr.go:18`), print to stderr. `version.Version` flows separately into `mcpserver.NewMCPServer`; `version` and `self-update` use lightweight non-provider paths.
+**Data flow.** `os/shell` → `main.main` → `cli.NewRootCommand().Execute()`. Service-backed commands call `defaultService()` → load provider-key presence → register real-or-mock adapters → seed the quota ledger → `configuredRouteMatrix(tinyfishKey)` → `core.NewService(...)`. `configuredRouteMatrix` always deep-copies the canonical evidence-backed matrix; TinyFish key presence affects registration/status/accounting but not runtime route membership. Output flows through the shared JSON/insight writers; errors are redacted before stderr.
 
 ### Area: core-routing — `internal/core` routing engine (route matrix, registry, deterministic planner, shared types, insight formatting)
 
@@ -72,6 +72,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `DefaultRouteMatrix` | func | `internal/core/router.go:5` | Canonical per-task provider ordering (routing prior from benchmark evidence). Extract route excludes brave/ddgs, leads with local scrapling. |
 | `Router` | type | `internal/core/router.go` | Holds registry + QuotaLedger + matrix; the route decision unit. |
 | `Router.Route` | method | `internal/core/router.go` | Resolves task→route with TaskGeneral fallback and returns a defensive route copy. |
+| `Router.ProviderIsRouted` | method | `internal/core/router.go` | Reports whether a provider appears in an effective route for a capability; keeps status-only/benchmark-only adapters out of runtime readiness claims. |
 | `Router.Candidate` / `Router.Candidates` | methods | `internal/core/router.go` | Annotate provider slot(s) with registration, capability, and quota-policy gate results. `Service.Search`/`Extract` use the single-slot `Candidate` path lazily so later-provider quota decisions are not made after an earlier success. |
 | `Router.Select` | method | `internal/core/router.go` | Compatibility/convenience wrapper over `Route` + lazy `Candidate`; returns first routable provider + full route, else `NoFreeQuotaError`. |
 | `Registry` | type | `internal/core/registry.go:8` | `map[string]Provider` store. |
@@ -96,7 +97,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 
 ### Area: core-state — `internal/core` cost/quota ledger, response cache, BYOK metadata, setup hints, file locking, typed errors
 
-**Purpose.** Implements the "no hidden paid spend" guarantee. The quota ledger classifies every provider into a cost class and decides, under a configurable cost policy (free-first / cost-capped / quality-first), whether a call is allowed, persisting free-tier counters and paid spend to a crash-safe, file-locked JSON ledger. Supporting pieces: TTL response cache, authoritative BYOK metadata slice, setup-hint builders, typed no-free-quota error. Survives corrupt ledgers, schema migration, multi-process races, month boundaries.
+**Purpose.** Implements the "no hidden paid spend" guarantee. The quota ledger classifies every provider into a cost class and decides, under a configurable cost policy (free-first / cost-capped / quality-first), whether a call is allowed, persisting free-tier counters and paid spend to a crash-safe, file-locked JSON ledger. `keyed-free` represents key-required APIs with no modeled monthly credit balance: it is allowed under every policy and `Record` is a no-op, including fail-closed ledger states. Supporting pieces include the cache, authoritative keyed-provider metadata, setup hints and typed no-free-quota errors.
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|
@@ -119,12 +120,12 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `cloneSearchResponse` | func | `internal/core/cache.go:145` | Defensive deep-ish copy (Results/Route/RouteTrace) so callers can't mutate stored entries. |
 | `lockLedgerFile` (unix) | func | `internal/core/file_lock_unix.go:10` | Blocking exclusive `flock(LOCK_EX)`; build-tag `!windows`. |
 | `lockLedgerFile` (windows) | func | `internal/core/file_lock_windows.go:19` | `LockFileEx` `LOCKFILE_EXCLUSIVE_LOCK` (0x2) over 1 byte; build-tag `windows`. |
-| `byokProviders` | var | `internal/core/byok_metadata.go:22` | Authoritative BYOK metadata (brave, tavily, firecrawl): free quotas, refresh windows, capabilities, signup URLs, env examples. Never mutate after init. |
+| `byokProviders` | var | `internal/core/byok_metadata.go:22` | Authoritative keyed-provider metadata (brave, tavily, firecrawl, tinyfish): default cost class, quota/refresh where applicable, capabilities and setup fields. TinyFish is request-rate-only `keyed-free` with zero quota/refresh. Never mutate after init. |
 | `BuildSetupSuggestions` | func | `internal/core/setup_hints.go:15` | One suggestion per missing BYOK key, classified high/medium/low, sorted. |
 | `BuildSetupTip` | func | `internal/core/setup_hints.go:103` | Once-per-session upgrade nag from high/medium suggestions; nil when nothing missing or only low-impact. |
 | `NoFreeQuotaError` | type | `internal/core/errors.go:5` | Typed no-free-provider error; `IsNoFreeQuota` handles value + pointer. |
 
-**Data flow.** Wiring: `app.go:129` → `NewFileQuotaLedgerWithPolicy(path, policy, seeds)`; seeds built from `LookupBYOK` (`app.go:257`), carrying `MeteringModel`/`EstimateOnly` onto each BYOK entry. `defaultQuotaPolicyFromEnv` resolves `HardCapSource` (explicit|unset) alongside the cap value. Construction (`quota.go:574`) seeds map, runs `reloadFromDiskLocked` under lock. Hot path: `Decide(provider)` → mutex → `refreshExpiredEntriesLocked` → `decideLocked` (CostClass × policy) → QuotaDecision. On committed call: `Record(provider)` → file lock → `reloadFromDiskLocked` (re-read disk) → `recordLocked` decrements/adds → `persistLocked` (tmp+rename+chmod). Corruption → `recoverCorruptLedgerLocked` → backup + fail-closed (only keyless-free passes). Response cache sits in front in `service.go`: `GetSearch`/`GetExtract` short-circuit; `SetSearch`/`SetExtract` store clones after success; errors never cached. Setup hints read `BYOKProviders()` vs configured map → suggestions/tips surfaced via `ProviderStatusResponse` and first `SearchResponse`.
+**Data flow.** Wiring builds seeds from `LookupBYOK`, carrying cost-class and metering metadata into the ledger. Hot path is `Decide(provider)` → refresh → cost-class/policy decision. On a committed tracked call, `Record(provider)` re-reads disk under lock, decrements/adds and persists; `keyed-free` returns before any mutation. Corruption triggers backup + fail-closed, while both `keyless-free` and `keyed-free` remain callable because neither can consume tracked/paid balance. Setup hints read `BYOKProviders()` vs configured state; TinyFish's missing key stays low-impact and is excluded from the ordinary once-per-session setup tip.
 
 ### Area: core-service — `internal/core` Service orchestration (Search/Extract/ProviderStatus/BudgetStatus)
 
@@ -134,6 +135,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 |---|---|---|---|
 | `Service` | type | `internal/core/service.go:26` | Orchestrator: registry, ledger, router, optional cache. |
 | `NewService` | func | `internal/core/service.go:47` | Builds Service + internal Router; applies variadic nil-guarded `ServiceOption`. |
+| `Service.ProviderIsRouted` | method | `internal/core/service.go` | Read-only delegate used by readiness surfaces to distinguish registered status providers from providers selectable by the active route matrix. |
 | `WithResponseCache` | func | `internal/core/service.go:41` | Option injecting a ResponseCache (otherwise nil/skipped). |
 | `Service.Search` | method | `internal/core/service.go:57` | Resolves/defaults task, validates + normalizes `SearchOptions`, checks cache keyed by canonical options, iterates route w/ registration/capability/quota/availability gates, calls `provider.Search`, falls back on error/empty, records quota only on success, returns response+trace or `NoFreeQuotaError`. |
 | `Service.Extract` | method | `internal/core/service.go:260` | Mirrors Search: trims URL, defaults Format→markdown, runs `safenet.ValidateURL` (SSRF guard) before routing, same pipeline on TaskExtract route. |
@@ -145,7 +147,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `mergeProviderCostStatus` | func | `internal/core/service.go:522` | Copies QuotaDecision cost/policy fields onto a ProviderStatus. |
 | `contentResultCount` | func | `internal/core/service.go:533` | 1 for non-blank extract content, else 0. |
 
-**Data flow.** Caller (CLI/MCP) → `Service.Search`/`Extract`. Both: (1) normalize request (Search: resolve task + validate/canonicalize `SearchOptions`; Extract: URL trim + Format default + `safenet.ValidateURL`), (2) `routeFor` → `Router.Route` w/ TaskGeneral fallback, (3) if cache present consult `cache.GetSearch`/`GetExtract`; search cache keys canonical options so localized/freshness/safesearch requests do not collide; hit → rebuild Route/RouteTrace via `cacheHitAttempt` + insight and return; miss → append cache-miss. (4) Per provider slot: `Router.Candidate` lazily supplies `not_registered`, `missing_*_capability`, and quota-policy skip reasons/decisions for that slot only; then Service checks `provider.Status(ctx)` and skips if unavailable. (5) Call provider, measure latency; provider adapters forward only supported SearchOptions (Brave all five, Tavily/Firecrawl country+freshness, keyless search providers ignore); err → `provider_error`, continue; empty → `empty_results`/`empty_content`, continue. (6) On success ONLY: `ledger.Record(name)`; if Record errors, re-Decide and set `success_<reason>` but still return response. (7) Build trace + insight, optionally cache.Set, return. (8) Exhausted: `NoFreeQuotaError` or `lastErr`, both with `BuildErrorRoutingInsight`.
+**Data flow.** Caller (CLI/MCP) → `Service.Search`/`Extract`. Both normalize and prevalidate, consult the canonical-options cache, then walk route slots through registration/capability/quota/status gates. Provider adapters forward only documented SearchOptions: Brave all five, Tavily/Firecrawl country+freshness, TinyFish country+search_lang+freshness, and keyless search providers ignore unsupported fields. Errors/empty outputs fall through. Only successful calls reach `ledger.Record`; `keyed-free` succeeds without mutating counters. The service then builds trace/insight, caches successful normalized output and returns.
 
 ### Area: cli-commands — `internal/cli` command surface (search, extract, classify/route-plan, providers, doctor, research, HTTP serve, .env loader)
 
@@ -157,7 +159,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `taskHelpText` | func | `internal/cli/search.go:50` | Builds `--task` help from `core.TaskTypes()`, skipping TaskExtract. |
 | `newExtractCommand` | func | `internal/cli/extract.go:11` | `extract <url>`; `Service.Extract` w/ `--format`; mirrors search error/JSON handling. |
 | `newClassifyCommand` | func | `internal/cli/plan.go:11` | `classify <query>`; JSON-only `core.ClassifyQuery`. |
-| `newRoutePlanCommand` | func | `internal/cli/plan.go:44` | `route-plan <query>`; JSON-only `core.BuildRoutePlan(DefaultRouteMatrix())`, no provider calls. |
+| `newRoutePlanCommand` | func | `internal/cli/plan.go:44` | JSON-only deterministic route plan over `configuredRouteMatrix`; no provider calls, and no-key output stays identical to the canonical matrix. |
 | `planOptionsFromFlags` | func | `internal/cli/plan.go:79` | `--task/--providers/--single-intent` → `core.PlanOptions`; rejects TaskExtract override + invalid providers. |
 | `validPlannerProvider` | func | `internal/cli/plan.go:122` | Allowlist: brave, tavily, firecrawl, ddgs. |
 | `newProvidersCommand` | func | `internal/cli/providers.go:10` | `providers`; tab rows or JSON from `ProviderStatus`. |
@@ -171,7 +173,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `Service.Research` / `Service.ResearchWithOptions` | methods | `internal/core/research.go` | Classifies the question, fans `Service.Search` across task-fit routes, passes normalized SearchOptions to each search leg, extracts `min(sources, max_steps, 5)` non-pdf/non-reddit URLs (truncate 2000); returns evidence (sources + extracts) — NO composed summary (the agent synthesizes). |
 | `Service.SearchAndExtract` | method | `internal/core/service.go` | One search + extract of the top `min(extract_top, 3)` result URLs; per-URL failure is non-fatal (`extract_errors`), URLs de-duplicated. |
 | `newHTTPHandler` | func | `internal/cli/http.go:37` | Wraps `core.Service` + `mcpserver.New` via `buildMCPServer`. |
-| `httpHandler.buildMux`/`start` | method | `internal/cli/http.go:57`/`276` | `buildMux` registers `/health`, `/mcp`, `/api/{providers,budget,search,extract,search_and_extract,research}` w/ 1MiB caps + slowloris timeouts; `start` runs it with graceful drain. `/health` is a REAL readiness check (v0.7.0): 200 iff ≥1 search-capable provider is Available && AllowedByPolicy (Available already folds breaker IsOpen), else 503; keyless DDGS keeps a zero-key deploy ready. |
+| `httpHandler.buildMux`/`start` | method | `internal/cli/http.go:57`/`276` | `buildMux` registers `/health`, `/mcp`, `/api/{providers,budget,search,extract,search_and_extract,research}` w/ 1MiB caps + slowloris timeouts; `start` runs it with graceful drain. `/health` is a REAL readiness check (v0.7.0): 200 iff ≥1 provider is search-capable, present in an active search route, Available, and AllowedByPolicy (Available already folds breaker IsOpen), else 503; keyless DDGS keeps a zero-key deploy ready. |
 | `httpHandler.handleMCP` | method | `internal/cli/http.go:334` | POST-only JSON-RPC bridge → `mcp.HandleMessage`; `-32700`/`-32603` envelopes on failure. |
 | `httpBuildContext` | func | `internal/cli/http.go:405` | Injects `InProcessSession` if `Mcp-Session-Id` present, else sets `mcpserver.EphemeralCtxKey`. |
 | `httpSessionForRequest` | func | `internal/cli/http.go:247` | Legacy helper retained only for tests (deprecated path). |
@@ -234,11 +236,11 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 
 ### Area: providers — web search/extract provider adapters + shared HTTP retry/error layer
 
-**Purpose.** Concrete adapters satisfying `core.Provider`, translating Nole's neutral request/response types into each upstream API and back. Three keyed network providers (brave, tavily, firecrawl); keyless network providers — `ddgs` (last-resort search fallback), `wikipedia` + `arxiv` (keyless primary-source search reinforcement, each routed on specific tasks before ddgs), and `httpfetch` (keyless pure-Go HTML-to-text extract backstop, last-resort on TaskExtract); one local subprocess extractor (scrapling, via Python); a deterministic mock placeholder; and a shared `providerhttp` package supplying retry-with-backoff, a circuit breaker, and a secret-safe HTTP status error type. Keeps provider-specific quirks (auth headers, decoding, rate-limit signaling, redaction) isolated per adapter.
+**Purpose.** Concrete adapters satisfying `core.Provider`, translating Nole's neutral request/response types into each upstream API and back. Four keyed network providers (brave, tavily, firecrawl, tinyfish); keyless network providers — `ddgs`, `wikipedia`, `arxiv`, and `httpfetch`; one local subprocess extractor (`scrapling`); a deterministic mock; and shared `providerhttp` retry/breaker/safe-error primitives. TinyFish also reuses `safenet` before forwarding fetch targets. Provider-specific auth, decoding and rate-limit behavior stays isolated per adapter.
 
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|
-| `providerhttp.DoWithRetry` | func | `internal/providers/providerhttp/retry.go:40` | Core retry loop: clones request per attempt, calls `client.Do`, returns on transport error or non-transient status, else drains+sleeps backoff. All four network providers route through it. |
+| `providerhttp.DoWithRetry` | func | `internal/providers/providerhttp/retry.go:40` | Core retry loop: clones request per attempt, calls `client.Do`, returns on transport error or non-transient status, else drains+sleeps backoff. Network adapters opt into it instead of duplicating retry logic. |
 | `providerhttp.RetryOptions` | type | `internal/providers/providerhttp/retry.go:13` | Tunable config (MaxAttempts, BaseDelay, MaxDelay, injectable Sleep). |
 | `providerhttp.DefaultRetryOptions` | func | `internal/providers/providerhttp/retry.go:20` | From env (`NOLE_RETRY_MAX_ATTEMPTS` clamped 1..5, `NOLE_RETRY_BASE_DELAY_MS`), 5s MaxDelay. |
 | `providerhttp.retryDelay` | func | `internal/providers/providerhttp/retry.go:92` | Honors Retry-After (seconds or HTTP date), else exponential `base*2^(attempt-1)` capped. |
@@ -255,6 +257,8 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `firecrawl.Provider.Search` | method | `internal/providers/firecrawl/firecrawl.go:76` | POST `{baseURL}/search`; maps `country` + freshness→`tbs`; snippet Description→Markdown then trunc 300. |
 | `firecrawl.Provider.Extract` | method | `internal/providers/firecrawl/firecrawl.go:154` | POST `/scrape`; markdown content + string-only metadata. |
 | `firecrawl.WithBaseURL` | func | `internal/providers/firecrawl/firecrawl.go:29` | Overrides default `https://api.firecrawl.dev/v2`; used by tests. |
+| `tinyfish.Provider.Search` | method | `internal/providers/tinyfish/tinyfish.go` | GET `https://api.search.tinyfish.ai/` with `X-API-Key`; maps only documented task/country/language/freshness fields, requests page 0 once, trims locally and never fabricates score. |
+| `tinyfish.Provider.Extract` | method | `internal/providers/tinyfish/tinyfish.go` | SSRF-prevalidates one public target, POSTs to `https://api.fetch.tinyfish.ai/`, maps markdown/html/JSON text plus an allowlisted metadata subset, and reduces per-URL failures to sanitized codes. |
 | `ddgs.Provider.Search` | method | `internal/providers/ddgs/ddgs.go:40` | Scrapes DDG no-JS HTML via POST w/ browser headers; regex-parses links/snippets; skips ad redirects; special-cases 202 as rate-limit. |
 | `ddgs.cleanHTML` | func | `internal/providers/ddgs/ddgs.go:150` | Strips tags + decodes a hand-picked entity set. |
 | `ddgs` regex set | var | `internal/providers/ddgs/ddgs.go:33` | Package-level compiled regexes driving the brittle scrape. |
@@ -292,8 +296,8 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | Symbol | Kind | Anchor | Summary |
 |---|---|---|---|
 | `newBenchCommand` | func | `internal/cli/bench.go:21` | Cobra `bench`; flags (`--json/--evidence-md/--live/--max-live-cases/--comprehensive/--max-comprehensive-cases`); `--comprehensive` requires `--live`. |
-| `runComprehensiveBench` | func | `internal/cli/bench.go:117` | CLI adapter; loads env, builds provider map, calls `bench.RunComprehensiveLive` w/ NetworkContext + cost policy from env. |
-| `comprehensiveBenchProviders` | func | `internal/cli/bench.go:126` | Fixed provider map `{brave, ddgs, firecrawl, scrapling, tavily}` (router/policy bypassed). |
+| `runComprehensiveBench` | func | `internal/cli/bench.go:117` | CLI adapter; loads env, uses `ComprehensiveFixtureSet`, builds the provider map, and calls `RunComprehensiveLive` with a two-second TinyFish spacing floor. |
+| `comprehensiveBenchProviders` | func | `internal/cli/bench.go:126` | Fixed provider map including TinyFish and all existing comparator adapters (router/policy/ledger bypassed). Missing TinyFish key fails locally before network I/O. |
 | `runLiveBench` | func | `internal/cli/bench.go:136` | Live smoke; clamps maxCases (0,10]→3, truncates fixtures, runs through real `core.Service`. |
 | `runLiveBenchCase` | func | `internal/cli/bench.go:172` | One live fixture via `svc.Extract`/`svc.Search`; records route, sanitized attempts, coarse `liveScore`. |
 | `liveScore` | func | `internal/cli/bench.go:209` | Coarse 0-100: 40 base + up to 30 for count + latency bucket bonus. |
@@ -302,6 +306,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `Report` | type | `internal/bench/bench.go:111` | Top-level JSON artifact: schema, mode, fixture version, evidence metadata, summary, results, matrix, comprehensive-only fields (nil in legacy). |
 | `EvidenceMetadata` | type | `internal/bench/bench.go:27` | Self-describing 'measures / does not measure / how to reproduce' block — core anti-overclaim contract. |
 | `DefaultFixtureSet` | func | `internal/bench/bench.go:473` | Versioned fixtures (`2026-05-17.offline.v1`): 17 fixtures (16 search + 1 extract), en/tr/es/de. |
+| `ComprehensiveFixtureSet` | func | `internal/bench/bench.go` | Copies the default set, then adds localization/freshness search options and static/JS-heavy/redirect/error/structured extract cases for explicit live comprehensive runs only. Offline fixtures stay unchanged. |
 | `RunOffline` / `RunOfflineWithObservations` | func | `internal/bench/bench.go:498` | Deterministic offline eval; iterates fixtures, evaluates against matrix + observation table. |
 | `evalOfflineCase` | func | `internal/bench/bench.go:530` | Walks route (TaskGeneral fallback), simulates per-provider attempts, marks first success, scores. |
 | `defaultOfflineObservations` | func | `internal/bench/bench.go:646` | Hardcoded per-(provider,task) Observation table — synthetic 'fixture data'. |
@@ -309,7 +314,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `MarkdownEvidenceSummary` | func | `internal/bench/bench.go:226` | Sanitized offline/live Markdown evidence summary. |
 | `sanitizeMarkdownCell` | func | `internal/bench/bench.go:452` | Escapes pipes, redacts Authorization/Bearer/SECRET/TOKEN/api_key, replaces URLs + abs paths. |
 | `publicReason` | func | `internal/bench/bench.go:399` | Allowlist mapping known reasons to themselves, else `sanitized_error`. |
-| `RunComprehensiveLive` | func | `internal/bench/comprehensive.go:48` | Per-provider goroutines run fixtures serially (inter-call spacing) while providers run concurrently; capability-filters; flattens alphabetically. |
+| `RunComprehensiveLive` | func | `internal/bench/comprehensive.go:48` | Per-provider goroutines run fixtures serially while providers run concurrently; capability-filters, applies max(global spacing, provider floor), honors cancellation, and flattens alphabetically. |
 | `runComprehensiveOne` | func | `internal/bench/comprehensive.go:126` | Single (provider, fixture) probe w/ per-call timeout; records Success/ResultCount/LatencyMS/ErrorClass. |
 | `classifyComprehensiveError` | func | `internal/bench/comprehensive.go:173` | Reduces errors to a sanitized vocabulary; `HTTPStatusError` first, then string match; 202 treated as 429. |
 | `summarizeMeasurements` | func | `internal/bench/comprehensive.go:222` | Aggregates per-provider: calls/successes/failures, avg/p50/p95 latency (successful only), error histogram. |
@@ -317,7 +322,7 @@ The `version` subcommand lets the CLI report build identity; the MCP server also
 | `check-benchmark-claims.sh` | file | `scripts/check-benchmark-claims.sh:40` | CI shell guard: requires 4 benchmark docs + mandated disclaimers, greps for unsupported ranking/speed regexes. |
 | `cmd/bench/main.py:main` | func | `cmd/bench/main.py:232` | Standalone Python provider-benchmark runner across 12 categories; parallel/legacy to Go harness, not invoked by Go/CI. |
 
-**Data flow.** `nole bench` → `newBenchCommand.RunE` (`bench.go:37`). default → `bench.RunOffline(DefaultFixtureSet, DefaultRouteMatrix)` → `evalOfflineCase` per fixture (route → `observationFor` → `metricsFromObservation` → `scoreMetrics`). `--live` → `runLiveBench` → `defaultService()` → `runLiveBenchCase` → `svc.Search`/`svc.Extract` → `attemptsFromTrace` + `liveScore` + `sanitizedBenchError`. `--live --comprehensive` → `runComprehensiveBench` → env + `comprehensiveBenchProviders()` → `RunComprehensiveLive` (goroutine-per-provider, `runComprehensiveOne` over capability-matching fixtures w/ per-call timeout + spacing, buffered channel) → flatten alphabetically → `summarizeMeasurements`. Output: `--evidence-md` → `MarkdownComprehensiveSummary`/`MarkdownEvidenceSummary`; `--json` → indented encode; else `printBenchReport`. All Markdown → `sanitizeMarkdownCell`; reasons → `publicReason`/`classifyComprehensiveError`. CI `scripts/audit.sh --ci` runs `check-benchmark-claims.sh` + `go run . bench`. `cmd/bench/main.py` is a self-contained side path exercised only by `cmd/bench/test_main.py`.
+**Data flow.** `nole bench` defaults to the unchanged deterministic `DefaultFixtureSet` + `DefaultRouteMatrix`. `--live` goes through the real service/router/policy. `--live --comprehensive` requires explicit operator intent, bypasses router/policy/ledger, uses `ComprehensiveFixtureSet`, runs each provider serially with per-provider spacing (TinyFish floor: two seconds), then sanitizes and aggregates only summary measurements. Output uses the existing Markdown/JSON sanitizers; CI runs offline mode only.
 
 ### Area: harness — CI/CD pipelines and release-gate verification scripts
 
@@ -387,7 +392,7 @@ Optional `--local-extract` (`setupLocalExtract` `setup_local_extract.go:26`) pro
 - `internal/mcpserver` → `internal/core`, `internal/version`, `internal/safeerr`, `internal/cli` (HTTP wiring sets `EphemeralCtxKey`; `defaultService`)
 - `internal/core` (service) → `internal/safenet`, intra-package (registry, quota, router, planner, cache, insight, byok_metadata, setup_hints, types, errors)
 - `internal/core` → consumes `internal/providers/providerhttp` indirectly (via `safeerr` / error classification) and the `core.Provider` interface implemented by all provider packages
-- `internal/providers/{arxiv,brave,ddgs,firecrawl,httpfetch,tavily,wikipedia}` → `internal/core`, `internal/providers/providerhttp` (arxiv/httpfetch also use `internal/version` for the User-Agent; httpfetch also uses `internal/safenet` for its dial-time SSRF guard)
+- `internal/providers/{arxiv,brave,ddgs,firecrawl,httpfetch,tavily,tinyfish,wikipedia}` → `internal/core`, `internal/providers/providerhttp` (arxiv/httpfetch also use `internal/version`; httpfetch and tinyfish use `internal/safenet` for URL safety)
 - `internal/providers/scrapling` → `internal/core` (no HTTP; shells to Python)
 - `internal/providers/mock` → `internal/core`
 - `internal/bench` → `internal/core`, `internal/providers/providerhttp` (error classification), `internal/safeerr` (provider instances are injected by `internal/cli/bench.go`, not imported here)
