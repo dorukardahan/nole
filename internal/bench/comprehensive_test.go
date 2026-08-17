@@ -191,6 +191,32 @@ func TestRunComprehensiveLive_TargetHTTPErrorDoesNotMasqueradeAsNotFound(t *test
 	}
 }
 
+func TestRunComprehensiveLive_ExecutableNotFoundDoesNotFakeGreenExpected404(t *testing.T) {
+	// A misconfigured provider binary (os/exec "executable file not found in
+	// $PATH") wrapped in provider error text must not satisfy an expected-404
+	// contract probe: the probe never reached the target, so the fixture must
+	// fail rather than credit the broken provider with a correct 404.
+	provider := fakeProvider{
+		name:       "scrapling",
+		caps:       []core.Capability{core.CapabilityExtract},
+		extractErr: fmt.Errorf(`scrapling: exec: "scrapling-proxy": executable file not found in $PATH`),
+	}
+	fixture := Fixture{
+		ID:                 "expected-404",
+		Task:               core.TaskExtract,
+		Kind:               KindExtract,
+		TargetURL:          "https://example.com/missing",
+		ExpectedErrorClass: "not_found",
+	}
+	measurement := runComprehensiveOne(context.Background(), provider.name, provider, fixture, time.Second)
+	if measurement.Success {
+		t.Fatalf("executable-not-found text fake-greened expected 404: %#v", measurement)
+	}
+	if measurement.ErrorClass == "not_found" {
+		t.Fatalf("generic 'not found' phrase was promoted to not_found: %#v", measurement)
+	}
+}
+
 func TestSanitizationOfMeasurementFields(t *testing.T) {
 	// Even though the provider returns SearchResults containing URLs and
 	// snippets, the Measurement must surface only counts/latency/classification

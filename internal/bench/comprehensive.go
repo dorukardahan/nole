@@ -238,7 +238,14 @@ func classifyComprehensiveError(err error) string {
 		return "auth_unauthorized"
 	case strings.Contains(msg, "forbidden") || hasHTTPStatusMarker(msg, "403"):
 		return "auth_forbidden"
-	case strings.Contains(msg, "not found") || hasHTTPStatusMarker(msg, "404"):
+	// Only an explicit HTTP status marker ("status 404", "returned HTTP 404")
+	// classifies as not_found. A generic "not found" phrase must NOT: e.g.
+	// os/exec reports `executable file not found in $PATH` when a provider
+	// binary is misconfigured, and treating that as a 404 fake-greens the
+	// expected-404 contract probe. Structured HTTPStatusError detection above
+	// and provider-native classes like "(page_not_found)" in the fixture
+	// classifier remain the authoritative signals.
+	case hasHTTPStatusMarker(msg, "404"):
 		return "not_found"
 	// providerhttp emits "returned HTTP 5xx (...)" rather than "status 5xx";
 	// keep both spellings so plain fmt.Errorf strings keep classifying too.
