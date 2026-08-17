@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The opt-in `nole mcp --compact` mode advertises one `web_evidence` tool for
+  agents that prefer a smaller evidence surface. This is additive; the standard
+  six-tool MCP surface and default response schemas remain unchanged.
 - The MCP `provider_status` result now includes an additive top-level
   `server_version` field sourced from the server's build version. This lets an
   agent identify the Nólë binary loaded by its MCP subprocess; unstamped source
