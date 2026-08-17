@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-08-17
+
+Theme: **smaller MCP surfaces + explicit experimental TinyFish integration.**
+This is a backward-compatible MINOR release: agents can opt into a compact MCP
+surface, inspect the serving binary version, and explicitly model the TinyFish
+Search + Fetch adapter. The default six-tool MCP surface and evidence-backed
+runtime routes remain unchanged; response changes are additive and backward-
+compatible. TinyFish is still experimental and stays outside the default route
+matrix.
+
 ### Added
 
 - **Experimental TinyFish Search + Fetch.** Added optional search and fetch
@@ -14,11 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   TinyFish remains outside the default runtime routes and is not a stable API.
 - The opt-in `nole mcp --compact` mode advertises one `web_evidence` tool for
   agents that prefer a smaller evidence surface. This is additive; the standard
-  six-tool MCP surface and default response schemas remain unchanged.
+  six-tool MCP surface remains the default, and compact mode does not alter the
+  existing request schemas.
 - The MCP `provider_status` result now includes an additive top-level
   `server_version` field sourced from the server's build version. This lets an
   agent identify the Nólë binary loaded by its MCP subprocess; unstamped source
   builds report `dev`. The core `nole providers --json` envelope is unchanged.
+
+### Changed
+
+- Source builds, CI, and release builds now require Go 1.25.13, advancing the
+  documented toolchain floor from Go 1.25.12 to the current security patch.
 
 ### Documentation
 
@@ -1515,7 +1531,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/dorukardahan/nole/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/dorukardahan/nole/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/dorukardahan/nole/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/dorukardahan/nole/compare/v1.7.0...v1.8.0
