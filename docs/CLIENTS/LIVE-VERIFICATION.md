@@ -5,23 +5,23 @@ Run kind: local maintainer run, real clients launched.
 Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up); 2026-05-28 (OpenClaw 2026.5.27 compatibility re-check); 2026-05-28 (Hermes Agent v2026.5.28 source compatibility review); 2026-06-04 (Gemini CLI 0.40.1 + Grok CLI follow-up run); 2026-07-21 (Hermes Agent v0.19 real-client re-check); 2026-09-09 (isolated Codex/Claude and native Nólë CLI follow-up).
 Host description: macOS arm64 workstation with Go toolchain installed for M11/Cursor and the isolated 2026-09-09 follow-up; Ubuntu x86_64 VPS hosts for the earlier OpenClaw/Hermes runs. The September follow-up did not access those live VPS installations.
 Cost policy: free-first (default; no policy change during the run).
-Live provider calls: historical low-limit keyless DDGS searches; the 2026-09-09 follow-up used keyless Firecrawl for native Nólë CLI and Codex searches plus native CLI extraction. Each dated section states its actual dispatch scope; Claude's September check was discovery-only.
-Provider keys: historical presence-only checks via `nole doctor`; the 2026-09-09 follow-up used explicit key-free environments with env-file loading disabled. Key values never printed, logged or committed.
+Live provider calls: historical low-limit keyless DDGS searches; the 2026-09-09 client follow-up used keyless Firecrawl for native Nólë CLI and Codex searches plus native CLI extraction. A later provider-only Tavily CLI query is recorded in the alignment report and is not client-dispatch evidence. Each dated section states its actual dispatch scope; Claude's September check was discovery-only.
+Provider keys: historical presence-only checks via `nole doctor`; the 2026-09-09 client probes used explicit key-free environments with env-file loading disabled. The separate provider-only Tavily follow-up used native credential handling. Key values never printed, logged or committed.
 Network required: yes (low-limit smoke searches and the explicitly recorded public-page extraction).
-Secrets required: historical presence checks only; none for the 2026-09-09 follow-up. Values not surfaced.
+Secrets required: none for the 2026-09-09 client probes; the separately recorded Tavily provider-only check used an existing credential through native Nólë. Values not surfaced.
 
 This document records real-client verification for installable agents/CLIs that could be exercised on the verification hosts. It is intentionally a separate artifact from `docs/INTEGRATION-VERIFICATION.md`, which remains an offline/CI integration evidence document.
 
 ## 2026-09-09 isolated stable-client follow-up
 
-This follow-up differs from the historical M11 method below: env-file loading was disabled, child environments were explicitly allowlisted, disposable HOME/client config directories were used and no provider credentials or live client configurations were accessed. Nólë was built from c9314b4 baseline and the alignment candidate on macOS arm64 with Go 1.26.6.
+This client follow-up differs from the historical M11 method below: env-file loading was disabled, child environments were explicitly allowlisted, disposable HOME/client config directories were used and no provider credentials or live client configurations were accessed. Nólë was built from c9314b4 baseline and the alignment candidate on macOS arm64 with Go 1.26.6.
 
 - Codex 0.153.4: `nole setup --codex` writes an isolated `[mcp_servers.nole]` entry while preserving a disabled sibling. Native `codex mcp get nole --json` consumes it. `codex app-server` initialize and mcpServerStatus/list discover all six tools. An ephemeral read-only thread dispatches provider_status and search via mcpServer/tool/call without a model turn. The candidate search returns one keyless Firecrawl result with a content-safety receipt. Baseline and candidate pass; process shutdown exits 0.
 - Claude Code 2.1.266: native `claude mcp add nole -s user -- /absolute/path/to/nole mcp` registers an isolated stdio server. Native get and headless initialize/mcp_status report it connected with all six tools. Baseline and candidate pass; process shutdown exits 0. No Claude tool dispatch/model inference was performed, so this is discovery evidence only.
 - Shared sample: `Go net/http Client Timeout documentation`, task docs, limit 1, free-first, cache disabled. Separate native Nólë CLI search and `extract https://go.dev/doc/ --json` succeed before/after; extraction returns 16,962 characters and a safety receipt. These bounded samples establish availability, not general quality or speed improvements.
-- Hermes v0.21.1 and OpenClaw 2026.9.3 received pinned source review, not live re-verification. Their older receipts remain historical. Keyed Tavily/TinyFish production calls were not exercised.
+- Hermes v0.21.1 and OpenClaw 2026.9.3 received pinned source review, not live re-verification. Their older receipts remain historical. These client probes did not exercise keyed Tavily/TinyFish. The later Tavily provider-only check is documented separately in the alignment record; TinyFish remains untested live.
 
-All six tools: budget_status, extract, provider_status, research, search, search_and_extract. See [the alignment record](../plans/2026-09-09-platform-provider-alignment.md) for refs, offline contract evidence and the local Homebrew audit side effect.
+All six tools: budget_status, extract, provider_status, research, search, search_and_extract. See [the alignment record](../plans/2026-09-09-platform-provider-alignment.md) for refs, offline contract evidence, the separate provider-only Tavily follow-up and remaining verification limits.
 
 ## Historical M11 method
 

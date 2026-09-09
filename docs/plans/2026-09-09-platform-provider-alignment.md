@@ -1,6 +1,6 @@
 # Platform and provider alignment research
 
-Status: implemented in PR #126; exact-head CI and local tooling disposition are tracked at delivery. Research cutoff: 2026-09-09 (Asia/Singapore).
+Status: implemented in PR #126; final CI/review evidence is linked from the PR. Live verification limits are recorded below. Research cutoff: 2026-09-09 (Asia/Singapore).
 This record distinguishes source inspection, offline behavior tests and real-client evidence. Current-stable end-to-end MCP evidence is available for Codex; other client limits are explicit below.
 
 ## Frozen baseline and targets
@@ -50,7 +50,7 @@ No endpoint, routing default, quota debit, retry policy, account, dependency, li
 
 Nólë continues to provide native CLI commands and six MCP stdio tools. It does not become an HTTP MCP host, replace clients' native web tools, or claim to bypass their sandbox/approval policy. Existing subprocess tests cover protocol-clean stdout and cancellation. OpenClaw's Firecrawl bridge is a separate explicit integration, not a general HTTP MCP transport.
 
-The available local runtimes were Node 22.23.1 and Python 3.14.7. Frozen OpenClaw requires newer Node (24.16+ or supported 26.x); frozen Hermes declares Python >=3.11,<3.14. Neither client executable was on PATH. No replacement runtime or client was installed for this task. Thus their stable native round-trips remain a delivery limitation, not fixture-based verification. Live VPS installations were not used or modified.
+Frozen OpenClaw requires Node 24.16+ on 24.x or 26.1+; no available runtime met that requirement and no OpenClaw executable was on PATH. A compatible Python 3.13 interpreter was available, but Hermes and its required MCP/httpx2/YAML dependencies were not installed there. The earlier default-Python-only explanation was incomplete. Neither target had a ready-to-run isolated client environment; exercising them would require preparing additional client/runtime dependencies, not merely another probe of an existing installation. No client/runtime bootstrap or production access was performed. Their stable native round-trips remain unverified; source inspection and writer tests do not establish runtime compatibility.
 
 ## Initial findings (2026-09-09)
 
@@ -106,7 +106,7 @@ The candidate passed `./scripts/audit.sh` (exit 0), including full Go tests/vet,
 
 | Check | Baseline | Candidate | Meaning |
 | --- | --- | --- | --- |
-| Tavily country/language HTTP contract | Six behavioral cases fail | All pass | Documented request shape; no keyed production API call |
+| Tavily country/language HTTP contract | Six behavioral cases fail | All pass | Contract fixture; separate bounded live follow-up below |
 | TinyFish new per-URL errors | Two cases become provider_error | Both preserve safe classes | Better diagnostics without upstream payload leakage |
 | Public docs search, same query, limit 1, cache off | Firecrawl, 1 result, exit 0 | Firecrawl, 1 result, exit 0 | Keyless availability retained; not a quality benchmark |
 | Public go.dev/doc extraction, cache off | Firecrawl, 16,962 chars, safety receipt | Firecrawl, 16,962 chars, safety receipt | Representative extraction preserved; no general fidelity claim |
@@ -114,19 +114,36 @@ The candidate passed `./scripts/audit.sh` (exit 0), including full Go tests/vet,
 | Claude Code 2.1.266 native manager/control | Connected, six tools | Same | Discovery only; tool invocation unverified |
 | Own CLI/setup/MCP/fallback regression suite | Pass | Pass | Includes sibling/unknown-field/mode preservation, wrapper spaces, idempotence, stderr/stdout isolation and cancellation; offline fixtures are not vendor/client live evidence |
 
-The native probes use disposable HOME/config, absolute candidate binary paths, disabled env-file loading and explicit child-environment allowlists. Codex uses initialize, mcpServerStatus/list, ephemeral thread/start and mcpServer/tool/call; Claude uses native mcp add and headless control initialize/mcp_status without an inference message. Both subprocesses exit 0 after input closure. The sample search was `Go net/http Client Timeout documentation`, task docs, limit 1; extraction was `https://go.dev/doc/`. No new account or paid benchmark was used. Tavily/TinyFish production calls remain untested.
+The native probes use disposable HOME/config, absolute candidate binary paths, disabled env-file loading and explicit child-environment allowlists. Codex uses initialize, mcpServerStatus/list, ephemeral thread/start and mcpServer/tool/call; Claude uses native mcp add and headless control initialize/mcp_status without an inference message. Both subprocesses exit 0 after input closure. The sample search was `Go net/http Client Timeout documentation`, task docs, limit 1; extraction was `https://go.dev/doc/`. No new account or paid benchmark was used. The original isolated checks used no provider credentials. A separate bounded Tavily live follow-up is recorded below; TinyFish production calls remain untested.
 
-One local validation side effect must be disclosed: Homebrew's `brew style` step automatically installed/cleaned its global Ruby helper gems despite disposable HOME and HOMEBREW_NO_AUTO_UPDATE. The step passed, but this exceeded the intended no-live-install-change boundary. The official installed Homebrew code calls bundle install/clean independently of auto-update. No exact pre-run bundle backup exists; automatic rollback was not attempted. User disposition is pending. No Nólë or target-client global upgrade, live application config write, deployment, merge or release occurred.
+## Closeout verification boundaries
+
+Requirement 8 calls for real discovery/tool calls and setup round-trips where feasible, and explicitly forbids treating fixtures as live evidence. The constraints allow retaining a disclosed live-provider gap when an authorized small call cannot be made. They do not authorize extra model calls, global setup, new credentials, or production changes just to complete a matrix.
+
+| Check | Why the earlier evidence stopped | Closeout disposition |
+| --- | --- | --- |
+| Hermes frozen stable | No installed Hermes/MCP dependency environment; compatible Python alone is insufficient | Source and offline setup-policy evidence retained. A fresh isolated client installation would be required; no small existing-runtime probe was available. Not live verified |
+| OpenClaw frozen stable | No installed client or supported Node runtime | Existing bridge/source evidence retained. Additional runtime/client preparation is required; no global upgrade or production test. Not live verified |
+| Claude Code tool invocation | The models-free native path exposed registration/discovery, not agent dispatch | Installed CLI MCP help has no direct call command. The pinned official SDK's `mcp_message` handles requests from the CLI to SDK-hosted servers, not a general outbound stdio tool-call API. A model-driven agent turn is outside the task's no-extra-model-call boundary. Discovery stays verified; invocation stays unverified |
+| Tavily country/language | Original isolated environment deliberately omitted keys; this was not proof that live authentication was impossible | One native CLI query was now feasible after non-consuming quota verification; it passed as described below |
+| TinyFish Fetch | No configured key in the native redacted status surface | No new credential/account was created. Safe-error HTTP fixtures pass; production Fetch remains unverified |
+| Other account-backed providers | Not part of the changed request/error code; the representative live samples used keyless Firecrawl | No extra paid/account-backed benchmark was started. Existing contract evidence and disclosed live coverage are retained |
+
+The additional Tavily check rebuilt the candidate from PR implementation head `44620e32fabd7c58a8faf4086a67f8f7cc78b9a7` using cached dependencies without package downloads. Native Nólë consumed its existing credential internally; no credential was opened, copied, printed or embedded by the operator. Quota/log/cache state was isolated at process scope, with in-memory accounting, disabled logs/cache and paid opt-ins off; this was not a setup test against a live client configuration. Other keyed fallback credentials were masked for that process.
+
+One request used `Go net/http Client Timeout documentation`, task `semantic`, limit 1, country `us`, search language `en`. Semantic's unchanged default route selects Tavily first and uses basic depth. It returned exit 0, one Tavily result, a content-safety receipt and one successful Tavily route attempt. This proves live request acceptance and a representative result, not language-ranking effectiveness, general quality/speed gains, all Tavily endpoints, or a before/after live benchmark. The original baseline and offline contract regressions are unchanged. No client integration status was upgraded based on this provider-only test.
+
 
 ## Local review notes
 
 `git diff --check` and all documentation guards pass. Direct review covered changed code with neighboring request/topic/depth logic, the complete country map against the documented enum, TinyFish's existing unknown-code redaction test, and unchanged sibling-provider option handling. Old metering strings remain only in historical v0.7.1 release notes. Codex review caught two missed OpenClaw stable/fetch-only descriptions; the setup summary, provider guidance and neighboring source comment now describe installed capabilities, and the dated old-host receipt explicitly says then-stable. Focused OpenClaw/setup regressions pass.
 
-The required tracked-only filename-only heuristic secret scan ran inside workspace-no-secrets for both the clean baseline and staged candidate. Both returned the identical 23-file review-required list; no new filename was flagged. Changed lines and new files were reviewed directly and contain no credential values. This is a bounded heuristic/diff review, not proof that the entire repository contains no secrets. The repository's public-safety CI remains a separate required check. No local govulncheck binary was available; the configured CI job will provide that result.
+The required tracked-only filename-only heuristic secret scan ran inside workspace-no-secrets for both the clean baseline and staged candidate. Both returned the identical 23-file review-required list; no new filename was flagged. Changed lines and new files were reviewed directly and contain no credential values. This is a bounded heuristic/diff review, not proof that the entire repository contains no secrets. The repository's public-safety CI remains a separate required check. The configured govulncheck CI job passed on the implementation head; no local vulnerability-tool installation was needed.
 
-## Remaining delivery checks
+## Delivery evidence
 
-- Direct diff/secret review and commit completed; [PR #126](https://github.com/dorukardahan/nole/pull/126) is open.
-- Exact-head CI and review tracked on PR #126. Codex integration is active: its first review identified stale OpenClaw setup guidance, addressed in a follow-up. Final-head review must be checked after that push.
-- Closure stable-release/main check completed without target changes.
-- Record user disposition of the Homebrew helper side effect. Remaining real-client/provider gaps above must remain visible in the PR.
+- [PR #126](https://github.com/dorukardahan/nole/pull/126) contains the changes, validation summary and final exact-head CI/review links.
+- Five CI jobs passed on implementation head `44620e32fabd7c58a8faf4086a67f8f7cc78b9a7`. Codex identified two documentation issues, both corrected; its final response on that head reported no major issues and both threads were resolved.
+- This closeout changes documentation only. Existing product tests and native-client evidence remain applicable; final documentation-head CI/review is tracked in the PR rather than self-referential commit claims here.
+- The single closure stable-release/main check completed without target changes. Targets were not re-frozen during closeout.
+- No merge, release, deployment or global client upgrade is included. The verification gaps above remain explicit delivery limits, not successful checks.
