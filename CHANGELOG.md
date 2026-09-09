@@ -1574,7 +1574,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/dorukardahan/nole/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/dorukardahan/nole/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/dorukardahan/nole/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/dorukardahan/nole/compare/v1.8.0...v1.8.1
