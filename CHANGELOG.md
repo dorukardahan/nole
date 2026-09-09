@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-09-09
+
+This backward-compatible MINOR release aligns provider requests and adds an
+explicit OpenClaw host-agent selector. CLI/MCP output contracts, free-first/BYOK
+policy and default provider ordering remain unchanged.
+
 ### Fixed
 
 - Map two-letter Tavily country options to supported API country names and omit
@@ -25,6 +31,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Refresh provider metering notes and distinguish current stable client source
   compatibility from historical and isolated real-client evidence.
+
+### Verification
+
+- Hermes v2026.9.7 / 0.21.1 (custom stable-based deployment): the service-matched
+  native MCP runtime passed isolated setup, six-tool discovery and real
+  provider-status/search/extract calls for installed Nólë 1.10.0 and the PR
+  candidate separately. This was not a model-driven conversation.
+- OpenClaw 2026.9.3: native discovery and MCP calls passed on installed Nólë
+  1.10.0; the candidate host bridge passed real Gateway fetch through an isolated
+  relay with explicit agent context. This was not a deployed candidate wrapper,
+  a new production setup round-trip or an agent-driven conversation.
+- Codex 0.153.4 passed isolated setup/discovery/tool dispatch. Claude Code
+  2.1.266 passed discovery only; Claude tool dispatch remains unverified.
+- Tavily's bounded live requests passed; TinyFish remains fixture-tested only.
+  These samples do not establish general speed or ranking improvements.
+
+See [the dated evidence record](docs/plans/2026-09-09-platform-provider-alignment.md)
+for artifact identities, provider coverage and remaining verification limits.
 
 ## [1.10.0] - 2026-08-17
 
