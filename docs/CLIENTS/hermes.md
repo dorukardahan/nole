@@ -2,11 +2,13 @@
 
 Status: verified (Hermes Agent MCP profile path + chat-agent tool dispatch).
 
-2026-09-09 source recheck: frozen stable v0.21.1 / v2026.9.7 retains initialize-first stdio negotiation in auto mode and the wrapper/config contract. Existing setup-policy preservation tests pass. This is not a live stable-client re-verification; the v0.19.0 receipt below remains the latest real Hermes evidence. See [the dated alignment record](../plans/2026-09-09-platform-provider-alignment.md).
+The status includes historical chat-agent evidence; the current stable check below covers native MCP execution without a model turn.
 
-Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Current live verification is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` from a 2026-07-21 real-client check on Hermes Agent v0.19.0 (v2026.7.20). The client connected to Nólë, exposed all six native tools, and completed read-only tool dispatch.
+2026-09-09 recheck: Hermes v2026.9.7 / 0.21.1, custom deployment on stable base `2237be35`, passed native setup/discovery and provider-status/search/extract with installed Nólë 1.10.0 and the isolated PR candidate. The interpreter/import source was matched to the running service and its live cached code identity first. See [the corrected live receipt](LIVE-VERIFICATION.md#2026-09-09-hermes-active-runtime-correction).
 
-The current check reused an existing Nólë MCP entry and made no config write, binary replacement, MCP reload, service restart, or production change. The earlier 2026-05-20 disposable-profile receipt and the 2026-05-28 v0.15 source review remain below as dated historical evidence.
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Current live evidence uses Hermes 0.21.1's native MCP runtime in isolated processes; it does not claim a model-driven chat turn. The July v0.19.0 receipt below remains historical.
+
+The current check reused the saved entry for discovery and used separate temporary HOME/config directories for baseline/candidate setup and calls. No production config or binary replacement, MCP reload, or service restart occurred. The earlier 2026-05-20 disposable-profile receipt and the 2026-05-28 v0.15 source review remain below as dated historical evidence.
 
 ## Verified setup shape
 
@@ -118,6 +120,6 @@ Use Nólë to search for Go net/http Client Timeout documentation. Include one c
 - If keys are missing, check the environment/profile of the process that launches MCP tools, not just the interactive shell.
 - Do not enable hosted/proxy behavior unless the user explicitly requests it.
 
-## 2026-09-09 installed-runtime follow-up
+## 2026-09-09 active-runtime correction
 
-The existing Hermes v0.19.0 installation passed saved-entry discovery and real native MCP runtime provider-status, keyless search and extraction against Nólë v1.10.0. This does not verify the frozen v0.21.1 stable target and did not upgrade the installation. See [the live receipt](LIVE-VERIFICATION.md#2026-09-09-remote-installed-runtime-follow-up).
+The first September remote tests used an older v0.19.0 tree. They prove only that older installation's behavior; they were incorrectly described as the running deployment. Service process identity and native control-socket code identity subsequently confirmed the active v2026.9.7 / 0.21.1 custom deployment. Its own interpreter and imports passed the new baseline/candidate tests in [the corrected live receipt](LIVE-VERIFICATION.md#2026-09-09-hermes-active-runtime-correction). No runtime upgrade was needed or performed.
