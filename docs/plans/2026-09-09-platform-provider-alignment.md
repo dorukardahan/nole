@@ -1,6 +1,6 @@
 # Platform and provider alignment research
 
-Status: implementation and local verification complete; PR checks pending. Research cutoff: 2026-09-09 (Asia/Singapore).
+Status: implemented in PR #126; exact-head CI and local tooling disposition are tracked at delivery. Research cutoff: 2026-09-09 (Asia/Singapore).
 This record distinguishes source inspection, offline behavior tests and real-client evidence. Current-stable end-to-end MCP evidence is available for Codex; other client limits are explicit below.
 
 ## Frozen baseline and targets
@@ -14,7 +14,7 @@ Nólë local main and remote main were clean/equal at `c9314b4d1705ea0b0cc93aa43
 | Claude Code | 2.1.266 | Historical CLI-manager evidence, exact version not recorded in that receipt | [2.1.266](https://github.com/anthropics/claude-code/releases/tag/v2.1.266) | 2026-09-08T23:55:14Z | 347b38e4a733d95b2f00690a4ca58ac1544f8a1c (public changelog repository, not CLI source) |
 | Codex CLI | 0.153.4 | Historical CLI-manager evidence, exact version not recorded in that receipt | [0.153.4](https://github.com/openai/codex/releases/tag/rust-v0.153.4) | 2026-09-04T23:25:48Z | 3d2ee51ca2d5db578f328aa75e20aa22c0197c9a |
 
-GitHub latest-release metadata marks all four targets non-prerelease. Targets are frozen; closure will make one check for critical newer developments.
+GitHub latest-release metadata marks all four targets non-prerelease. Targets are frozen. The single closure check on 2026-09-09 returned the same four stable tags; no newer stable target or baseline-main drift was found.
 
 ## Baseline evidence
 
@@ -102,7 +102,7 @@ X searches used the local read-only tweet CLI with the baseline/cutoff interval 
 
 ## Candidate verification and comparison
 
-The candidate passed `./scripts/audit.sh` (exit 0), including full Go tests/vet, docs/version/benchmark guards, own real stdio doctor, offline benchmark and integration-evidence check; a standalone build also passed. PowerShell parse and optional Clawpatch checks were skipped as reported by the gate. No assertions or quality gates were weakened.
+The candidate passed `./scripts/audit.sh` (exit 0), including full Go tests/vet, docs/version/benchmark guards, own real stdio doctor, offline benchmark and integration-evidence check; a standalone build also passed. PowerShell installer parse and Homebrew formula style passed. Only the optional Clawpatch check was skipped. No assertions or quality gates were weakened.
 
 | Check | Baseline | Candidate | Meaning |
 | --- | --- | --- | --- |
@@ -126,7 +126,7 @@ The required tracked-only filename-only heuristic secret scan ran inside workspa
 
 ## Remaining delivery checks
 
-- Direct final diff/secret review, commit and PR.
+- Direct diff/secret review and commit completed; [PR #126](https://github.com/dorukardahan/nole/pull/126) is open.
 - Exact-head CI and actual reviewer availability/results.
-- One closure check for critical developments after frozen targets; do not churn targets without a concrete reason.
+- Closure stable-release/main check completed without target changes.
 - Record user disposition of the Homebrew helper side effect. Remaining real-client/provider gaps above must remain visible in the PR.
