@@ -76,7 +76,7 @@ openclaw mcp show nole --json
 
 ## 2026-07-17 Host Bridge Verification
 
-A disposable OpenClaw 2026.7.1 runtime and HOME verified the current stable path without touching an existing OpenClaw profile:
+A disposable OpenClaw 2026.7.1 runtime and HOME verified the then-stable path without touching an existing OpenClaw profile:
 
 - `nole setup --openclaw` installed and pinned the official Firecrawl plugin, enabled it, configured `web_fetch`, registered the dedicated wrapper and selected `fetch-only` because the stable plugin advertised `firecrawl` rather than `firecrawl-free` for search.
 - A direct authenticated `tools.invoke web_search` probe confirmed that stable `firecrawl` search still requires `FIRECRAWL_API_KEY`; Nólë therefore does not advertise that search capability or pretend it is keyless.

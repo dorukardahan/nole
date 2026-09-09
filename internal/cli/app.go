@@ -55,8 +55,8 @@ func defaultService() *core.Service {
 
 	// Firecrawl — real adapter (search + extract). The direct API behavior is
 	// unchanged for generic clients. The dedicated OpenClaw wrapper opts into a
-	// host-tool bridge instead; current stable hosts provide web_fetch with a
-	// keyless Firecrawl fallback, while newer hosts may also expose firecrawl-free.
+	// host-tool bridge instead; plugin capabilities select web_fetch with a
+	// keyless Firecrawl fallback or full search/fetch via firecrawl-free.
 	firecrawlOptions := []firecrawl.Option{
 		firecrawl.WithAPIKey(firecrawlKey),
 		firecrawl.WithBreaker(providerhttp.NewBreaker(breakerOpts)),

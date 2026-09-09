@@ -120,13 +120,13 @@ One local validation side effect must be disclosed: Homebrew's `brew style` step
 
 ## Local review notes
 
-`git diff --check` and all documentation guards pass. Direct review covered changed code with neighboring request/topic/depth logic, the complete country map against the documented enum, TinyFish's existing unknown-code redaction test, and unchanged sibling-provider option handling. Old metering strings remain only in historical v0.7.1 release notes; current code/provider guidance was corrected.
+`git diff --check` and all documentation guards pass. Direct review covered changed code with neighboring request/topic/depth logic, the complete country map against the documented enum, TinyFish's existing unknown-code redaction test, and unchanged sibling-provider option handling. Old metering strings remain only in historical v0.7.1 release notes. Codex review caught two missed OpenClaw stable/fetch-only descriptions; the setup summary, provider guidance and neighboring source comment now describe installed capabilities, and the dated old-host receipt explicitly says then-stable. Focused OpenClaw/setup regressions pass.
 
 The required tracked-only filename-only heuristic secret scan ran inside workspace-no-secrets for both the clean baseline and staged candidate. Both returned the identical 23-file review-required list; no new filename was flagged. Changed lines and new files were reviewed directly and contain no credential values. This is a bounded heuristic/diff review, not proof that the entire repository contains no secrets. The repository's public-safety CI remains a separate required check. No local govulncheck binary was available; the configured CI job will provide that result.
 
 ## Remaining delivery checks
 
 - Direct diff/secret review and commit completed; [PR #126](https://github.com/dorukardahan/nole/pull/126) is open.
-- Exact-head CI and actual reviewer availability/results.
+- Exact-head CI and review tracked on PR #126. Codex integration is active: its first review identified stale OpenClaw setup guidance, addressed in a follow-up. Final-head review must be checked after that push.
 - Closure stable-release/main check completed without target changes.
 - Record user disposition of the Homebrew helper side effect. Remaining real-client/provider gaps above must remain visible in the PR.
