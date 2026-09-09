@@ -122,8 +122,8 @@ func TestTavilySearchOptionsMapCountryAndFreshness(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
-	if receivedBody.Country != "us" || receivedBody.TimeRange != "day" {
-		t.Fatalf("country/time_range = %q/%q, want us/day", receivedBody.Country, receivedBody.TimeRange)
+	if receivedBody.Country != "united states" || receivedBody.TimeRange != "day" {
+		t.Fatalf("country/time_range = %q/%q, want united states/day", receivedBody.Country, receivedBody.TimeRange)
 	}
 }
 

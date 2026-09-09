@@ -12,6 +12,17 @@ Secrets required: presence only; values not surfaced.
 
 This document records real-client verification for installable agents/CLIs that could be exercised on the verification hosts. It is intentionally a separate artifact from `docs/INTEGRATION-VERIFICATION.md`, which remains an offline/CI integration evidence document.
 
+## 2026-09-09 isolated stable-client follow-up
+
+This follow-up differs from the historical M11 method below: env-file loading was disabled, child environments were explicitly allowlisted, disposable HOME/client config directories were used and no provider credentials or live client configurations were accessed. Nólë was built from c9314b4 baseline and the alignment candidate on macOS arm64 with Go 1.26.6.
+
+- Codex 0.153.4: `nole setup --codex` writes an isolated `[mcp_servers.nole]` entry while preserving a disabled sibling. Native `codex mcp get nole --json` consumes it. `codex app-server` initialize and mcpServerStatus/list discover all six tools. An ephemeral read-only thread dispatches provider_status and search via mcpServer/tool/call without a model turn. The candidate search returns one keyless Firecrawl result with a content-safety receipt. Baseline and candidate pass; process shutdown exits 0.
+- Claude Code 2.1.266: native `claude mcp add nole -s user -- /absolute/path/to/nole mcp` registers an isolated stdio server. Native get and headless initialize/mcp_status report it connected with all six tools. Baseline and candidate pass; process shutdown exits 0. No Claude tool dispatch/model inference was performed, so this is discovery evidence only.
+- Shared sample: `Go net/http Client Timeout documentation`, task docs, limit 1, free-first, cache disabled. Separate native Nólë CLI search and `extract https://go.dev/doc/ --json` succeed before/after; extraction returns 16,962 characters and a safety receipt. These bounded samples establish availability, not general quality or speed improvements.
+- Hermes v0.21.1 and OpenClaw 2026.9.3 received pinned source review, not live re-verification. Their older receipts remain historical. Keyed Tavily/TinyFish production calls were not exercised.
+
+All six tools: budget_status, extract, provider_status, research, search, search_and_extract. See [the alignment record](../plans/2026-09-09-platform-provider-alignment.md) for refs, offline contract evidence and the local Homebrew audit side effect.
+
 ## Method
 
 1. Provider keys are read from a local-only `~/.config/nole/.env` file; values are not surfaced. `nole doctor` reports presence only.

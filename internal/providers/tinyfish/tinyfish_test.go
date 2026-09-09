@@ -399,6 +399,8 @@ func TestExtractPerURLErrorsAreAllowlistedAndEmptyContentFails(t *testing.T) {
 		want string
 	}{
 		{"known", "target_http_error", "target_http_error"},
+		{"login wall", "login_required", "login_required"},
+		{"document limit", "content_too_large", "content_too_large"},
 		{"unknown", "INTERNAL_SECRET_CODE", "provider_error"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

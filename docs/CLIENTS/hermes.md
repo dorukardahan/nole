@@ -2,6 +2,8 @@
 
 Status: verified (Hermes Agent MCP profile path + chat-agent tool dispatch).
 
+2026-09-09 source recheck: frozen stable v0.21.1 / v2026.9.7 retains initialize-first stdio negotiation in auto mode and the wrapper/config contract. Existing setup-policy preservation tests pass. This is not a live stable-client re-verification; the v0.19.0 receipt below remains the latest real Hermes evidence. See [the dated alignment record](../plans/2026-09-09-platform-provider-alignment.md).
+
 Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Current live verification is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` from a 2026-07-21 real-client check on Hermes Agent v0.19.0 (v2026.7.20). The client connected to Nólë, exposed all six native tools, and completed read-only tool dispatch.
 
 The current check reused an existing Nólë MCP entry and made no config write, binary replacement, MCP reload, service restart, or production change. The earlier 2026-05-20 disposable-profile receipt and the 2026-05-28 v0.15 source review remain below as dated historical evidence.

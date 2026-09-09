@@ -1,6 +1,6 @@
 # OpenClaw client
 
-Status: verified (OpenClaw Gateway/agent MCP path). The host bridge setup and current stable compatibility mode were live-checked on OpenClaw 2026.7.1; full keyless search waits for an OpenClaw release that exposes `firecrawl-free`.
+Status: verified (OpenClaw Gateway/agent MCP path). The historical bridge check used OpenClaw 2026.7.1. Source inspection on 2026-09-09 confirms that stable 2026.9.3 advertises `firecrawl-free`; Nólë already detects it. This source check is not a new live Gateway verification.
 
 Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. OpenClaw can use Nólë through its saved outbound MCP server registry and Gateway-backed agent runtime.
 
@@ -44,12 +44,11 @@ When this wrapper is active, Nólë delegates supported host search/fetch operat
 OpenClaw's authenticated `gateway call tools.invoke` RPC. The OpenClaw CLI
 resolves Gateway authentication from OpenClaw's own configuration, so Nólë does
 not copy or persist a Gateway token. Do not ask the user for
-`FIRECRAWL_API_KEY`. Current stable OpenClaw releases expose `web_fetch` with
-keyless Firecrawl fallback but still key-gate Firecrawl search, so Nólë
-advertises only extract for that host route and sends search to its existing
-fallbacks. Once the
-plugin advertises `firecrawl-free`, rerunning setup automatically enables the
-full search + extract bridge.
+`FIRECRAWL_API_KEY`. OpenClaw 2026.9.3 advertises both keyed `firecrawl` and opt-in keyless
+`firecrawl-free` search. Rerunning setup detects the latter and enables the full
+search + extract bridge. Older plugins without that capability retain fetch-only
+mode and existing search fallbacks. Gateway policy and upstream starter-tier
+limits still apply; plugin capability alone does not prove a successful call.
 
 This behavior is intentionally OpenClaw-only. The generic `nole` binary,
 `nole-mcp`, and every other client continue to use Nólë's existing direct

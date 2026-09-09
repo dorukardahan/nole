@@ -21,6 +21,19 @@ Nólë is a local, free-first/BYOK web search and page extraction router for AI 
 | Grok Build TUI (xAI) | verified (CLI MCP manager) | `nole setup --grok-build` (writes `~/.grok/config.toml`) | xAI's Grok Build TUI (Rust `grok`, e.g. 0.2.20) reads a TOML `[mcp_servers.nole]` table. Verified 2026-06-04 on `grok 0.2.20`: `nole setup --grok-build`'s output was read by `grok mcp doctor` — `handshake OK (protocol 2025-06-18)`, 6 tools discovered, `healthy`. Distinct product from the superagent Grok CLI above. See `docs/CLIENTS/grok.md` + `LIVE-VERIFICATION.md`. |
 | Generic MCP clients | generic/unverified | command `/absolute/path/to/nole`, args `["mcp"]`, or `/absolute/path/to/nole-mcp` if env-sourcing is desired | Use for clients not listed above. Pass `--mcp-wrapper /absolute/path/to/nole-mcp` to any non-Codex setup writer to point the entry at the wrapper. |
 
+## Stable-target recheck (2026-09-09)
+
+Historical `verified` rows above apply to their recorded versions, not automatically to every new release.
+
+| Frozen stable | Evidence in this run | Remaining limit |
+| --- | --- | --- |
+| Codex CLI 0.153.4 | Real isolated setup, six-tool discovery, provider_status and limit-1 keyless search through native app-server, before/after | No model-driven conversation tested |
+| Claude Code 2.1.266 | Real isolated native registration and connected six-tool discovery, before/after | No Claude-dispatched search; do not extend historical full verification to this version |
+| Hermes v0.21.1 / v2026.9.7 | Pinned transport/config source review; existing setup-policy preservation tests pass | Stable runtime not exercised |
+| OpenClaw 2026.9.3 | Pinned MCP/Firecrawl source review; existing bridge capability tests pass | Stable gateway/native tool call not exercised |
+
+See [the dated research and test record](../plans/2026-09-09-platform-provider-alignment.md) for exact refs, provider coverage and test limits. No global client upgrade or deployment was performed.
+
 ## Status labels
 
 - `verified`: real client tested, config path/schema recorded, tools visible, one low-limit search worked, and no key/auth/header/raw payload leakage was observed. Live evidence is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md`.
