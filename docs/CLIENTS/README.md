@@ -30,7 +30,7 @@ Historical `verified` rows above apply to their recorded versions, not automatic
 | Codex CLI 0.153.4 | Real isolated setup, six-tool discovery, provider_status and limit-1 keyless search through native app-server, before/after | No model-driven conversation tested |
 | Claude Code 2.1.266 | Real isolated native registration and connected six-tool discovery, before/after | No Claude-dispatched search; do not extend historical full verification to this version |
 | Hermes v0.21.1 / v2026.9.7 | Pinned transport/config source review; existing setup-policy preservation tests pass | Stable runtime not exercised |
-| OpenClaw 2026.9.3 | Pinned MCP/Firecrawl source review; existing bridge capability tests pass | Stable gateway/native tool call not exercised |
+| OpenClaw 2026.9.3 | Saved-entry discovery and installed native MCP runtime provider_status/search/extract pass against Nólë 1.10.0; local candidate host bridge passes real Gateway web_fetch with explicit agent context through a temporary relay | Candidate not deployed; no model-driven agent turn or new live setup writer run |
 
 See [the dated research and test record](../plans/2026-09-09-platform-provider-alignment.md) for exact refs, provider coverage and test limits. No global client upgrade or deployment was performed.
 

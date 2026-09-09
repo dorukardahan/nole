@@ -1,6 +1,6 @@
 # OpenClaw client
 
-Status: verified (OpenClaw Gateway/agent MCP path). The historical bridge check used OpenClaw 2026.7.1. Source inspection on 2026-09-09 confirms that stable 2026.9.3 advertises `firecrawl-free`; Nólë already detects it. This source check is not a new live Gateway verification.
+Status: verified (OpenClaw Gateway/agent MCP path). The historical bridge check used OpenClaw 2026.7.1. Source inspection on 2026-09-09 confirms that stable 2026.9.3 advertises `firecrawl-free`; Nólë already detects it. The later 2026-09-09 remote follow-up verified saved-entry discovery and native MCP runtime calls on 2026.9.3 against installed Nólë 1.10.0; see [the live receipt](LIVE-VERIFICATION.md#2026-09-09-remote-installed-runtime-follow-up). It did not deploy the candidate or run an agent conversation.
 
 Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. OpenClaw can use Nólë through its saved outbound MCP server registry and Gateway-backed agent runtime.
 
@@ -110,6 +110,12 @@ The 2026-05-20 OpenClaw run verified:
 - Search smoke through OpenClaw: query `Go net/http Client Timeout documentation`, task `docs`, limit `1`, provider `ddgs`, result URL `https://pkg.go.dev/net/http`.
 - Cost policy: `free-first`; paid spend: none.
 - Secret-safety: no provider key values, bearer tokens, auth headers, raw provider payloads, private URLs or machine-specific absolute paths are recorded.
+
+## Explicit host agent context
+
+For multi-agent OpenClaw installations, set `NOLE_OPENCLAW_AGENT_ID` to the intended existing agent ID in the dedicated Nólë process environment. The host bridge forwards it as `tools.invoke.agentId` for both search and fetch. It does not select an agent automatically, alter host permissions, or retry under a different agent. An unset value preserves OpenClaw's own selection and ambiguity errors. Generic Nólë clients ignore this setting.
+
+This is needed when OpenClaw 2026.9.3 rejects an ownerless `main` session in a multi-agent configuration. Choose the agent whose existing tool policy should govern the call. The generated wrapper inherits the setting; no credential belongs in this value. Applying this setting to an existing installation is a separate operator configuration step, not part of the repository verification.
 
 ## Troubleshooting
 

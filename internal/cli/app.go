@@ -71,7 +71,10 @@ func defaultService() *core.Service {
 		if bridgeMode != firecrawl.OpenClawBridgeFull && bridgeMode != firecrawl.OpenClawBridgeFetchOnly {
 			bridgeMode = firecrawl.OpenClawBridgeFetchOnly
 		}
-		firecrawlOptions = append(firecrawlOptions, firecrawl.WithOpenClawBridgeMode(openClawCLI, bridgeMode))
+		firecrawlOptions = append(firecrawlOptions,
+			firecrawl.WithOpenClawBridgeMode(openClawCLI, bridgeMode),
+			firecrawl.WithOpenClawAgentID(os.Getenv("NOLE_OPENCLAW_AGENT_ID")),
+		)
 		// OpenClaw owns the upstream call/quota. An inherited generic Firecrawl
 		// key is intentionally not charged or suggested in this wrapper process.
 		effectiveFirecrawlKey = ""

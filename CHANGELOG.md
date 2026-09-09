@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Allow an explicit `NOLE_OPENCLAW_AGENT_ID` for multi-agent host search/fetch
+  calls; unset values retain host selection and generic clients are unchanged.
 - Forward an explicit search language preference to Tavily without changing
   default requests, search depth, strict filtering or provider order.
 

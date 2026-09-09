@@ -117,3 +117,7 @@ Use Nólë to search for Go net/http Client Timeout documentation. Include one c
 - `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and start a new Hermes session.
 - If keys are missing, check the environment/profile of the process that launches MCP tools, not just the interactive shell.
 - Do not enable hosted/proxy behavior unless the user explicitly requests it.
+
+## 2026-09-09 installed-runtime follow-up
+
+The existing Hermes v0.19.0 installation passed saved-entry discovery and real native MCP runtime provider-status, keyless search and extraction against Nólë v1.10.0. This does not verify the frozen v0.21.1 stable target and did not upgrade the installation. See [the live receipt](LIVE-VERIFICATION.md#2026-09-09-remote-installed-runtime-follow-up).
