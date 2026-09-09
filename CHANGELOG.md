@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Map two-letter Tavily country options to supported API country names and omit
+  that optional boost for news/factcheck, where Tavily does not support it.
+- Preserve TinyFish `login_required` and `content_too_large` failure codes without
+  exposing provider payloads; unknown codes remain sanitized.
+
+### Added
+
+- Allow an explicit `NOLE_OPENCLAW_AGENT_ID` for multi-agent host search/fetch
+  calls; unset values retain host selection and generic clients are unchanged.
+- Forward an explicit search language preference to Tavily without changing
+  default requests, search depth, strict filtering or provider order.
+
+### Documentation
+
+- Refresh provider metering notes and distinguish current stable client source
+  compatibility from historical and isolated real-client evidence.
+
 ## [1.10.0] - 2026-08-17
 
 Theme: **smaller MCP surfaces + explicit experimental TinyFish integration.**

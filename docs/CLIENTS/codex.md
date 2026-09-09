@@ -2,6 +2,8 @@
 
 Status: verified (CLI MCP manager). Live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md`.
 
+2026-09-09 recheck: Codex 0.153.4 consumed isolated setup output, discovered all six tools and directly dispatched provider_status plus one keyless Firecrawl search through its native app-server, before and after the provider fixes. No model inference was requested. See [the dated alignment record](../plans/2026-09-09-platform-provider-alignment.md).
+
 Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Codex CLI can use Nólë through MCP stdio by launching `nole mcp`. Codex is the easiest target because its setup writer already inlines `~/.config/nole/.env` sourcing in the generated TOML.
 
 ## What is verified

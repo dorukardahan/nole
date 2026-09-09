@@ -55,8 +55,8 @@ func defaultService() *core.Service {
 
 	// Firecrawl — real adapter (search + extract). The direct API behavior is
 	// unchanged for generic clients. The dedicated OpenClaw wrapper opts into a
-	// host-tool bridge instead; current stable hosts provide web_fetch with a
-	// keyless Firecrawl fallback, while newer hosts may also expose firecrawl-free.
+	// host-tool bridge instead; plugin capabilities select web_fetch with a
+	// keyless Firecrawl fallback or full search/fetch via firecrawl-free.
 	firecrawlOptions := []firecrawl.Option{
 		firecrawl.WithAPIKey(firecrawlKey),
 		firecrawl.WithBreaker(providerhttp.NewBreaker(breakerOpts)),
@@ -71,7 +71,10 @@ func defaultService() *core.Service {
 		if bridgeMode != firecrawl.OpenClawBridgeFull && bridgeMode != firecrawl.OpenClawBridgeFetchOnly {
 			bridgeMode = firecrawl.OpenClawBridgeFetchOnly
 		}
-		firecrawlOptions = append(firecrawlOptions, firecrawl.WithOpenClawBridgeMode(openClawCLI, bridgeMode))
+		firecrawlOptions = append(firecrawlOptions,
+			firecrawl.WithOpenClawBridgeMode(openClawCLI, bridgeMode),
+			firecrawl.WithOpenClawAgentID(os.Getenv("NOLE_OPENCLAW_AGENT_ID")),
+		)
 		// OpenClaw owns the upstream call/quota. An inherited generic Firecrawl
 		// key is intentionally not charged or suggested in this wrapper process.
 		effectiveFirecrawlKey = ""

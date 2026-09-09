@@ -61,6 +61,12 @@ func WithOpenClawCommandRunner(runner OpenClawCommandRunner) Option {
 	}
 }
 
+// WithOpenClawAgentID selects an explicit host agent without changing its policy.
+// An empty value leaves agent selection to OpenClaw, including ambiguity errors.
+func WithOpenClawAgentID(agentID string) Option {
+	return func(p *Provider) { p.openClawAgentID = strings.TrimSpace(agentID) }
+}
+
 func runOpenClawCommand(ctx context.Context, command string, args ...string) ([]byte, error) {
 	return runOpenClawCommandWithLimit(ctx, providerhttp.MaxExtractResponseBytes, command, args...)
 }
@@ -135,8 +141,9 @@ func (b *boundedCommandBuffer) Bytes() []byte    { return b.buffer.Bytes() }
 func (b *boundedCommandBuffer) Overflowed() bool { return b.overflow }
 
 type openClawToolsInvokeParams struct {
-	Name string         `json:"name"`
-	Args map[string]any `json:"args"`
+	Name    string         `json:"name"`
+	Args    map[string]any `json:"args"`
+	AgentID string         `json:"agentId,omitempty"`
 }
 
 type openClawToolsInvokeResult struct {
@@ -209,7 +216,7 @@ func (p Provider) invokeOpenClawTool(ctx context.Context, toolName string, args 
 		p.breaker.RecordFailure(generation)
 	}()
 
-	paramsJSON, err := json.Marshal(openClawToolsInvokeParams{Name: toolName, Args: args})
+	paramsJSON, err := json.Marshal(openClawToolsInvokeParams{Name: toolName, Args: args, AgentID: p.openClawAgentID})
 	if err != nil {
 		return openClawAgentToolResult{}, fmt.Errorf("firecrawl: OpenClaw bridge request encoding failed")
 	}

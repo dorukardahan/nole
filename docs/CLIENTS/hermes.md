@@ -2,9 +2,13 @@
 
 Status: verified (Hermes Agent MCP profile path + chat-agent tool dispatch).
 
-Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Current live verification is recorded in `docs/CLIENTS/LIVE-VERIFICATION.md` from a 2026-07-21 real-client check on Hermes Agent v0.19.0 (v2026.7.20). The client connected to Nólë, exposed all six native tools, and completed read-only tool dispatch.
+The status includes historical chat-agent evidence; the current stable check below covers native MCP execution without a model turn.
 
-The current check reused an existing Nólë MCP entry and made no config write, binary replacement, MCP reload, service restart, or production change. The earlier 2026-05-20 disposable-profile receipt and the 2026-05-28 v0.15 source review remain below as dated historical evidence.
+2026-09-09 recheck: Hermes v2026.9.7 / 0.21.1, custom deployment on stable base `2237be35`, passed native setup/discovery and provider-status/search/extract with installed Nólë 1.10.0 and the isolated PR candidate. The interpreter/import source was matched to the running service and its live cached code identity first. See [the corrected live receipt](LIVE-VERIFICATION.md#2026-09-09-hermes-active-runtime-correction).
+
+Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Current live evidence uses Hermes 0.21.1's native MCP runtime in isolated processes; it does not claim a model-driven chat turn. The July v0.19.0 receipt below remains historical.
+
+The current check reused the saved entry for discovery and used separate temporary HOME/config directories for baseline/candidate setup and calls. No production config or binary replacement, MCP reload, or service restart occurred. The earlier 2026-05-20 disposable-profile receipt and the 2026-05-28 v0.15 source review remain below as dated historical evidence.
 
 ## Verified setup shape
 
@@ -115,3 +119,7 @@ Use Nólë to search for Go net/http Client Timeout documentation. Include one c
 - `extract` works out of the box (keyless, no JavaScript) via the `httpfetch` backstop. For higher-fidelity / JS-rendered extraction, run `nole setup --local-extract` (or set a Tavily/Firecrawl key) and start a new Hermes session.
 - If keys are missing, check the environment/profile of the process that launches MCP tools, not just the interactive shell.
 - Do not enable hosted/proxy behavior unless the user explicitly requests it.
+
+## 2026-09-09 active-runtime correction
+
+The first September remote tests used an older v0.19.0 tree. They prove only that older installation's behavior; they were incorrectly described as the running deployment. Service process identity and native control-socket code identity subsequently confirmed the active v2026.9.7 / 0.21.1 custom deployment. Its own interpreter and imports passed the new baseline/candidate tests in [the corrected live receipt](LIVE-VERIFICATION.md#2026-09-09-hermes-active-runtime-correction). No runtime upgrade was needed or performed.
