@@ -1,14 +1,14 @@
-# Live client verification evidence (M11)
+# Live client verification evidence
 
-Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs, a 2026-05-28 OpenClaw compatibility re-check and Hermes v2026.5.28 source compatibility review, a 2026-06-04 Gemini CLI + Grok CLI follow-up run, and a 2026-07-21 Hermes Agent v0.19 real-client re-check.
+Scope: M11 live client verification, plus 2026-05-20 Cursor, OpenClaw and Hermes Agent follow-up runs, a 2026-05-28 OpenClaw compatibility re-check and Hermes v2026.5.28 source compatibility review, a 2026-06-04 Gemini CLI + Grok CLI follow-up run, a 2026-07-21 Hermes Agent v0.19 real-client re-check, and isolated 2026-09-09 Codex 0.153.4 tool-dispatch and Claude Code 2.1.266 discovery checks.
 Run kind: local maintainer run, real clients launched.
-Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up); 2026-05-28 (OpenClaw 2026.5.27 compatibility re-check); 2026-05-28 (Hermes Agent v2026.5.28 source compatibility review); 2026-06-04 (Gemini CLI 0.40.1 + Grok CLI follow-up run); 2026-07-21 (Hermes Agent v0.19 real-client re-check).
-Host description: macOS arm64 workstation with Go toolchain installed for M11/Cursor, and Ubuntu x86_64 VPS hosts with OpenClaw or Hermes Agent installed for the follow-up runs.
+Run dates: 2026-05-19 (M11); 2026-05-20 (Cursor follow-up); 2026-05-20 (OpenClaw follow-up); 2026-05-20 (Hermes Agent follow-up); 2026-05-28 (OpenClaw 2026.5.27 compatibility re-check); 2026-05-28 (Hermes Agent v2026.5.28 source compatibility review); 2026-06-04 (Gemini CLI 0.40.1 + Grok CLI follow-up run); 2026-07-21 (Hermes Agent v0.19 real-client re-check); 2026-09-09 (isolated Codex/Claude and native Nólë CLI follow-up).
+Host description: macOS arm64 workstation with Go toolchain installed for M11/Cursor and the isolated 2026-09-09 follow-up; Ubuntu x86_64 VPS hosts for the earlier OpenClaw/Hermes runs. The September follow-up did not access those live VPS installations.
 Cost policy: free-first (default; no policy change during the run).
-Live provider calls: low-limit keyless smoke searches via DDGS only; each follow-up run records its own single search where applicable.
-Provider keys: presence-only via `nole doctor`; key values never printed, logged or committed.
-Network required: yes (low-limit smoke searches only).
-Secrets required: presence only; values not surfaced.
+Live provider calls: historical low-limit keyless DDGS searches; the 2026-09-09 follow-up used keyless Firecrawl for native Nólë CLI and Codex searches plus native CLI extraction. Each dated section states its actual dispatch scope; Claude's September check was discovery-only.
+Provider keys: historical presence-only checks via `nole doctor`; the 2026-09-09 follow-up used explicit key-free environments with env-file loading disabled. Key values never printed, logged or committed.
+Network required: yes (low-limit smoke searches and the explicitly recorded public-page extraction).
+Secrets required: historical presence checks only; none for the 2026-09-09 follow-up. Values not surfaced.
 
 This document records real-client verification for installable agents/CLIs that could be exercised on the verification hosts. It is intentionally a separate artifact from `docs/INTEGRATION-VERIFICATION.md`, which remains an offline/CI integration evidence document.
 
@@ -23,7 +23,7 @@ This follow-up differs from the historical M11 method below: env-file loading wa
 
 All six tools: budget_status, extract, provider_status, research, search, search_and_extract. See [the alignment record](../plans/2026-09-09-platform-provider-alignment.md) for refs, offline contract evidence and the local Homebrew audit side effect.
 
-## Method
+## Historical M11 method
 
 1. Provider keys are read from a local-only `~/.config/nole/.env` file; values are not surfaced. `nole doctor` reports presence only.
 2. A local env-sourcing MCP wrapper at `~/.local/bin/nole-mcp` loads `~/.config/nole/.env` and execs `nole mcp`, so client configs do not have to embed key values or shell snippets.
@@ -36,10 +36,10 @@ The verification is conservative. A client is only labeled `verified` when its r
 ## Versions and binaries
 
 - For the 2026-05-19 M11 run, Nólë was built from the then-current M11 branch; `nole doctor --mcp` reported `mcp: ok`, `stdout: startup-clean (0 bytes before protocol input)`, `protocol: initialize/tools/list (… non-json stdout lines: 0)`, `tools: [budget_status extract provider_status search]`.
-- Clients available on the verification hosts (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run); OpenClaw 2026.5.18 (2026-05-20 follow-up run); Hermes Agent v0.14.0 (2026-05-20 follow-up run); OpenClaw 2026.5.27 (2026-05-28 compatibility re-check); Hermes Agent v0.19.0 / v2026.7.20 (2026-07-21 real-client re-check).
+- Clients available on the verification hosts (installed and exercised): Claude Code, Codex CLI, OpenCode, Kimi (M11 run); Cursor (2026-05-20 follow-up run); OpenClaw 2026.5.18 (2026-05-20 follow-up run); Hermes Agent v0.14.0 (2026-05-20 follow-up run); OpenClaw 2026.5.27 (2026-05-28 compatibility re-check); Hermes Agent v0.19.0 / v2026.7.20 (2026-07-21 real-client re-check); Codex 0.153.4 and Claude Code 2.1.266 (2026-09-09 isolated follow-up).
 - Clients absent on the verification hosts (not exercised): generic MCP clients beyond the named clients above.
 
-## Wrapper and launch patterns used by verified clients
+## Historical wrapper and launch patterns
 
 The wrapper sources the local env file and execs `nole mcp`. It is local-only and not committed.
 
@@ -59,7 +59,7 @@ exit 127
 
 Recommended permissions: `chmod 700 ~/.local/bin/nole-mcp`.
 
-## Shared low-limit smoke search
+## Historical shared low-limit smoke search
 
 A shared search smoke is recorded at the Nólë binary/wrapper layer because the wrapper-based MCP clients route to the same Nólë `search` code path. The shared smoke ran in no-key/free-first conditions; keyed providers were not used, and DDGS was the keyless fallback, so the smoke incurred no paid spend. Follow-up client runs that performed their own live search record those details in the client-specific sections below.
 
