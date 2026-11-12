@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Source builds, CI and release builds now require Go 1.26.11, up from 1.25.13. The Go 1.25 line no longer gets security fixes. `govulncheck` reported reachable standard-library issues that are fixed only on newer lines:
+  - `net/http` GO-2026-6859, fixed in 1.26.11;
+  - `crypto/x509` GO-2026-6809, fixed in 1.26.10;
+  - `net/http` GO-2026-6617, fixed in 1.26.9.
+- `golang.org/x/net` moves from v0.57.0 to v0.62.0. This fixes GO-2026-6860 and GO-2026-6617.
+
 ## [1.11.0] - 2026-09-09
 
 This backward-compatible MINOR release aligns provider requests and adds an
