@@ -82,7 +82,7 @@ See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 Prerequisites:
 
 - Go 1.25.13+ for building from source (matches the `go 1.25.13` directive in `go.mod`).
-- Optional provider keys for Brave, Tavily, Firecrawl and the experimental TinyFish adapter.
+- Optional provider keys for Brave, Tavily and Firecrawl. `TINYFISH_API_KEY` is different: it enables TinyFish provider status and live Search + Fetch contract benchmarking, and [explicit route plans can model TinyFish](#providers), but the key alone does not add TinyFish to automatic runtime routes.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
 - No provider key is required for Firecrawl search + extract in keyless API mode (subject to Firecrawl's service availability and limits; `FIRECRAWL_API_KEY` remains optional for account-backed use), the deterministic benchmark, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback.
 
