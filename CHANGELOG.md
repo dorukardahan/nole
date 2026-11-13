@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-11-13
+
+This backward-compatible PATCH release rebuilds Nólë with a supported Go
+toolchain and a patched `golang.org/x/net`. CLI/MCP output contracts,
+provider behaviour and defaults are unchanged.
+
 ### Security
 
 - Source builds, CI and release builds now require Go 1.26.11, up from 1.25.13. The Go 1.25 line no longer gets security fixes. `govulncheck` reported reachable standard-library issues that are fixed only on newer lines:
