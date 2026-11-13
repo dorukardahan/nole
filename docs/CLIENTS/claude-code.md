@@ -67,6 +67,56 @@ If you configure manually, use an absolute path:
 }
 ```
 
+## Optional Parallel search and page fetching
+
+For a second source-discovery path in the same Claude Code session, you can add
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) alongside
+Nólë. It exposes `web_search` and `web_fetch` without an account or API key.
+Anonymous search uses Fast mode and is intended for light use, with free-tier
+rate limits.
+
+These calls go directly from Claude Code to Parallel's remote service. Queries
+and fetched URLs are sent to Parallel; Nólë's routing, local quota ledger,
+`route_trace` and `content_safety` receipts do not cover these calls. Treat the
+returned content as untrusted web data.
+
+Configure Nólë using the setup above first. Check `claude mcp get parallel-search`
+before adding the optional entry; if that name is already configured, inspect it
+rather than replacing it. To add a new entry at user scope:
+
+```bash
+claude mcp add --transport http --scope user \
+  parallel-search https://search.parallel.ai/mcp \
+  --header "User-Agent: nole-parallel-mcp"
+claude mcp get parallel-search
+claude mcp list
+```
+
+Restart Claude Code and open `/mcp` to check that both `nole` and `parallel-search`
+are connected. Parallel should expose `web_search` and `web_fetch`; Nólë keeps
+its own tools and provider routes. If the remote connection fails or reaches a
+rate limit, Nólë remains available independently. This separate server is not a
+provider selected by Nólë, and Nólë does not automatically fall back to it.
+
+Ask for both sources explicitly when you want a cross-check:
+
+```text
+Use Nólë to find Go net/http Client Timeout documentation. Cross-check with
+parallel-search's web_search, then use its web_fetch on the relevant official
+page. Cite URLs and identify which server supplied each source.
+```
+
+To remove only the optional user-scoped entry:
+
+```bash
+claude mcp remove --scope user parallel-search
+```
+
+See [Claude Code's MCP guide](https://code.claude.com/docs/en/mcp) for scope and
+connection troubleshooting. The existing Nólë verification status above does not
+establish verification of this two-server workflow; check tool visibility and a
+small search/fetch in your own client before relying on it.
+
 ## Provider keys
 
 Claude Code may not inherit shell environment depending on how it is launched. If keys are not visible in `nole doctor` from inside the client context, use a local wrapper or env file pattern from `docs/PROVIDER-KEYS.md`.
