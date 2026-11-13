@@ -38,6 +38,26 @@ Agents and coding CLIs often need web search, docs lookup, URL extraction and so
 
 Current routing is task-based with an LLM-free multi-intent planner: `nole classify` explains detected intents and `nole route-plan` shows provider routes before any provider call.
 
+### Canonical intent and route names
+
+Planner output uses exact, machine-readable names alongside plain-language descriptions. The `intents[].label` value and the canonical `task` / route key are identical except for the social/community intent:
+
+| User-facing intent | `intents[].label` | Canonical `task` / route key |
+| --- | --- | --- |
+| Documentation and API references | `docs` | `docs` |
+| Pricing, billing, quotas and limits | `pricing` | `pricing` |
+| Academic papers and literature | `academic` | `academic` |
+| News, announcements and recent changes | `news` | `news` |
+| Code, implementations and errors | `code` | `code` |
+| Social and community discussions | `community` | `social` |
+| Fact-checking and verification | `factcheck` | `factcheck` |
+| People, profiles and biographies | `people` | `people` |
+| Comparisons and research overviews | `research` | `research` |
+| Semantic and related-concept discovery | `semantic` | `semantic` |
+| General web search when no stronger signal matches | `general` | `general` |
+
+In prose, “fact-checking” maps to the exact identifier `factcheck`. “Social/community” describes one intent: the planner emits the label `community`, while task fields, route keys and `--task` use the canonical identifier `social` (`community` is accepted as an input alias). Provider descriptions below use canonical task/route identifiers.
+
 ## Supported and priority agents
 
 Current agent support matrix:
