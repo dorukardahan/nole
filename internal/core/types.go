@@ -154,6 +154,8 @@ type ExtractError struct {
 
 type RouteAttempt struct {
 	Provider           string            `json:"provider"`
+	Mode               string            `json:"mode,omitempty"`
+	EscalationReason   string            `json:"escalation_reason,omitempty"`
 	Status             string            `json:"status"`
 	Reason             string            `json:"reason,omitempty"`
 	CostPolicy         CostPolicy        `json:"cost_policy,omitempty"`

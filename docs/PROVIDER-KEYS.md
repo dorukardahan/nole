@@ -16,7 +16,7 @@ Default policy is `free-first`. Brave and Tavily remain BYOK-gated and are class
 | Wikipedia/MediaWiki | none | Keyless encyclopedic search, no counter | n/a | Reinforces `factcheck`/`people`/`academic` routing only (not a general fallback). Uses the official MediaWiki Action API with a descriptive `User-Agent` per Wikimedia policy. Keyless does not mean guaranteed availability or unlimited use. |
 | arXiv | none | Keyless academic search, no counter | n/a | Reinforces the `academic` route only (tried before the DDGS backstop; not a general fallback). Uses the keyless arXiv Atom query API (`https://export.arxiv.org/api/query`) with a descriptive `User-Agent`. Keyless does not mean guaranteed availability or unlimited use. |
 | Scrapling | `NOLE_SCRAPLING_PYTHON`, optional `NOLE_SCRAPLING_PROXY` | Local keyless extraction fallback, no counter | n/a | Prefer `nole setup --local-extract`, which creates an isolated venv and writes the Python setting locally. The optional proxy applies only to Scrapling; see its trust and fallback limits below. Website terms and robots.txt remain the user's responsibility. |
-| httpfetch | none | Keyless pure-Go extraction backstop, no counter | n/a | Always available, no setup. Last-resort `extract` fallback (after Scrapling and the keyed remotes). Pure stdlib HTTP fetch + HTML-to-text; runs **no JavaScript**, so it is weaker than Scrapling/Firecrawl on SPA/JS-rendered pages. SSRF-preflighted on every redirect hop. Keyless does not mean guaranteed availability or unlimited use. |
+| httpfetch | none | Keyless pure-Go extraction backstop, no counter | n/a | Always available, no setup. Last-resort `extract` fallback (after Scrapling and the keyed remotes). Pure stdlib HTTP fetch + HTML-to-text; runs **no JavaScript**, so it cannot render SPA/JS pages (optional Scrapling browser mode and Firecrawl can). SSRF-preflighted on every redirect hop. Keyless does not mean guaranteed availability or unlimited use. |
 
 The free-tier numbers above were rechecked on 2026-09-09 against [Brave pricing](https://brave.com/search/api/), [Tavily credits](https://docs.tavily.com/documentation/api-credits), and [Firecrawl pricing](https://www.firecrawl.dev/pricing). Tavily and keyed Firecrawl meter in variable credits while the ledger debits 1 per call, so each floor is credits ÷ the priciest call Nólë can issue: Tavily 1000 ÷ 2 (advanced search) = 500; keyed Firecrawl 1000 ÷ 4 (a 20-result search at 2 credits per 10 results) = 250. Firecrawl keyless mode is treated like other keyless-free providers: allowed under `free-first`, with upstream 429s surfaced through normal route errors/drift warnings rather than a fabricated local balance. This avoids over-reading remaining headroom; undercounting is the safe direction and the drift signal catches the rest. Tavily and Firecrawl also expose account usage endpoints, so Nólë can query sanitized remote usage and reconcile the local free-tier BYOK ledger to provider-reported usage before routed calls. Premium/paid provider usage is explicit observability only unless a separate paid-usage ledger policy is added. Brave Search exposes monthly remaining quota through `X-RateLimit-*` response headers rather than a separate non-consuming usage endpoint, so Nólë syncs Brave after a Brave response (including 429s). The BYOK floors are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
 
@@ -388,6 +388,71 @@ Notes:
 - The service validates public URLs before calling providers. Scrapling still performs a real HTTP request from the local machine, so respect site terms, robots.txt and rate limits.
 - Do not point `NOLE_SCRAPLING_PYTHON` at a shell snippet. It must be an executable Python path; wrappers should exec Python directly and keep secrets out of command lines.
 
+### Optional browser extraction
+
+The default `NOLE_SCRAPLING_MODE=fetcher` uses ordinary HTTP fetching and does not
+execute JavaScript. `nole setup --local-extract` verifies Fetcher imports; it does
+not install or verify a browser. To opt into local rendering, install Chromium
+using the same Python environment, then choose a mode:
+
+```bash
+"$NOLE_SCRAPLING_PYTHON" -m patchright install chromium
+export NOLE_SCRAPLING_MODE=auto
+export NOLE_SCRAPLING_BROWSER_TIMEOUT=60s
+export NOLE_SCRAPLING_TIMEOUT=90s
+nole doctor
+```
+
+For GUI/service clients, add the settings to the env file sourced by the launcher.
+Extraction never installs a browser automatically. Browser support was exercised
+with Scrapling 0.5.1, Patchright 1.64.4 and Chromium; other versions must support
+the interception APIs or extraction fails with a fixed diagnostic.
+
+- `fetcher` preserves the existing Fetcher behavior and 30-second total default.
+- `stealthy` makes one local browser attempt using StealthyFetcher. Supported
+  built-in Cloudflare challenge handling is enabled. No external CAPTCHA service
+  or interactive picture-puzzle automation is added.
+- `auto` first uses Fetcher, with a 30-second stage limit and one library attempt
+  per redirect hop, then permits at most one browser attempt for a recognized
+  challenge or JavaScript shell (`bot_blocked`). Short text, ordinary HTTP errors
+  and HTTP 429 do not trigger escalation. Persistent challenges remain failures
+  and allow normal provider fallback.
+
+The browser stage defaults to 60 seconds; the total provider budget defaults to
+90 seconds in `auto`/`stealthy`. The two timeout settings accept positive Go
+durations (for example `60s` or `2m`). The total budget always caps the browser
+stage, including waiting for the single browser slot per Nólë process. Deadlines
+also apply to detached/coalesced service work. Fresh temporary profiles isolate
+sessions from authenticated user browsers; process groups and profiles are
+cleaned up on completion or timeout. Browser mode currently requires Unix
+process-group support (Linux/macOS); other platforms report it unavailable while
+plain Fetcher remains supported.
+
+Doctor checks Fetcher imports in default mode. In browser modes it also attempts
+a local browser launch and guard setup, without navigating to an external site,
+within a five-second readiness budget. `auto` remains available when Fetcher
+works but the browser is unavailable; `stealthy` reports unavailable. This is not
+proxy connectivity or live challenge-solving verification. Extract debug traces
+include fixed `mode` and, when applicable, `escalation_reason: bot_blocked` fields.
+Recognized challenges are never accepted or cached as useful rendered content;
+rendered extracts use the same content-safety reporting as ordinary extracts.
+
+Before browser HTTP requests continue, URL/DNS preflight checks run on main-page
+requests, redirects, subrequests and nested cross-origin frames. Browser-native
+interception is necessary because ordinary route handlers do not see every
+redirect. Frame targets are paused until their interception is installed.
+Popup requests, WebSockets, service workers and WebRTC are disabled for this
+extraction flow; pages requiring those features may not render fully. Local
+fixtures verified blocked redirects/subrequests while allowed cross-origin and
+nested-frame requests still completed. This is bounded fixture evidence, not a
+claim of universal site compatibility or Cloudflare bypass success.
+
+These checks preserve Scrapling's **best-effort preflight** contract: DNS can
+change between validation and Chromium's connection, and proxy-side DNS can
+resolve differently. Connections are not pinned to validated IPs. This is not a
+complete network sandbox or httpfetch's stronger direct dial-time guarantee.
+The proxy trust and fallback limits below also apply to browser mode.
+
 ### Optional Scrapling proxy
 
 Set `NOLE_SCRAPLING_PROXY` to an operator-supplied proxy URL, for example
@@ -404,10 +469,14 @@ including HTTP and SOCKS5h (`socks5h://`) authentication. `https://` describes T
 an `http://` proxy can also tunnel HTTPS targets. SOCKS4a and SOCKS5h delegate
 target hostname resolution to the proxy. Older/different runtimes may reject
 options; Nólë reports a fixed failure instead of retrying without the proxy.
-This setting adds no browser extraction mode or browser compatibility guarantee.
+Browser mode supports the runtime's `http://`, `https://`, `socks4://` and
+`socks5://` proxy forms. HTTP(S) credentials are passed as private browser proxy
+fields. `socks4a://`, `socks5h://` and SOCKS credential authentication are rejected
+before launch because the installed browser runtime cannot honor them. Nólë does
+not silently change the scheme, remove credentials or retry directly.
 
 When nonempty, the setting is passed privately through subprocess stdin as
-Fetcher’s `proxy=` argument. It overrides inherited `HTTP_PROXY`, `HTTPS_PROXY`,
+the selected fetcher’s `proxy=` argument (a browser proxy dictionary in browser mode). It overrides inherited `HTTP_PROXY`, `HTTPS_PROXY`,
 `ALL_PROXY`, and `NO_PROXY` (including lowercase forms) for the Scrapling child
 process. When unset or blank, ambient proxy and bypass settings may still apply.
 Scrapling extract and status subprocesses and the OpenClaw bridge subprocess
@@ -446,10 +515,9 @@ Use for: keyless, zero-setup URL extraction — the last-resort `extract` backst
   (`scrapling -> firecrawl -> tavily -> httpfetch`), reached only when a configured
   local Scrapling and the keyed remotes are unavailable/blocked/exhausted. It is the
   extract-side analogue of DDGS on the search routes.
-- **Honest limits:** it runs **no JavaScript**, so it is weaker than Scrapling and
-  Firecrawl on SPA / client-rendered pages — it returns whatever static HTML the
-  server sends, stripped to readable text. Configure Scrapling, Tavily, or Firecrawl
-  for higher-fidelity / JS-rendered extraction.
+- **Honest limits:** it runs **no JavaScript** and returns the static HTML the
+  server sends, stripped to readable text. Configure optional Scrapling browser
+  mode, Tavily, or Firecrawl for JS-rendered extraction.
 - **Safety:** every redirect hop is re-validated by the local SSRF preflight (a
   public URL that 30x-redirects to a private / cloud-metadata host is rejected before
   it is fetched); the resolved IP is re-validated again at DIAL time (closing the
@@ -523,8 +591,8 @@ zero setup). Configuring a higher-fidelity provider upgrades the extract QUALITY
 (JS rendering, cleaner content) but is no longer required for the tools to exist.
 The MCP surface adapts to which keys/runtimes are configured:
 
-- **No keys and no local Scrapling runtime:** `mcp__nole__search` is registered and routes via DDGS (keyless). `mcp__nole__extract` / `mcp__nole__search_and_extract` are registered too, backed by the keyless `httpfetch` backstop — a best-effort, no-JavaScript HTML-to-text fetch (weaker than Scrapling/Firecrawl on SPA pages). `mcp__nole__provider_status` and `mcp__nole__budget_status` are always available.
-- **No keys plus `nole setup --local-extract`:** Search routes via DDGS; extract prefers the local Scrapling runtime (JS-capable), with `httpfetch` as the final keyless fallback.
+- **No keys and no local Scrapling runtime:** `mcp__nole__search` is registered and routes via DDGS (keyless). `mcp__nole__extract` / `mcp__nole__search_and_extract` are registered too, backed by the keyless `httpfetch` backstop — a best-effort, no-JavaScript HTML-to-text fetch (optional Scrapling browser mode and Firecrawl can render JS). `mcp__nole__provider_status` and `mcp__nole__budget_status` are always available.
+- **No keys plus `nole setup --local-extract`:** Search routes via DDGS; extract prefers the local Scrapling Fetcher runtime (no JavaScript by default; browser mode requires the optional setup above), with `httpfetch` as the final keyless fallback.
 - **Only `BRAVE_API_KEY`:** Search routes Brave-first with DDGS fallback. Extract is backed by Scrapling if configured, otherwise the keyless `httpfetch` backstop.
 - **Only `TAVILY_API_KEY` or only `FIRECRAWL_API_KEY`:** Extract prefers the keyed remote (Scrapling first if also configured), with `httpfetch` as the final fallback.
 - **Any two or all three:** Full feature set with redundancy on the overlapping capability.

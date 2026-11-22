@@ -487,7 +487,7 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 			case errors.Is(err, ErrTargetRateLimited):
 				reason = "rate_limited"
 			}
-			trace = append(trace, attemptWithDecision(name, "failed", reason, decision, latency, 0))
+			trace = append(trace, extractAttemptMode(attemptWithDecision(name, "failed", reason, decision, latency, 0), resp.Metadata))
 			continue
 		}
 		resp.URL = req.URL
@@ -496,7 +496,7 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 		if strings.TrimSpace(resp.Content) == "" {
 			resultCount := contentResultCount(resp.Content)
 			lastErr = fmt.Errorf("extract provider %s returned empty content", name)
-			trace = append(trace, attemptWithDecision(name, "failed", "empty_content", decision, latency, resultCount))
+			trace = append(trace, extractAttemptMode(attemptWithDecision(name, "failed", "empty_content", decision, latency, resultCount), resp.Metadata))
 			continue
 		}
 		cleaned, central := ProtectUntrustedText(resp.Content)
@@ -516,7 +516,7 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 			}
 			traceReason = "success_" + suffix
 		}
-		trace = append(trace, attemptWithDecision(name, "success", traceReason, decision, latency, resultCount))
+		trace = append(trace, extractAttemptMode(attemptWithDecision(name, "success", traceReason, decision, latency, resultCount), resp.Metadata))
 		resp.RouteTrace = trace
 		resp.RoutingInsight = BuildExtractRoutingInsight(resp)
 		if s.cache != nil {
@@ -782,4 +782,20 @@ func contentResultCount(content string) int {
 		return 0
 	}
 	return 1
+}
+
+// Only fixed local adapter facts enter debug traces; never copy arbitrary
+// provider metadata (which can contain page text or runtime secrets).
+func extractAttemptMode(attempt RouteAttempt, metadata map[string]string) RouteAttempt {
+	if attempt.Provider != "scrapling" {
+		return attempt
+	}
+	switch metadata["mode"] {
+	case "fetcher", "stealthy":
+		attempt.Mode = metadata["mode"]
+	}
+	if attempt.Mode == "stealthy" && metadata["escalation_reason"] == "bot_blocked" {
+		attempt.EscalationReason = "bot_blocked"
+	}
+	return attempt
 }
