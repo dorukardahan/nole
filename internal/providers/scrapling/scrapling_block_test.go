@@ -40,7 +40,7 @@ class Fetcher:
     @staticmethod
     def get(url, follow_redirects):
         assert follow_redirects is False
-        with open(os.environ['NOLE_TEST_FETCH_COUNT'], 'a') as f:
+        with open(os.environ['NOLE_TEST_FETCH_COUNT'], 'a', newline='\r\n') as f:
             f.write('fetch\n')
         with open(os.environ['NOLE_TEST_PAGE']) as f:
             page = json.load(f)
@@ -63,6 +63,59 @@ class Fetcher:
 	t.Setenv("NOLE_TEST_PAGE", fixture)
 	t.Setenv("NOLE_TEST_FETCH_COUNT", filepath.Join(dir, "fetch-count"))
 	return New(WithPython(python), WithTimeout(5*time.Second))
+}
+
+func TestScraplingRedirectClassification(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		status  int
+		headers map[string]string
+		want    string
+	}{
+		{"challenge redirect", 302, map[string]string{"Location": pubB, "CF-Mitigated": " challenge "}, "scrapling: bot_blocked"},
+		{"not modified with location", 304, map[string]string{"Location": pubB}, "scrapling: http_error (HTTP 304)"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := syntheticScrapling(t, map[string]any{"status": tt.status, "headers": tt.headers})
+			_, err := p.Extract(context.Background(), core.ExtractRequest{URL: pubA})
+			if err == nil || err.Error() != tt.want {
+				t.Errorf("expected fixed failure %q, got %v", tt.want, err)
+			}
+			fetches, err := os.ReadFile(os.Getenv("NOLE_TEST_FETCH_COUNT"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if records := strings.Fields(string(fetches)); len(records) != 1 || records[0] != "fetch" {
+				t.Errorf("expected exactly one fetch, got %d", len(records))
+			}
+		})
+	}
+}
+
+func TestScraplingNoscriptClassification(t *testing.T) {
+	const title = "Just a moment"
+	const notice = "<noscript>Please enable JavaScript to continue.</noscript>"
+	for _, tt := range []struct {
+		name string
+		html string
+		want string
+	}{
+		{"title only", "<title>" + title + "</title>" + notice, ""},
+		{"no visible text", notice, ""},
+		{"article with notice", "<title>" + title + "</title>" + notice + "<p>Useful article.</p>", title + "\nUseful article."},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := syntheticScrapling(t, map[string]any{"status": 200, "title": title, "html_content": tt.html})
+			resp, err := p.Extract(context.Background(), core.ExtractRequest{URL: pubA})
+			if tt.want == "" {
+				if err == nil || err.Error() != "scrapling: bot_blocked" || resp.Content != "" {
+					t.Fatal("expected payload-free bot_blocked failure")
+				}
+			} else if err != nil || resp.Content != tt.want {
+				t.Fatal("expected article content without the noscript notice")
+			}
+		})
+	}
 }
 
 func TestScraplingBlockClassification(t *testing.T) {
@@ -90,6 +143,7 @@ func TestScraplingBlockClassification(t *testing.T) {
 		{"access denied article", map[string]any{"status": 200, "title": "Access denied", "text": "An article about permissions and bot challenges."}, ""},
 		{"challenge documentation", map[string]any{"status": 200, "title": "Challenge documentation", "text": "The interstitial says Please enable JavaScript to continue. This guide explains why."}, ""},
 		{"title alone", map[string]any{"status": 200, "title": "Just a moment...", "text": "A short poem."}, ""},
+		{"article opening with challenge instruction", map[string]any{"status": 200, "title": "Just a moment", "text": "Just a moment\nEnable JavaScript and cookies to continue. " + strings.Repeat("More of the article. ", 30)}, ""},
 		{"long documentation", map[string]any{"status": 200, "text": "Please enable JavaScript to continue." + strings.Repeat(" Documentation.", 1000)}, ""},
 		{"partial success", map[string]any{"status": 206, "text": "Useful partial page."}, ""},
 	}
@@ -183,6 +237,34 @@ func TestScraplingBlockFallsBackAndCachesOnlyUsefulContent(t *testing.T) {
 	}
 }
 
+func TestScraplingTargetRateLimitFallsBackWithoutQuotaDrift(t *testing.T) {
+	limited := &countedBlockProvider{Provider: syntheticScrapling(t, map[string]any{"status": 429}), name: "scrapling"}
+	fallback := &countedBlockProvider{Provider: configuredProvider(func(context.Context, string, string) (hopOutput, error) {
+		return hopOutput{Content: "Useful article."}, nil
+	}), name: "fallback"}
+	registry := core.NewRegistry()
+	for _, p := range []*countedBlockProvider{limited, fallback} {
+		if err := registry.Register(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ledger := core.NewMemoryQuotaLedger()
+	ledger.Set(core.QuotaEntry{Provider: limited.name, CostClass: core.CostClassFreeTierBYOK, FreeRemaining: 1})
+	ledger.Set(core.QuotaEntry{Provider: fallback.name, CostClass: core.CostClassKeylessFree, KeylessFree: true})
+	service := core.NewService(registry, ledger, core.RouteMatrix{core.TaskExtract: {limited.name, fallback.name}})
+	resp, err := service.Extract(context.Background(), core.ExtractRequest{URL: pubA})
+	if err != nil || resp.Provider != fallback.name || limited.calls != 1 || fallback.calls != 1 {
+		t.Fatalf("expected successful fallback after one attempt per provider, got err=%v and calls=%d/%d", err, limited.calls, fallback.calls)
+	}
+	if len(resp.RouteTrace) != 2 || resp.RouteTrace[0].Provider != limited.name ||
+		resp.RouteTrace[0].Status != "failed" || resp.RouteTrace[0].Reason != "rate_limited" {
+		t.Errorf("missing rate_limited attempt: %#v", resp.RouteTrace)
+	}
+	if budget := service.BudgetStatus(); budget.HasDrift || len(budget.DriftSignals) != 0 {
+		t.Error("target 429 recorded provider quota drift")
+	}
+}
+
 func TestScraplingBlockFailureIsNotCachedOrRetriedImmediately(t *testing.T) {
 	for _, status := range []int{200, 403, 429} {
 		t.Run(strconv.Itoa(status), func(t *testing.T) {
@@ -198,8 +280,8 @@ func TestScraplingBlockFailureIsNotCachedOrRetriedImmediately(t *testing.T) {
 				if readErr != nil {
 					t.Fatal(readErr)
 				}
-				if strings.Count(string(fetches), "fetch\n") != i {
-					t.Fatalf("expected one actual fetch per request, got %q", fetches)
+				if records := strings.Fields(string(fetches)); len(records) != i || records[i-1] != "fetch" {
+					t.Fatalf("expected one actual fetch per request, got %d records", len(records))
 				}
 				if p.calls != i {
 					t.Fatalf("failed extract cached or retried immediately: calls=%d want=%d", p.calls, i)

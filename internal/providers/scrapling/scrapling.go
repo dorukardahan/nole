@@ -25,7 +25,7 @@ const maxScraplingRedirects = 5
 
 // hopOutput is the parsed result of a single subprocess fetch. Exactly one of
 // Redirect, Failure or Content is meaningful: the script emits Redirect (the resolved,
-// absolute Location) on a 3xx with follow-redirects disabled, otherwise Content
+// absolute Location) on a redirect with follow-redirects disabled, otherwise Content
 // plus the FinalURL the fetcher actually landed on (a backstop for a Scrapling
 // build that ignores the no-follow request).
 type hopOutput struct {
@@ -249,11 +249,10 @@ func responseError(out hopOutput) error {
 	switch out.Failure {
 	case "bot_blocked":
 		return fmt.Errorf("scrapling: %w", core.ErrBotBlocked)
-	case "rate_limited", "http_error":
-		// These are target-page statuses, not provider-account responses.
-		// Keep them payload-free without providerhttp.HTTPStatusError: its
-		// HTTPStatus method would count a target 429 as provider quota drift.
-		return fmt.Errorf("scrapling: %s (HTTP %d)", out.Failure, out.Status)
+	case "rate_limited":
+		return fmt.Errorf("scrapling: %w (HTTP 429)", core.ErrTargetRateLimited)
+	case "http_error":
+		return fmt.Errorf("scrapling: http_error (HTTP %d)", out.Status)
 	case "runtime_unavailable":
 		return errors.New("scrapling: fetcher runtime unavailable; install scrapling[fetchers]")
 	case "unsupported_runtime":
@@ -393,21 +392,24 @@ try:
 except Exception:
     fail('fetch_failed')
 
-# On a 3xx (redirect-following disabled), surface the resolved absolute Location
-# so the Go caller can re-run the preflight on it before fetching the next hop.
+def has_challenge_header(headers):
+    return any(str(key).lower() == 'cf-mitigated' and str(value).strip().lower() == 'challenge'
+               for key, value in headers)
+
+try:
+    headers = list((getattr(page, 'headers', None) or {}).items())
+except Exception:
+    headers = []
+
+# Preserve known status internally; older response objects may omit it.
 status = getattr(page, 'status', None)
-if isinstance(status, int) and 300 <= status < 400:
-    location = None
-    headers = getattr(page, 'headers', None) or {}
-    try:
-        header_items = list(headers.items())
-    except Exception:
-        header_items = []
-    for hk, hv in header_items:
-        if str(hk).lower() == 'location':
-            location = hv
-            break
+status = status if isinstance(status, int) else 0
+# Surface the resolved Location so Go can re-run the preflight before fetching.
+if status in (301, 302, 303, 307, 308):
+    location = next((value for key, value in headers if str(key).lower() == 'location'), None)
     if location:
+        if has_challenge_header(headers):
+            fail('bot_blocked')
         print(json.dumps({'redirect': urljoin(url, str(location))}, ensure_ascii=False))
         raise SystemExit(0)
 
@@ -441,37 +443,36 @@ def selector_text(page, selector):
         return ''
     return ''
 
-def response_failure(status, headers, title, content):
+def normalized_text(text):
+    return ' '.join(text.lower().split()).strip(' .!')
+
+def response_failure(status, headers, title, content, noscript):
     # Keep this helper independent of Fetcher so other fetch modes can use the
     # same classification. Only fixed codes leave the process on failure.
     # A 429 always stays a rate limit, even when it also has challenge signals.
     if status == 429:
         return 'rate_limited'
-    try:
-        header_items = list(headers.items())
-    except Exception:
-        header_items = []
-    for key, value in header_items:
-        if str(key).lower() == 'cf-mitigated' and str(value).strip().lower() == 'challenge':
-            return 'bot_blocked'
+    if has_challenge_header(headers):
+        return 'bot_blocked'
     # Bound text inspection; never classify a truncated prefix as a complete
     # interstitial. Isolated words and length alone are not block signals.
-    text = ' '.join(content[:8192].lower().split()).strip(' .!')
-    heading = ' '.join(title[:256].lower().split()).strip(' .!')
-    messages = {
-        'please enable javascript to continue',
-        'enable javascript and cookies to continue',
-        'you need to enable javascript to run this app',
-    }
-    if len(content) <= 8192 and text in messages:
-        return 'bot_blocked'
-    if len(title) <= 256 and heading == 'just a moment':
-        # A known challenge title plus its opening instruction, not a quote
-        # somewhere inside an ordinary article discussing challenges.
-        if text.startswith('just a moment'):
-            text = text[len('just a moment'):].lstrip(' .!')
-        if text.startswith('enable javascript and cookies to continue'):
+    if len(content) <= 8192:
+        text = normalized_text(content)
+        heading = normalized_text(title) if len(title) <= 256 else ''
+        if noscript and (not text or text == heading):
+            content = noscript
+            text = normalized_text(content)
+        messages = {
+            'please enable javascript to continue',
+            'enable javascript and cookies to continue',
+            'you need to enable javascript to run this app',
+        }
+        if text in messages:
             return 'bot_blocked'
+        if heading == 'just a moment':
+            remainder = re.sub(r'^\s*just\s+a\s+moment[\s.!]*', '', content, flags=re.IGNORECASE).strip()
+            if len(remainder) <= 512 and normalized_text(remainder).startswith('enable javascript and cookies to continue'):
+                return 'bot_blocked'
     if status and not 200 <= status < 300:
         return 'http_error'
     return ''
@@ -483,8 +484,12 @@ class TextExtractor(HTMLParser):
         super().__init__()
         self.skip = 0
         self.parts = []
+        self.in_noscript = False
+        self.noscript = bytearray()
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
+        if tag == 'noscript' and not self.skip:
+            self.in_noscript = True
         if tag in self.skip_tags:
             self.skip += 1
         if tag in self.block_tags:
@@ -493,11 +498,16 @@ class TextExtractor(HTMLParser):
         tag = tag.lower()
         if tag in self.skip_tags and self.skip:
             self.skip -= 1
+        if tag == 'noscript' and not self.skip:
+            self.in_noscript = False
         if tag in self.block_tags:
             self.parts.append('\n')
     def handle_data(self, data):
         if not self.skip:
             self.parts.append(data)
+        elif self.in_noscript and self.skip == 1:
+            remaining = 2048 - len(self.noscript)
+            self.noscript.extend(data[:remaining].encode('utf-8', errors='replace')[:remaining])
     def text(self):
         text = ''.join(self.parts)
         text = re.sub(r'[ \t\r\f\v]+', ' ', text)
@@ -505,6 +515,7 @@ class TextExtractor(HTMLParser):
         return text.strip()
 
 content = first_attr(page, ['markdown', 'text', 'body_text', 'content'])
+noscript = ''
 if content is None:
     html = first_attr(page, ['html_content', 'html', 'body'])
     if html is None:
@@ -512,13 +523,12 @@ if content is None:
     parser = TextExtractor()
     parser.feed(str(html))
     content = parser.text()
+    noscript = parser.noscript.decode('utf-8', errors='ignore')
 else:
     content = str(content)
 
 title = selector_text(page, 'title::text')
-# Preserve known status internally; older response objects may omit it.
-status = status if isinstance(status, int) else 0
-failure = response_failure(status, getattr(page, 'headers', None) or {}, title, content)
+failure = response_failure(status, headers, title, content, noscript)
 if failure:
     print(json.dumps({'status': status, 'failure': failure}))
     raise SystemExit(0)
