@@ -206,11 +206,16 @@ func TestOpenClawBridgeProductionRunnerExecutesCLI(t *testing.T) {
 	t.Setenv("BRAVE_API_KEY", "must-not-reach-openclaw")
 	t.Setenv("BRAVE_SEARCH_API_KEY", "must-not-reach-openclaw")
 	t.Setenv("TAVILY_API_KEY", "must-not-reach-openclaw")
+	t.Setenv("nole_scrapling_proxy", "must-not-reach-openclaw")
+	t.Setenv("TINYFISH_API_KEY", "must-not-reach-openclaw")
 	t.Setenv("OPENCLAW_GATEWAY_TOKEN", "gateway-test-token")
 	script := filepath.Join(t.TempDir(), "openclaw")
 	body := `#!/bin/sh
 if [ -n "${FIRECRAWL_API_KEY:-}" ] || [ -n "${BRAVE_API_KEY:-}" ] || [ -n "${BRAVE_SEARCH_API_KEY:-}" ] || [ -n "${TAVILY_API_KEY:-}" ]; then
   exit 9
+fi
+if [ -n "${nole_scrapling_proxy+x}" ] || [ -n "${TINYFISH_API_KEY+x}" ]; then
+  exit 10
 fi
 if [ "${OPENCLAW_GATEWAY_TOKEN:-}" != "gateway-test-token" ]; then
   exit 8

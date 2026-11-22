@@ -155,19 +155,21 @@ func validateProxy(raw string) error {
 	return nil
 }
 
-// An explicit proxy must also override NO_PROXY: libcurl can otherwise bypass
-// proxy= and connect directly. Absence preserves the existing inherited behavior.
-// Filter only the child environment, never the process or another provider.
+// Python receives the explicit proxy over stdin and does not need provider keys.
+// Strip ambient proxy settings only when an explicit proxy must take precedence.
 func (p Provider) subprocessEnv() []string {
-	if p.proxy == "" {
-		return nil // os/exec inherits the environment
-	}
-	env := make([]string, 0, len(os.Environ()))
-	for _, entry := range os.Environ() {
+	environ := os.Environ()
+	env := make([]string, 0, len(environ))
+	for _, entry := range environ {
 		key, _, _ := strings.Cut(entry, "=")
 		switch strings.ToLower(key) {
-		case "http_proxy", "https_proxy", "all_proxy", "no_proxy":
+		case "nole_scrapling_proxy", "firecrawl_api_key", "brave_api_key",
+			"brave_search_api_key", "tavily_api_key", "tinyfish_api_key":
 			continue
+		case "http_proxy", "https_proxy", "all_proxy", "no_proxy":
+			if p.proxy != "" {
+				continue
+			}
 		}
 		env = append(env, entry)
 	}

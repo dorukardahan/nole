@@ -93,6 +93,8 @@ func sanitizedOpenClawCommandEnv(environ []string) []string {
 		"BRAVE_API_KEY":        {},
 		"BRAVE_SEARCH_API_KEY": {},
 		"TAVILY_API_KEY":       {},
+		"TINYFISH_API_KEY":     {},
+		"NOLE_SCRAPLING_PROXY": {},
 	}
 	result := make([]string, 0, len(environ))
 	for _, entry := range environ {

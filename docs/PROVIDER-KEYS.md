@@ -409,9 +409,11 @@ This setting adds no browser extraction mode or browser compatibility guarantee.
 When nonempty, the setting is passed privately through subprocess stdin as
 Fetcher’s `proxy=` argument. It overrides inherited `HTTP_PROXY`, `HTTPS_PROXY`,
 `ALL_PROXY`, and `NO_PROXY` (including lowercase forms) for the Scrapling child
-process. The parent environment and other providers are unaffected. When unset
-or blank, the existing inherited-runtime behavior is preserved: ambient proxy
-and bypass settings may still apply, so absence does not promise direct egress.
+process. When unset or blank, ambient proxy and bypass settings may still apply.
+Scrapling extract and status subprocesses and the OpenClaw bridge subprocess
+always exclude `NOLE_SCRAPLING_PROXY`, `FIRECRAWL_API_KEY`, `BRAVE_API_KEY`,
+`BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, and `TINYFISH_API_KEY` from their
+environments. The filter matches variable names case-insensitively.
 Doctor/provider status reports only whether the explicit proxy is configured,
 not its address or credentials; this is not a connectivity test. A failing
 explicit proxy is never retried with direct egress within this adapter; runtime
