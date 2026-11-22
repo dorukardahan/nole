@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-11-22
+
+This backward-compatible MINOR release hardens the optional local Scrapling
+extraction fallback and adds an explicit Scrapling proxy setting. CLI/MCP output
+contracts, free-first/BYOK policy and default provider ordering remain unchanged;
+route traces gain one additive reason, `rate_limited`.
+
+### Added
+
+- `NOLE_SCRAPLING_PROXY` configures an explicit outbound proxy (`http`, `https`,
+  `socks4`, `socks4a`, `socks5`, `socks5h`) for the local Scrapling fetcher. The
+  value reaches the fetch over stdin, never argv or output; status reports only
+  `proxy: configured`. When it is set, ambient proxy variables and `NO_PROXY` are
+  ignored for that child only, and a fetch is never retried without the proxy.
+  Unset keeps the inherited behaviour. (#136, thanks @ibrahimover)
+- Route traces record a target-site HTTP 429 from Scrapling as `rate_limited`. It
+  is still never treated as provider-quota exhaustion.
+
+### Fixed
+
+- Scrapling no longer returns or caches recognized challenge pages or non-2xx
+  target responses as successful extracts. They fail with fixed, payload-free
+  codes (`bot_blocked`, `rate_limited`, `http_error`), so the router falls back.
+  (#135, thanks @ibrahimover)
+- Scrapling follows only 301, 302, 303, 307 and 308 redirects; a redirect that
+  carries `CF-Mitigated: challenge` fails as `bot_blocked`.
+- The HTML fallback recognizes challenge instructions that appear only in
+  `<noscript>` without adding that text to content, decodes byte bodies before
+  parsing, and no longer rejects a long article titled "Just a moment".
+
+### Security
+
+- Scrapling child processes no longer inherit `NOLE_SCRAPLING_PROXY`, provider
+  API keys (`BRAVE_API_KEY`, `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`,
+  `FIRECRAWL_API_KEY`, `TINYFISH_API_KEY`) or `OPENCLAW_GATEWAY_TOKEN`. The
+  OpenClaw bridge now also strips `NOLE_SCRAPLING_PROXY` and `TINYFISH_API_KEY`.
+- Scrapling runtime errors and import diagnostics no longer reach error or status
+  text; only fixed messages do. Status shows the Scrapling version only when it is
+  a numeric release, otherwise `unknown`.
+- Scrapling subprocesses use a bounded `WaitDelay`, so a descendant that keeps
+  stdout open cannot outlive the provider timeout.
+
+### Documentation
+
+- The README lists the canonical planner intent names and route keys. (#123)
+- The README clarifies that `TINYFISH_API_KEY` enables TinyFish status and
+  contract benchmarking but does not add TinyFish to automatic routes. (#125)
+
 ## [1.11.1] - 2026-11-13
 
 This backward-compatible PATCH release rebuilds Nólë with a supported Go
@@ -1588,7 +1636,9 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/dorukardahan/nole/compare/v1.11.1...v1.12.0
+[1.11.1]: https://github.com/dorukardahan/nole/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/dorukardahan/nole/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/dorukardahan/nole/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/dorukardahan/nole/compare/v1.8.1...v1.9.0
