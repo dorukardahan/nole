@@ -22,11 +22,13 @@ import (
 const maxScraplingRedirects = 5
 
 // hopOutput is the parsed result of a single subprocess fetch. Exactly one of
-// Redirect or Content is meaningful: the script emits Redirect (the resolved,
+// Redirect, Failure or Content is meaningful: the script emits Redirect (the resolved,
 // absolute Location) on a 3xx with follow-redirects disabled, otherwise Content
 // plus the FinalURL the fetcher actually landed on (a backstop for a Scrapling
 // build that ignores the no-follow request).
 type hopOutput struct {
+	Status   int               `json:"status"`
+	Failure  string            `json:"failure"`
 	Redirect string            `json:"redirect"`
 	Content  string            `json:"content"`
 	Metadata map[string]string `json:"metadata"`
@@ -165,6 +167,9 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 			current = out.Redirect
 			continue
 		}
+		if err := responseError(out); err != nil {
+			return core.ExtractResponse{}, err
+		}
 		// Backstop: if a Scrapling build ignored the no-follow request and
 		// landed somewhere other than we asked, validate that final URL before
 		// returning any content — otherwise a redirect to a private host would
@@ -180,6 +185,21 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 			Content:  strings.TrimSpace(out.Content),
 			Metadata: out.Metadata,
 		}, nil
+	}
+}
+
+// responseError accepts only fixed failure codes from the subprocess. Page
+// text, headers and URLs must never become error messages or route reasons.
+func responseError(out hopOutput) error {
+	switch out.Failure {
+	case "bot_blocked":
+		return fmt.Errorf("scrapling: %w", core.ErrBotBlocked)
+	case "rate_limited", "http_error":
+		return fmt.Errorf("scrapling: %s (HTTP %d)", out.Failure, out.Status)
+	case "":
+		return nil
+	default:
+		return errors.New("scrapling: invalid failure code")
 	}
 }
 
@@ -344,6 +364,41 @@ def selector_text(page, selector):
         return ''
     return ''
 
+def response_failure(status, headers, title, content):
+    # Keep this helper independent of Fetcher so other fetch modes can use the
+    # same classification. Only fixed codes leave the process on failure.
+    # A 429 always stays a rate limit, even when it also has challenge signals.
+    if status == 429:
+        return 'rate_limited'
+    try:
+        header_items = list(headers.items())
+    except Exception:
+        header_items = []
+    for key, value in header_items:
+        if str(key).lower() == 'cf-mitigated' and str(value).strip().lower() == 'challenge':
+            return 'bot_blocked'
+    # Bound text inspection; never classify a truncated prefix as a complete
+    # interstitial. Isolated words and length alone are not block signals.
+    text = ' '.join(content[:8192].lower().split()).strip(' .!')
+    heading = ' '.join(title[:256].lower().split()).strip(' .!')
+    messages = {
+        'please enable javascript to continue',
+        'enable javascript and cookies to continue',
+        'you need to enable javascript to run this app',
+    }
+    if len(content) <= 8192 and text in messages:
+        return 'bot_blocked'
+    if len(title) <= 256 and heading == 'just a moment':
+        # A known challenge title plus its opening instruction, not a quote
+        # somewhere inside an ordinary article discussing challenges.
+        if text.startswith('just a moment'):
+            text = text[len('just a moment'):].lstrip(' .!')
+        if text.startswith('enable javascript and cookies to continue'):
+            return 'bot_blocked'
+    if status and not 200 <= status < 300:
+        return 'http_error'
+    return ''
+
 class TextExtractor(HTMLParser):
     skip_tags = {'script', 'style', 'noscript', 'template', 'svg'}
     block_tags = {'p', 'div', 'section', 'article', 'header', 'footer', 'main', 'br', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}
@@ -384,11 +439,17 @@ else:
     content = str(content)
 
 title = selector_text(page, 'title::text')
+# Preserve known status internally; older response objects may omit it.
+status = status if isinstance(status, int) else 0
+failure = response_failure(status, getattr(page, 'headers', None) or {}, title, content)
+if failure:
+    print(json.dumps({'status': status, 'failure': failure}))
+    raise SystemExit(0)
 metadata = {'mode': 'fetcher', 'ai_targeted': 'true'}
 if title:
     metadata['title'] = title.strip()
 # final_url is the URL the fetcher actually landed on; the Go caller validates
 # it as a backstop in case a Scrapling build ignored follow_redirects=False.
 final_url = getattr(page, 'url', url) or url
-print(json.dumps({'content': content, 'metadata': metadata, 'final_url': str(final_url)}, ensure_ascii=False))
+print(json.dumps({'status': status, 'content': content, 'metadata': metadata, 'final_url': str(final_url)}, ensure_ascii=False))
 `
