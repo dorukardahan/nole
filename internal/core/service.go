@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -479,7 +480,14 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 			if isQuotaExhausted(err) && decision.FreeRemaining > 0 {
 				s.ledger.RecordDrift(name, "provider returned 429 while local free_remaining > 0")
 			}
-			trace = append(trace, attemptWithDecision(name, "failed", "provider_error", decision, latency, 0))
+			reason := "provider_error"
+			switch {
+			case errors.Is(err, ErrBotBlocked):
+				reason = "bot_blocked"
+			case errors.Is(err, ErrTargetRateLimited):
+				reason = "rate_limited"
+			}
+			trace = append(trace, attemptWithDecision(name, "failed", reason, decision, latency, 0))
 			continue
 		}
 		resp.URL = req.URL
