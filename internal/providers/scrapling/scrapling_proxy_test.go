@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -227,8 +228,27 @@ func TestScraplingProxyAbsentPreservesEnvironment(t *testing.T) {
 	if !maps.Equal(calls[0].Env, map[string]bool{"http_proxy": true, "https_proxy": true, "all_proxy": true, "no_proxy": true}) {
 		t.Fatal("absent setting changed inherited behavior")
 	}
-	if !strings.Contains(p.Status(context.Background()).Reason, "proxy: not configured") {
-		t.Fatal("missing proxy absence status")
+	// With nothing set, status text must stay exactly as in v1.11.1.
+	if reason := p.Status(context.Background()).Reason; reason != "local Python package test" {
+		t.Fatalf("unset proxy changed status reason: %q", reason)
+	}
+}
+
+func TestScraplingStatusVersionIsBounded(t *testing.T) {
+	p := proxyFixture(t, "")
+	pkg := filepath.Join(os.Getenv("PYTHONPATH"), "scrapling", "__init__.py")
+	for _, tc := range []struct{ version, want string }{
+		{"0.3.7", "local Python package 0.3.7"},
+		{"", "local Python package unknown"},
+		{"x" + strings.Repeat("y", 40), "local Python package unknown"},
+		{"1.0 http://10.0.0.1/secret", "local Python package unknown"},
+	} {
+		if err := os.WriteFile(pkg, []byte("__version__ = "+strconv.Quote(tc.version)+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := p.Status(context.Background()).Reason; got != tc.want {
+			t.Fatalf("version %q: got %q, want %q", tc.version, got, tc.want)
+		}
 	}
 }
 

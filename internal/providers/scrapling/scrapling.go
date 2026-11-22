@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -319,12 +320,14 @@ func (p Provider) execHop(ctx context.Context, url, format string) (hopOutput, e
 	return out, nil
 }
 
+var scraplingVersionPattern = regexp.MustCompile(`^[0-9A-Za-z.+-]{1,32}$`)
+
 func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
+	// Report proxy presence only when one is set, so status and route-trace text
+	// for users who configure nothing stays exactly as in earlier releases.
 	defer func() {
 		if p.proxy != "" {
 			status.Reason += "; proxy: configured"
-		} else {
-			status.Reason += "; proxy: not configured"
 		}
 	}()
 	if p.proxyErr != nil {
@@ -352,9 +355,13 @@ func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
 		}
 		return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: reason}
 	}
-	// Even successful import stdout is runtime-controlled; do not expose it as
-	// a version string. Availability and proxy presence are sufficient here.
-	return core.ProviderStatus{Name: p.Name(), Available: true, Capabilities: p.Capabilities(), Reason: "local Python package available"}
+	// Import stdout is runtime-controlled. Show it only when it looks like a
+	// version string, so nothing else from the runtime reaches status output.
+	version := strings.TrimSpace(stdout.String())
+	if !scraplingVersionPattern.MatchString(version) {
+		version = "unknown"
+	}
+	return core.ProviderStatus{Name: p.Name(), Available: true, Capabilities: p.Capabilities(), Reason: "local Python package " + version}
 }
 
 const extractScript = `
