@@ -19,6 +19,8 @@ import (
 // provider installation, DNS lookup, browser, or network request is involved.
 func syntheticScrapling(t *testing.T, page map[string]any) Provider {
 	t.Helper()
+	// An explicit proxy exported by the developer must not reach ordinary fixtures.
+	t.Setenv("NOLE_SCRAPLING_PROXY", "")
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip("python3 is required to execute the embedded script")
@@ -28,7 +30,7 @@ func syntheticScrapling(t *testing.T, page map[string]any) Provider {
 	if err := os.Mkdir(pkg, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pkg, "__init__.py"), []byte("__version__ = 'test'\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(pkg, "__init__.py"), []byte("__version__ = '9.9.9'\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	module := `import json, os
@@ -45,6 +47,8 @@ class Fetcher:
         with open(os.environ['NOLE_TEST_PAGE']) as f:
             page = json.load(f)
         page.setdefault('url', url)
+        if page.pop('as_bytes', False):
+            page['html_content'] = page['html_content'].encode()
         return Page(**page)
 `
 	if err := os.WriteFile(filepath.Join(pkg, "fetchers.py"), []byte(module), 0o600); err != nil {
@@ -103,6 +107,7 @@ func TestScraplingNoscriptClassification(t *testing.T) {
 		{"title only", "<title>" + title + "</title>" + notice, ""},
 		{"no visible text", notice, ""},
 		{"article with notice", "<title>" + title + "</title>" + notice + "<p>Useful article.</p>", title + "\nUseful article."},
+		{"notice split across paragraphs", "<title>" + title + "</title><noscript><p>Enable JavaScript and cookies</p><p>to continue</p></noscript>", ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			p := syntheticScrapling(t, map[string]any{"status": 200, "title": title, "html_content": tt.html})
@@ -115,6 +120,15 @@ func TestScraplingNoscriptClassification(t *testing.T) {
 				t.Fatal("expected article content without the noscript notice")
 			}
 		})
+	}
+}
+
+func TestScraplingNoscriptClassificationBytesBody(t *testing.T) {
+	notice := "<noscript>Please enable JavaScript to continue.</noscript>"
+	p := syntheticScrapling(t, map[string]any{"status": 200, "html_content": notice, "as_bytes": true})
+	resp, err := p.Extract(context.Background(), core.ExtractRequest{URL: pubA})
+	if err == nil || err.Error() != "scrapling: bot_blocked" || resp.Content != "" {
+		t.Fatalf("expected payload-free bot_blocked failure for a bytes body, got content %q err %v", resp.Content, err)
 	}
 }
 

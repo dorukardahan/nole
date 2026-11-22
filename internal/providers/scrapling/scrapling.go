@@ -168,7 +168,8 @@ func (p Provider) subprocessEnv() []string {
 		key, _, _ := strings.Cut(entry, "=")
 		switch strings.ToLower(key) {
 		case "nole_scrapling_proxy", "firecrawl_api_key", "brave_api_key",
-			"brave_search_api_key", "tavily_api_key", "tinyfish_api_key":
+			"brave_search_api_key", "tavily_api_key", "tinyfish_api_key",
+			"openclaw_gateway_token":
 			continue
 		case "http_proxy", "https_proxy", "all_proxy", "no_proxy":
 			if p.proxy != "" {
@@ -320,7 +321,7 @@ func (p Provider) execHop(ctx context.Context, url, format string) (hopOutput, e
 	return out, nil
 }
 
-var scraplingVersionPattern = regexp.MustCompile(`^[0-9A-Za-z.+-]{1,32}$`)
+var scraplingVersionPattern = regexp.MustCompile(`^[0-9]{1,4}(\.[0-9]{1,4}){1,2}([.+-]?[A-Za-z][0-9A-Za-z]{0,15})?$`)
 
 func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
 	// Report proxy presence only when one is set, so status and route-trace text
@@ -508,6 +509,7 @@ class TextExtractor(HTMLParser):
             self.skip += 1
         if tag in self.block_tags:
             self.parts.append('\n')
+            self.noscript_break()
     def handle_endtag(self, tag):
         tag = tag.lower()
         if tag in self.skip_tags and self.skip:
@@ -516,6 +518,10 @@ class TextExtractor(HTMLParser):
             self.in_noscript = False
         if tag in self.block_tags:
             self.parts.append('\n')
+            self.noscript_break()
+    def noscript_break(self):
+        if self.in_noscript and self.skip == 1 and len(self.noscript) < 2048:
+            self.noscript.extend(b'\n')
     def handle_data(self, data):
         if not self.skip:
             self.parts.append(data)
@@ -534,6 +540,8 @@ if content is None:
     html = first_attr(page, ['html_content', 'html', 'body'])
     if html is None:
         html = str(page)
+    if isinstance(html, (bytes, bytearray)):
+        html = bytes(html).decode('utf-8', errors='replace')
     parser = TextExtractor()
     parser.feed(str(html))
     content = parser.text()

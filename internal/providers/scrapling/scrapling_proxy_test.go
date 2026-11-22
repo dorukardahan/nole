@@ -29,7 +29,12 @@ func seedAmbientProxy(t *testing.T) {
 // Reuse the prerequisite's offline Python package, executing the real script.
 func proxyFixture(t *testing.T, expectedProxy string) Provider {
 	t.Helper()
+	// syntheticScrapling clears any exported proxy; restore the test's own setting
+	// and build the provider from it.
+	configured := os.Getenv("NOLE_SCRAPLING_PROXY")
 	p := syntheticScrapling(t, map[string]any{})
+	t.Setenv("NOLE_SCRAPLING_PROXY", configured)
+	p = New(WithPython(p.python), WithTimeout(p.timeout))
 	t.Setenv("NOLE_TEST_PROXY_SHA256", fmt.Sprintf("%x", sha256.Sum256([]byte(expectedProxy))))
 	module := `import hashlib, json, os, sys
 from types import SimpleNamespace
@@ -37,7 +42,8 @@ from types import SimpleNamespace
 import_record = os.environ.get('NOLE_TEST_IMPORT_RECORD')
 if import_record:
     watched = {'nole_scrapling_proxy', 'firecrawl_api_key', 'brave_api_key',
-               'brave_search_api_key', 'tavily_api_key', 'tinyfish_api_key'}
+               'brave_search_api_key', 'tavily_api_key', 'tinyfish_api_key',
+               'openclaw_gateway_token'}
     names = sorted({key.lower() for key in os.environ if key.lower() in watched})
     with open(import_record, 'a') as f:
         f.write(json.dumps(names) + '\n')
@@ -147,8 +153,12 @@ func TestScraplingChildEnvironmentsExcludeProviderCredentials(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("nole_scrapling_proxy", testProxy)
 			t.Setenv("NOLE_SCRAPLING_PROXY", tt.proxy)
-			for _, name := range []string{"FIRECRAWL_API_KEY", "brave_api_key", "BRAVE_SEARCH_API_KEY", "tavily_api_key", "TinyFish_Api_Key"} {
+			for _, name := range []string{"FIRECRAWL_API_KEY", "brave_api_key", "BRAVE_SEARCH_API_KEY", "tavily_api_key", "TinyFish_Api_Key", "OPENCLAW_GATEWAY_TOKEN"} {
 				t.Setenv(name, "synthetic-provider-key")
+			}
+			// Seed every ambient proxy name, so the fixture never sees a developer's real proxy.
+			for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy"} {
+				t.Setenv(name, "ambient-fixture")
 			}
 			p := proxyFixture(t, tt.proxy)
 			for _, operation := range []string{"extract", "status"} {
@@ -229,7 +239,7 @@ func TestScraplingProxyAbsentPreservesEnvironment(t *testing.T) {
 		t.Fatal("absent setting changed inherited behavior")
 	}
 	// With nothing set, status text must stay exactly as in v1.11.1.
-	if reason := p.Status(context.Background()).Reason; reason != "local Python package test" {
+	if reason := p.Status(context.Background()).Reason; reason != "local Python package 9.9.9" {
 		t.Fatalf("unset proxy changed status reason: %q", reason)
 	}
 }
@@ -239,6 +249,11 @@ func TestScraplingStatusVersionIsBounded(t *testing.T) {
 	pkg := filepath.Join(os.Getenv("PYTHONPATH"), "scrapling", "__init__.py")
 	for _, tc := range []struct{ version, want string }{
 		{"0.3.7", "local Python package 0.3.7"},
+		{"0.3.7rc1", "local Python package 0.3.7rc1"},
+		{"1.0.0.post1", "local Python package 1.0.0.post1"},
+		{"internal-host", "local Python package unknown"},
+		{"10.0.0.1", "local Python package unknown"},
+		{"test", "local Python package unknown"},
 		{"", "local Python package unknown"},
 		{"x" + strings.Repeat("y", 40), "local Python package unknown"},
 		{"1.0 http://10.0.0.1/secret", "local Python package unknown"},
