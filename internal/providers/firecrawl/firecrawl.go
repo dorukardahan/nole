@@ -18,13 +18,14 @@ import (
 )
 
 type Provider struct {
-	apiKey         string
-	baseURL        string
-	httpClient     *http.Client
-	breaker        *providerhttp.Breaker
-	openClawCLI    string
-	openClawMode   OpenClawBridgeMode
-	openClawRunner OpenClawCommandRunner
+	apiKey          string
+	baseURL         string
+	httpClient      *http.Client
+	breaker         *providerhttp.Breaker
+	openClawCLI     string
+	openClawMode    OpenClawBridgeMode
+	openClawAgentID string
+	openClawRunner  OpenClawCommandRunner
 }
 
 type Option func(*Provider)

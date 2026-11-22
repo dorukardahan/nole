@@ -81,7 +81,7 @@ See `docs/PROVIDER-KEYS.md` for provider-by-provider setup and overage cautions.
 
 Prerequisites:
 
-- Go 1.25.13+ for building from source (matches the `go 1.25.13` directive in `go.mod`).
+- Go 1.26.11+ for building from source (matches the `go 1.26.11` directive in `go.mod`).
 - Optional provider keys for Brave, Tavily and Firecrawl. `TINYFISH_API_KEY` is different: it enables TinyFish provider status and live Search + Fetch contract benchmarking, and [explicit route plans can model TinyFish](#providers), but the key alone does not add TinyFish to automatic runtime routes.
 - Optional Python 3.10+ runtime for `nole setup --local-extract`, which prepares the local Scrapling extraction fallback.
 - No provider key is required for Firecrawl search + extract in keyless API mode (subject to Firecrawl's service availability and limits; `FIRECRAWL_API_KEY` remains optional for account-backed use), the deterministic benchmark, the DDGS, Wikipedia, or arXiv keyless searches, the keyless httpfetch extraction backstop, or a configured local Scrapling fallback.
@@ -162,8 +162,9 @@ The response cache keys the canonical option set, so a localized/freshness/safe
 search request cannot collide with the same query using default options.
 
 Provider support is intentionally conservative: Brave forwards all five fields on
-the Search-plan Web/News endpoints; Tavily and Firecrawl forward only `country`
-plus a freshness/time-window mapping; TinyFish forwards `country`, `search_lang`
+the Search-plan Web/News endpoints; Tavily maps `country` to its supported
+general-topic country names and forwards `search_lang` as a language preference
+plus a freshness/time-window mapping; Firecrawl forwards `country` and freshness; TinyFish forwards `country`, `search_lang`
 and `freshness` while mapping task to its documented `domain_type`; DDGS, Wikipedia, arXiv and extract-only
 providers ignore unsupported options. Nólë does not emulate unsupported behavior,
 fabricate rankings, or use Brave Answers/chat-completions for this surface.

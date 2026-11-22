@@ -52,7 +52,7 @@ var byokProviders = []BYOKProvider{
 		Name:    "tavily",
 		EnvVars: []string{"TAVILY_API_KEY"},
 		// FreeQuota is a CALL floor, not the 1000-credit grant: Tavily meters in
-		// variable credits (basic search 1, advanced search/extract 2) while the
+		// variable credits (basic search 1, advanced search 2) while the
 		// ledger debits 1 per call, so the never-overcount floor is 1000 credits /
 		// 2 worst-case-credits-per-call = 500 calls. Undercounting basic-only usage
 		// is the safe direction; the drift signal catches the rest.
@@ -61,11 +61,11 @@ var byokProviders = []BYOKProvider{
 		SupportsSearch:  true,
 		SupportsExtract: true,
 		SignupURL:       "https://tavily.com",
-		FreeTierNote:    "~1000 API credits/month on the free Researcher plan, no credit card required. Credits are variable-cost (basic search 1, advanced search/extract 2), so Nólë seeds a 500-call fail-safe floor (1000 credits / 2 worst-case per call) and counts its own calls.",
+		FreeTierNote:    "~1000 API credits/month on the free Researcher plan, no credit card required. Credits are variable-cost (basic search 1, advanced search 2), so Nólë seeds a 500-call fail-safe floor (1000 credits / 2 worst-case per call) and counts its own calls.",
 		EnvExample:      "export TAVILY_API_KEY=tvly-...",
 		Unlocks:         []string{"url_extraction", "semantic_search_quality"},
 		MeteringModel:   "credit-based",
-		RateLimitNote:   "credit-based: basic search ~1 credit, advanced search/extract ~2 (Nólë uses advanced depth only for research-task queries); Nólë debits 1 per call against a 500-call floor, so heavy advanced use can still exhaust the dashboard before the local count - verify your dashboard. Free dev tier ~100 RPM, not tracked.",
+		RateLimitNote:   "credit-based: basic search ~1 credit, advanced search ~2; basic/advanced extract 1/2 credits per five successful URLs (Nólë uses advanced depth only for research-task queries); Nólë debits 1 per call against a 500-call floor, shared account usage can exhaust the dashboard independently - verify your dashboard. Free dev tier ~100 RPM, not tracked.",
 		EstimateOnly:    true,
 	},
 	{
@@ -86,7 +86,7 @@ var byokProviders = []BYOKProvider{
 		EnvExample:      "export FIRECRAWL_API_KEY=fc-...",
 		Unlocks:         []string{"url_extraction"},
 		MeteringModel:   "credit-based",
-		RateLimitNote:   "keyless mode may be shared/anonymous and can rate-limit independently of any local ledger; Nólë reports provider 429 drift but does not pretend to know remote balance. Keyed mode is credit-based: scrape ~1 credit/page, search ~2 credits per 10 results (up to 4 for a 20-result call; Nólë never issues the 5-credit Enhanced Mode); Nólë debits 1 per call against a 250-call floor. Free-tier rate limits /scrape 10 rpm, /search 5 rpm, not tracked.",
+		RateLimitNote:   "keyless mode may be shared/anonymous and can rate-limit independently of any local ledger; Nólë reports provider 429 drift but does not pretend to know remote balance. Keyed mode is credit-based: scrape ~1 credit/page, search ~2 credits per 10 results (up to 4 for a 20-result call; Nólë never issues the 5-credit Enhanced Mode); Nólë debits 1 per call against a 250-call floor. Free-tier rate limits /scrape 10 rpm, /search 10 rpm (provider pricing checked 2026-09-09), not tracked.",
 		EstimateOnly:    true,
 	},
 	{

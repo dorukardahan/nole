@@ -70,6 +70,7 @@ type tavilySearchRequest struct {
 	Topic     string `json:"topic,omitempty"`
 	TimeRange string `json:"time_range,omitempty"`
 	Country   string `json:"country,omitempty"`
+	Language  string `json:"language,omitempty"`
 }
 
 type tavilySearchResponse struct {
@@ -117,7 +118,7 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 		MaxResults:    limit,
 		SearchDepth:   depth,
 		IncludeAnswer: false,
-		Country:       req.Options.Country,
+		Language:      req.Options.SearchLang,
 	}
 	// Task-aware freshness (allowlist): recency tasks get a time window by
 	// default; explicit SearchOptions.Freshness overrides the task default and may
@@ -137,6 +138,11 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 			body.Topic = "news"
 			body.TimeRange = "month"
 		}
+	}
+	// Country is a ranking boost supported only for general-topic searches.
+	// Nólë accepts ISO codes; Tavily expects its documented country names.
+	if body.Topic == "" || body.Topic == "general" {
+		body.Country = tavilyCountries[strings.ToLower(strings.TrimSpace(req.Options.Country))]
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {

@@ -2,6 +2,8 @@
 
 Status: verified (CLI MCP manager). Live evidence in `docs/CLIENTS/LIVE-VERIFICATION.md`.
 
+2026-09-09 recheck: Claude Code 2.1.266 accepted isolated native registration and reported all six tools connected through its headless control protocol. Tool invocation through this exact version was not tested; the older full-verification receipt below remains historical. See [the dated alignment record](../plans/2026-09-09-platform-provider-alignment.md).
+
 Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. Claude Code can use Nólë through MCP stdio by launching `nole mcp` (or an env-sourcing wrapper around it).
 
 ## What is verified
