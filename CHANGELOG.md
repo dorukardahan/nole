@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-11-13
+
+This backward-compatible PATCH release rebuilds Nólë with a supported Go
+toolchain and a patched `golang.org/x/net`. CLI/MCP output contracts,
+provider behaviour and defaults are unchanged.
+
+### Security
+
+- Source builds, CI and release builds now require Go 1.26.11, up from 1.25.13. The Go 1.25 line no longer gets security fixes. `govulncheck` reported reachable standard-library issues that are fixed only on newer lines:
+  - `net/http` GO-2026-6859, fixed in 1.26.11;
+  - `crypto/x509` GO-2026-6809, fixed in 1.26.10;
+  - `net/http` GO-2026-6617, fixed in 1.26.9.
+- `golang.org/x/net` moves from v0.57.0 to v0.62.0. This fixes GO-2026-6860 and GO-2026-6617.
+
+## [1.11.0] - 2026-09-09
+
+This backward-compatible MINOR release aligns provider requests and adds an
+explicit OpenClaw host-agent selector. CLI/MCP output contracts, free-first/BYOK
+policy and default provider ordering remain unchanged.
+
+### Fixed
+
+- Map two-letter Tavily country options to supported API country names and omit
+  that optional boost for news/factcheck, where Tavily does not support it.
+- Preserve TinyFish `login_required` and `content_too_large` failure codes without
+  exposing provider payloads; unknown codes remain sanitized.
+
+### Added
+
+- Allow an explicit `NOLE_OPENCLAW_AGENT_ID` for multi-agent host search/fetch
+  calls; unset values retain host selection and generic clients are unchanged.
+- Forward an explicit search language preference to Tavily without changing
+  default requests, search depth, strict filtering or provider order.
+
+### Documentation
+
+- Refresh provider metering notes and distinguish current stable client source
+  compatibility from historical and isolated real-client evidence.
+
+### Verification
+
+- Hermes v2026.9.7 / 0.21.1 (custom stable-based deployment): the service-matched
+  native MCP runtime passed isolated setup, six-tool discovery and real
+  provider-status/search/extract calls for installed Nólë 1.10.0 and the PR
+  candidate separately. This was not a model-driven conversation.
+- OpenClaw 2026.9.3: native discovery and MCP calls passed on installed Nólë
+  1.10.0; the candidate host bridge passed real Gateway fetch through an isolated
+  relay with explicit agent context. This was not a deployed candidate wrapper,
+  a new production setup round-trip or an agent-driven conversation.
+- Codex 0.153.4 passed isolated setup/discovery/tool dispatch. Claude Code
+  2.1.266 passed discovery only; Claude tool dispatch remains unverified.
+- Tavily's bounded live requests passed; TinyFish remains fixture-tested only.
+  These samples do not establish general speed or ranking improvements.
+
+See [the dated evidence record](docs/plans/2026-09-09-platform-provider-alignment.md)
+for artifact identities, provider coverage and remaining verification limits.
+
 ## [1.10.0] - 2026-08-17
 
 Theme: **smaller MCP surfaces + explicit experimental TinyFish integration.**
@@ -1531,7 +1588,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/dorukardahan/nole/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/dorukardahan/nole/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/dorukardahan/nole/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/dorukardahan/nole/compare/v1.8.0...v1.8.1

@@ -1,6 +1,6 @@
 # OpenClaw client
 
-Status: verified (OpenClaw Gateway/agent MCP path). The host bridge setup and current stable compatibility mode were live-checked on OpenClaw 2026.7.1; full keyless search waits for an OpenClaw release that exposes `firecrawl-free`.
+Status: verified (OpenClaw Gateway/agent MCP path). The historical bridge check used OpenClaw 2026.7.1. Source inspection on 2026-09-09 confirms that stable 2026.9.3 advertises `firecrawl-free`; Nólë already detects it. The later 2026-09-09 remote follow-up verified saved-entry discovery and native MCP runtime calls on 2026.9.3 against installed Nólë 1.10.0; see [the live receipt](LIVE-VERIFICATION.md#2026-09-09-remote-installed-runtime-follow-up). It did not deploy the candidate or run an agent conversation.
 
 Nólë is a local, free-first/BYOK web search and page extraction router for AI agents and coding CLI tools. OpenClaw can use Nólë through its saved outbound MCP server registry and Gateway-backed agent runtime.
 
@@ -44,12 +44,11 @@ When this wrapper is active, Nólë delegates supported host search/fetch operat
 OpenClaw's authenticated `gateway call tools.invoke` RPC. The OpenClaw CLI
 resolves Gateway authentication from OpenClaw's own configuration, so Nólë does
 not copy or persist a Gateway token. Do not ask the user for
-`FIRECRAWL_API_KEY`. Current stable OpenClaw releases expose `web_fetch` with
-keyless Firecrawl fallback but still key-gate Firecrawl search, so Nólë
-advertises only extract for that host route and sends search to its existing
-fallbacks. Once the
-plugin advertises `firecrawl-free`, rerunning setup automatically enables the
-full search + extract bridge.
+`FIRECRAWL_API_KEY`. OpenClaw 2026.9.3 advertises both keyed `firecrawl` and opt-in keyless
+`firecrawl-free` search. Rerunning setup detects the latter and enables the full
+search + extract bridge. Older plugins without that capability retain fetch-only
+mode and existing search fallbacks. Gateway policy and upstream starter-tier
+limits still apply; plugin capability alone does not prove a successful call.
 
 This behavior is intentionally OpenClaw-only. The generic `nole` binary,
 `nole-mcp`, and every other client continue to use Nólë's existing direct
@@ -77,7 +76,7 @@ openclaw mcp show nole --json
 
 ## 2026-07-17 Host Bridge Verification
 
-A disposable OpenClaw 2026.7.1 runtime and HOME verified the current stable path without touching an existing OpenClaw profile:
+A disposable OpenClaw 2026.7.1 runtime and HOME verified the then-stable path without touching an existing OpenClaw profile:
 
 - `nole setup --openclaw` installed and pinned the official Firecrawl plugin, enabled it, configured `web_fetch`, registered the dedicated wrapper and selected `fetch-only` because the stable plugin advertised `firecrawl` rather than `firecrawl-free` for search.
 - A direct authenticated `tools.invoke web_search` probe confirmed that stable `firecrawl` search still requires `FIRECRAWL_API_KEY`; Nólë therefore does not advertise that search capability or pretend it is keyless.
@@ -111,6 +110,12 @@ The 2026-05-20 OpenClaw run verified:
 - Search smoke through OpenClaw: query `Go net/http Client Timeout documentation`, task `docs`, limit `1`, provider `ddgs`, result URL `https://pkg.go.dev/net/http`.
 - Cost policy: `free-first`; paid spend: none.
 - Secret-safety: no provider key values, bearer tokens, auth headers, raw provider payloads, private URLs or machine-specific absolute paths are recorded.
+
+## Explicit host agent context
+
+For multi-agent OpenClaw installations, set `NOLE_OPENCLAW_AGENT_ID` to the intended existing agent ID in the dedicated Nólë process environment. The host bridge forwards it as `tools.invoke.agentId` for both search and fetch. It does not select an agent automatically, alter host permissions, or retry under a different agent. An unset value preserves OpenClaw's own selection and ambiguity errors. Generic Nólë clients ignore this setting.
+
+This is needed when OpenClaw 2026.9.3 rejects an ownerless `main` session in a multi-agent configuration. Choose the agent whose existing tool policy should govern the call. The generated wrapper inherits the setting; no credential belongs in this value. Applying this setting to an existing installation is a separate operator configuration step, not part of the repository verification.
 
 ## Troubleshooting
 

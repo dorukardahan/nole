@@ -195,7 +195,7 @@ func newSetupCommand() *cobra.Command {
 			fmt.Fprintf(out, "\n%d agent(s) configured.\n", configured)
 			if openclaw {
 				fmt.Fprintln(out, "OpenClaw bridge requires no Firecrawl key for this MCP entry.")
-				fmt.Fprintln(out, "When OpenClaw exposes firecrawl-free, Nólë delegates Firecrawl search and host fetch; current stable releases use OpenClaw web_fetch with keyless Firecrawl fallback and keep Nólë's existing search fallbacks.")
+				fmt.Fprintln(out, "The installed plugin's capabilities select the bridge: firecrawl-free enables Firecrawl search and host fetch; plugins without it use OpenClaw web_fetch with keyless Firecrawl fallback and keep Nólë's existing search fallbacks.")
 				fmt.Fprintln(out, "The OpenClaw-only mode lives in nole-mcp-openclaw; generic Nólë CLI and other MCP clients keep the existing direct Firecrawl API/BYOK behavior.")
 				fmt.Fprintln(out, "Other provider keys remain OPTIONAL:")
 				fmt.Fprintln(out, "  export BRAVE_API_KEY=... or BRAVE_SEARCH_API_KEY=...")

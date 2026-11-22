@@ -373,7 +373,7 @@ func allowlistedFetchErrorCode(upstream fetchError) string {
 		code = strings.ToLower(strings.TrimSpace(upstream.ErrorCode))
 	}
 	switch code {
-	case "target_http_error", "page_not_found", "target_unreachable", "timeout", "bot_blocked", "empty_content", "invalid_url", "invalid_redirect_url", "proxy_error", "conditional_unsupported", "selector_not_matched", "selector_unsupported":
+	case "target_http_error", "page_not_found", "target_unreachable", "timeout", "bot_blocked", "empty_content", "login_required", "content_too_large", "invalid_url", "invalid_redirect_url", "proxy_error", "conditional_unsupported", "selector_not_matched", "selector_unsupported":
 		return code
 	default:
 		return "provider_error"
