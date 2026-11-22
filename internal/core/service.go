@@ -49,6 +49,9 @@ type ServiceOption func(*Service)
 type ProviderStatusOptions struct {
 	LiveUsage  bool
 	SyncLedger bool
+	// DeepProbe is for explicit diagnostics; routine status must not launch
+	// optional local runtimes just to build a health response or setup tip.
+	DeepProbe bool
 }
 
 const (
@@ -464,7 +467,7 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 		}
 		provider := candidate.Provider
 		decision := candidate.Decision
-		if status := provider.Status(ctx); !status.Available {
+		if status := providerAvailability(ctx, provider); !status.Available {
 			reason := status.Reason
 			if reason == "" {
 				reason = "provider_unavailable"
@@ -534,6 +537,17 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 	return resp, NoFreeQuotaError{Task: TaskExtract, Provider: route}
 }
 
+// Optional local runtime diagnostics can be expensive. Reuse their cheap
+// extraction availability for routine status, health and setup suggestions.
+func providerAvailability(ctx context.Context, provider Provider) ProviderStatus {
+	if local, ok := provider.(interface {
+		ExtractionStatus(context.Context) ProviderStatus
+	}); ok {
+		return local.ExtractionStatus(ctx)
+	}
+	return provider.Status(ctx)
+}
+
 func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
 	return s.ProviderStatusWithOptions(ctx, ProviderStatusOptions{})
 }
@@ -562,7 +576,12 @@ func (s *Service) ProviderStatusWithOptions(ctx context.Context, opts ProviderSt
 	// pitched as a disabled-feature unlock (false) or a fidelity upgrade (true).
 	extractAvailable := false
 	for _, provider := range providers {
-		status := provider.Status(ctx) // called once per provider
+		var status ProviderStatus
+		if opts.DeepProbe {
+			status = provider.Status(ctx)
+		} else {
+			status = providerAvailability(ctx, provider)
+		}
 		decision := s.ledger.Decide(provider.Name())
 		strategy, reason, canQueryUsage := providerUsageStrategy(provider, decision)
 		status.RemoteUsageStrategy = strategy

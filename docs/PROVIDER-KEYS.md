@@ -423,15 +423,24 @@ The browser stage defaults to 60 seconds; the total provider budget defaults to
 durations (for example `60s` or `2m`). The total budget always caps the browser
 stage, including waiting for the single browser slot per Nólë process. Deadlines
 also apply to detached/coalesced service work. Fresh temporary profiles isolate
-sessions from authenticated user browsers; process groups and profiles are
-cleaned up on completion or timeout. Browser mode currently requires Unix
+sessions from authenticated user browsers. On timeout the local driver receives
+SIGTERM to close its separately grouped Chromium process, with up to one second
+before force-killing the driver group. Profile removal retries/rechecks for up to
+about one second while retaining the browser slot. This bounded cleanup can add
+a short tail after the extraction deadline; cleanup failures are reported. Browser mode currently requires Unix
 process-group support (Linux/macOS); other platforms report it unavailable while
 plain Fetcher remains supported.
 
-Doctor checks Fetcher imports in default mode. In browser modes it also attempts
+Doctor and explicit provider-status commands/endpoints check Fetcher imports in
+default mode. In browser modes they also attempt
 a local browser launch and guard setup, without navigating to an external site,
-within a five-second readiness budget. `auto` remains available when Fetcher
-works but the browser is unavailable; `stealthy` reports unavailable. This is not
+within a five-second overall status budget. Normal extraction checks only local
+configuration and imports, as do routine health checks, search setup tips and
+config dumps. Extraction launches a browser only for the actual browser
+attempt, under the extraction deadline. In explicit diagnostics, `auto` remains
+available when Fetcher works but the browser is unavailable; `stealthy` reports
+unavailable. Routine checks report import/configuration availability, with
+browser launch failures handled during extraction. This is not
 proxy connectivity or live challenge-solving verification. Extract debug traces
 include fixed `mode` and, when applicable, `escalation_reason: bot_blocked` fields.
 Recognized challenges are never accepted or cached as useful rendered content;

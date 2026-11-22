@@ -122,7 +122,7 @@ func newDoctorCommand() *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), "- stdio: logs must go to stderr; stdout reserved for MCP protocol")
 
 			svc := defaultService()
-			providerResp := svc.ProviderStatus(context.Background())
+			providerResp := svc.ProviderStatusWithOptions(context.Background(), core.ProviderStatusOptions{DeepProbe: true})
 			statuses := providerResp.Providers
 
 			available := 0
@@ -260,7 +260,7 @@ func newDoctorCommand() *cobra.Command {
 // human path AFTER writing the report, so exit-code behavior is identical.
 func runDoctorJSON(cmd *cobra.Command, checkMCP, checkUpdates bool) error {
 	svc := defaultService()
-	providerResp := svc.ProviderStatus(cmd.Context())
+	providerResp := svc.ProviderStatusWithOptions(cmd.Context(), core.ProviderStatusOptions{DeepProbe: true})
 	statuses := providerResp.Providers
 
 	available := 0

@@ -49,7 +49,7 @@ func remainingMilliseconds(ctx context.Context, limit time.Duration) int64 {
 	return max(1, limit.Milliseconds())
 }
 
-func browserSession(ctx context.Context) (string, func(), error) {
+func browserSession(ctx context.Context) (string, func() error, error) {
 	if !browserProcessSupported {
 		return "", nil, errors.New("scrapling: browser process cleanup unavailable on this platform")
 	}
@@ -63,29 +63,55 @@ func browserSession(ctx context.Context) (string, func(), error) {
 		<-browserSlot
 		return "", nil, errors.New("scrapling: cannot create isolated browser profile")
 	}
-	return profile, func() {
-		_ = os.RemoveAll(profile)
-		<-browserSlot
+	return profile, func() error {
+		defer func() { <-browserSlot }()
+		return removeBrowserProfile(profile)
 	}, nil
 }
 
-func (p Provider) runBrowser(ctx context.Context, url, format string) (hopOutput, error) {
+func removeBrowserProfile(profile string) error {
+	// Chromium can flush preferences after Python exits. Keep the slot while
+	// removing/rechecking, and retry transient directory-not-empty failures.
+	deadline := time.Now().Add(time.Second)
+	for {
+		if err := os.RemoveAll(profile); err == nil {
+			time.Sleep(100 * time.Millisecond)
+			if _, err := os.Stat(profile); os.IsNotExist(err) {
+				return nil
+			}
+		}
+		if time.Now().After(deadline) {
+			return errors.New("scrapling: browser profile cleanup failed")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+func (p Provider) runBrowser(ctx context.Context, url, format string) (out hopOutput, resultErr error) {
 	ctx, cancel := context.WithTimeout(ctx, p.browserTimeout)
 	defer cancel()
 	profile, cleanup, err := browserSession(ctx)
 	if err != nil {
 		return hopOutput{}, err
 	}
-	defer cleanup()
+	defer func() {
+		if err := cleanup(); err != nil {
+			out, resultErr = hopOutput{}, err
+		}
+	}()
 	return p.execMode(ctx, url, format, "stealthy", profile)
 }
 
-func (p Provider) browserReadiness(ctx context.Context) (bool, string) {
+func (p Provider) browserReadiness(ctx context.Context) (ready bool, reason string) {
 	profile, cleanup, err := browserSession(ctx)
 	if err != nil {
 		return false, "browser unavailable: process support or readiness deadline"
 	}
-	defer cleanup()
+	defer func() {
+		if err := cleanup(); err != nil {
+			ready, reason = false, err.Error()
+		}
+	}()
 	payload, _ := json.Marshal(map[string]any{"proxy": p.proxy, "profile": profile})
 	cmd := exec.CommandContext(ctx, p.python, "-c", browserRuntimeScript+browserStatusScript)
 	cmd.Env = p.subprocessEnv()

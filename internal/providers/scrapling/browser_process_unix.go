@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -14,8 +15,12 @@ const browserProcessSupported = true
 
 func runBrowserCommand(cmd *exec.Cmd) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	var canceled atomic.Bool
 	cmd.Cancel = func() error {
-		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		canceled.Store(true)
+		// Patchright owns Chromium in a separate process group. Give its Node
+		// driver the supported SIGTERM cleanup path before killing the driver.
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		if errors.Is(err, syscall.ESRCH) {
 			return os.ErrProcessDone
 		}
@@ -27,5 +32,15 @@ func runBrowserCommand(cmd *exec.Cmd) error {
 		return err
 	}
 	defer syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	return cmd.Wait()
+	err := cmd.Wait()
+	if canceled.Load() {
+		deadline := time.Now().Add(time.Second)
+		for time.Now().Before(deadline) {
+			if errors.Is(syscall.Kill(-cmd.Process.Pid, 0), syscall.ESRCH) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	return err
 }

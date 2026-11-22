@@ -217,7 +217,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (resp co
 		mode = "stealthy"
 	}
 	defer func() {
-		if resultErr != nil && mode == "stealthy" {
+		if resultErr != nil && (mode == "stealthy" || p.mode == "auto") {
 			resp.Metadata = map[string]string{"mode": mode}
 			if escalation != "" {
 				resp.Metadata["escalation_reason"] = escalation
@@ -316,7 +316,7 @@ func responseError(out hopOutput) error {
 	case "browser_proxy_unsupported":
 		return errors.New("scrapling: configured proxy is unsupported by browser mode")
 	case "browser_guard_failed", "browser_fetch_failed":
-		return errors.New("scrapling: browser extraction failed")
+		return errors.New("scrapling: browser extraction failed; check optional browser installation and runtime")
 	case "":
 		return nil
 	default:
@@ -393,9 +393,17 @@ func (p Provider) execMode(ctx context.Context, url, format, mode, profile strin
 
 var scraplingVersionPattern = regexp.MustCompile(`^[0-9]{1,4}(\.[0-9]{1,4}){1,2}([.+-]?[A-Za-z][0-9A-Za-z]{0,15})?$`)
 
-func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
-	// Report proxy presence only when one is set, so status and route-trace text
-	// for users who configure nothing stays exactly as in earlier releases.
+func (p Provider) Status(ctx context.Context) core.ProviderStatus {
+	return p.status(ctx, true)
+}
+
+// ExtractionStatus checks configuration/imports only. Doctor/provider_status
+// retain the deep Status probe; Extract owns its one actual browser attempt.
+func (p Provider) ExtractionStatus(ctx context.Context) core.ProviderStatus {
+	return p.status(ctx, false)
+}
+
+func (p Provider) status(ctx context.Context, probeBrowser bool) (status core.ProviderStatus) {
 	defer func() {
 		if p.proxy != "" {
 			status.Reason += "; proxy: configured"
@@ -412,11 +420,15 @@ func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if p.mode == "stealthy" {
+	if p.mode == "stealthy" && probeBrowser {
 		ready, reason := p.browserReadiness(ctx)
 		return core.ProviderStatus{Name: p.Name(), Available: ready, Capabilities: p.Capabilities(), Reason: reason}
 	}
-	cmd := exec.CommandContext(ctx, p.python, "-c", `import scrapling; from scrapling.fetchers import Fetcher; print(getattr(scrapling, "__version__", "unknown"))`)
+	importScript := `import scrapling; from scrapling.fetchers import Fetcher`
+	if p.mode == "stealthy" {
+		importScript = `import scrapling; from scrapling.fetchers import StealthyFetcher`
+	}
+	cmd := exec.CommandContext(ctx, p.python, "-c", importScript)
 	cmd.Env = p.subprocessEnv()
 	cmd.WaitDelay = subprocessWaitDelay
 	stdout := newCappedBuffer(maxStdoutBytes)
@@ -439,7 +451,17 @@ func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
 	if !scraplingVersionPattern.MatchString(version) {
 		version = "unknown"
 	}
-	return core.ProviderStatus{Name: p.Name(), Available: true, Capabilities: p.Capabilities(), Reason: "local Python package " + version}
+	reason := "local Python package " + version
+	if p.mode == "stealthy" {
+		reason = "browser package available; launch checked during extraction"
+	} else if p.mode == "auto" {
+		reason += "; mode: auto; browser not checked"
+		if probeBrowser {
+			_, browserReason := p.browserReadiness(ctx)
+			reason += "; " + browserReason
+		}
+	}
+	return core.ProviderStatus{Name: p.Name(), Available: true, Capabilities: p.Capabilities(), Reason: reason}
 }
 
 const extractScript = `

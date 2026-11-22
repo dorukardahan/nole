@@ -104,7 +104,7 @@ def browser_proxy(proxy):
             server += ":" + str(parsed.port)
         result = {"server": server}
         if parsed.username is not None:
-            result.update(username=unquote(parsed.username), password=unquote(parsed.password or ""))
+            result.update({"username": unquote(parsed.username), "password": unquote(parsed.password or "")})
         return result
     except Exception:
         raise BrowserProxyError() from None

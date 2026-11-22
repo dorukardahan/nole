@@ -183,7 +183,7 @@ func (h *httpHandler) buildMux() *http.ServeMux {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		resp := h.svc.ProviderStatus(r.Context())
+		resp := h.svc.ProviderStatusWithOptions(r.Context(), core.ProviderStatusOptions{DeepProbe: true})
 		h.logEncodeErr("/api/providers", json.NewEncoder(w).Encode(resp))
 	})
 
