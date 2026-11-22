@@ -47,6 +47,9 @@ const (
 	maxStderrBytes = 64 << 10 // 64 KiB
 )
 
+// Bound pipe draining even if a descendant keeps a subprocess pipe open.
+const subprocessWaitDelay = 2 * time.Second
+
 // cappedBuffer is an io.Writer that buffers at most max bytes. Once the cap is
 // exceeded it stops buffering and flags truncation; cmd.Run reports the write
 // error so callers can surface a clear "output too large" message instead of
@@ -291,6 +294,7 @@ func (p Provider) execHop(ctx context.Context, url, format string) (hopOutput, e
 
 	cmd := exec.CommandContext(ctx, p.python, "-c", extractScript)
 	cmd.Env = p.subprocessEnv()
+	cmd.WaitDelay = subprocessWaitDelay
 	cmd.Stdin = bytes.NewReader(stdin)
 	stdout := newCappedBuffer(maxStdoutBytes)
 	stderr := newCappedBuffer(maxStderrBytes)
@@ -333,6 +337,7 @@ func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, p.python, "-c", `import scrapling; from scrapling.fetchers import Fetcher; print(getattr(scrapling, "__version__", "unknown"))`)
 	cmd.Env = p.subprocessEnv()
+	cmd.WaitDelay = subprocessWaitDelay
 	stdout := newCappedBuffer(maxStdoutBytes)
 	stderr := newCappedBuffer(maxStderrBytes)
 	cmd.Stdout = stdout
