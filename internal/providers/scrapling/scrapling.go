@@ -250,6 +250,9 @@ func responseError(out hopOutput) error {
 	case "bot_blocked":
 		return fmt.Errorf("scrapling: %w", core.ErrBotBlocked)
 	case "rate_limited", "http_error":
+		// These are target-page statuses, not provider-account responses.
+		// Keep them payload-free without providerhttp.HTTPStatusError: its
+		// HTTPStatus method would count a target 429 as provider quota drift.
 		return fmt.Errorf("scrapling: %s (HTTP %d)", out.Failure, out.Status)
 	case "runtime_unavailable":
 		return errors.New("scrapling: fetcher runtime unavailable; install scrapling[fetchers]")
