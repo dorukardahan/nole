@@ -15,7 +15,7 @@ Default policy is `free-first`. Brave and Tavily remain BYOK-gated and are class
 | DDGS | none | Keyless fallback search, no counter | n/a | Keyless does not mean guaranteed availability, SLA or unlimited use. |
 | Wikipedia/MediaWiki | none | Keyless encyclopedic search, no counter | n/a | Reinforces `factcheck`/`people`/`academic` routing only (not a general fallback). Uses the official MediaWiki Action API with a descriptive `User-Agent` per Wikimedia policy. Keyless does not mean guaranteed availability or unlimited use. |
 | arXiv | none | Keyless academic search, no counter | n/a | Reinforces the `academic` route only (tried before the DDGS backstop; not a general fallback). Uses the keyless arXiv Atom query API (`https://export.arxiv.org/api/query`) with a descriptive `User-Agent`. Keyless does not mean guaranteed availability or unlimited use. |
-| Scrapling | `NOLE_SCRAPLING_PYTHON` | Local keyless extraction fallback, no counter | n/a | Prefer `nole setup --local-extract`, which creates an isolated venv and writes this variable locally. Nólë validates public URLs before calling it, but website terms and robots.txt remain the user's responsibility. |
+| Scrapling | `NOLE_SCRAPLING_PYTHON`, optional `NOLE_SCRAPLING_PROXY` | Local keyless extraction fallback, no counter | n/a | Prefer `nole setup --local-extract`, which creates an isolated venv and writes the Python setting locally. The optional proxy applies only to Scrapling; see its trust and fallback limits below. Website terms and robots.txt remain the user's responsibility. |
 | httpfetch | none | Keyless pure-Go extraction backstop, no counter | n/a | Always available, no setup. Last-resort `extract` fallback (after Scrapling and the keyed remotes). Pure stdlib HTTP fetch + HTML-to-text; runs **no JavaScript**, so it is weaker than Scrapling/Firecrawl on SPA/JS-rendered pages. SSRF-preflighted on every redirect hop. Keyless does not mean guaranteed availability or unlimited use. |
 
 The free-tier numbers above were rechecked on 2026-09-09 against [Brave pricing](https://brave.com/search/api/), [Tavily credits](https://docs.tavily.com/documentation/api-credits), and [Firecrawl pricing](https://www.firecrawl.dev/pricing). Tavily and keyed Firecrawl meter in variable credits while the ledger debits 1 per call, so each floor is credits ÷ the priciest call Nólë can issue: Tavily 1000 ÷ 2 (advanced search) = 500; keyed Firecrawl 1000 ÷ 4 (a 20-result search at 2 credits per 10 results) = 250. Firecrawl keyless mode is treated like other keyless-free providers: allowed under `free-first`, with upstream 429s surfaced through normal route errors/drift warnings rather than a fabricated local balance. This avoids over-reading remaining headroom; undercounting is the safe direction and the drift signal catches the rest. Tavily and Firecrawl also expose account usage endpoints, so Nólë can query sanitized remote usage and reconcile the local free-tier BYOK ledger to provider-reported usage before routed calls. Premium/paid provider usage is explicit observability only unless a separate paid-usage ledger policy is added. Brave Search exposes monthly remaining quota through `X-RateLimit-*` response headers rather than a separate non-consuming usage endpoint, so Nólë syncs Brave after a Brave response (including 429s). The BYOK floors are encoded in `internal/core/byok_metadata.go` as `byokProviders` (accessed via `core.BYOKProviders()` and `core.LookupBYOK()`); bump them only with sanitized evidence (provider dashboard screenshot or doc URL).
@@ -388,6 +388,51 @@ Notes:
 - The service validates public URLs before calling providers. Scrapling still performs a real HTTP request from the local machine, so respect site terms, robots.txt and rate limits.
 - Do not point `NOLE_SCRAPLING_PYTHON` at a shell snippet. It must be an executable Python path; wrappers should exec Python directly and keep secrets out of command lines.
 
+### Optional Scrapling proxy
+
+Set `NOLE_SCRAPLING_PROXY` to an operator-supplied proxy URL, for example
+`http://proxy.example:8080`. For GUI/service clients, add it locally to the env
+file sourced by your launcher (normally `~/.config/nole/.env`, mode `0600`).
+`nole setup --local-extract` does not provision a proxy. Do not paste real proxy
+credentials into chat, logs, or command-line arguments. URL userinfo can contain
+credentials; percent-encode reserved characters in the username and password.
+
+Plain Fetcher supports `http://`, `https://`, `socks4://`, `socks4a://`,
+`socks5://`, and `socks5h://` as permitted by the installed runtime. These schemes
+were exercised against local fixtures with Scrapling 0.5.1 and curl_cffi 0.17.0,
+including HTTP and SOCKS5h (`socks5h://`) authentication. `https://` describes TLS to the proxy;
+an `http://` proxy can also tunnel HTTPS targets. SOCKS4a and SOCKS5h delegate
+target hostname resolution to the proxy. Older/different runtimes may reject
+options; Nólë reports a fixed failure instead of retrying without the proxy.
+This setting adds no browser extraction mode or browser compatibility guarantee.
+
+When nonempty, the setting is passed privately through subprocess stdin as
+Fetcher’s `proxy=` argument. It overrides inherited `HTTP_PROXY`, `HTTPS_PROXY`,
+`ALL_PROXY`, and `NO_PROXY` (including lowercase forms) for the Scrapling child
+process. The parent environment and other providers are unaffected. When unset
+or blank, the existing inherited-runtime behavior is preserved: ambient proxy
+and bypass settings may still apply, so absence does not promise direct egress.
+Doctor/provider status reports only whether the explicit proxy is configured,
+not its address or credentials; this is not a connectivity test. A failing
+explicit proxy is never retried with direct egress within this adapter; runtime
+retries using the same proxy may still occur.
+
+The proxy is trusted operator configuration and may itself be local/private.
+Extraction targets remain untrusted public-web inputs: initial URLs and redirect
+targets still undergo Nólë’s public-target checks. The operator must trust the
+proxy to restrict its actual destination connections to public web addresses,
+including after DNS resolution; local DNS preflight cannot establish where the
+proxy resolves or connects. This is not equivalent to httpfetch’s direct
+connection-time destination checks and does not guarantee access to blocked sites.
+
+This is a **Scrapling-only setting**, not mandatory proxy-only routing for Nólë.
+If Scrapling fails or is unavailable, later providers can use other egress,
+including httpfetch’s direct connection. Users requiring all traffic through one
+proxy must enforce that outside Nólë; this setting alone cannot provide it.
+Externally supplied proxy charges are outside Nólë’s provider quota accounting.
+Nólë does not buy, rotate, or enable paid proxies automatically. Check applicable
+proxy-provider and target-site terms before use.
+
 ## httpfetch
 
 Use for: keyless, zero-setup URL extraction — the last-resort `extract` backstop.
@@ -409,8 +454,9 @@ Use for: keyless, zero-setup URL extraction — the last-resort `extract` backst
   DNS-rebinding window between preflight and connect); the response body is
   size-capped; non-text content types are refused; errors carry only HTTP status +
   byte-size metadata, never the URL/body. Because the dial-time guard must see the
-  real target IP, httpfetch connects **directly and ignores `HTTP(S)_PROXY`** — use
-  a keyed provider or local Scrapling if your outbound traffic must traverse a proxy.
+  real target IP, httpfetch connects **directly and ignores `HTTP(S)_PROXY`**.
+  Scrapling's optional proxy setting above affects only that provider; fallback
+  to httpfetch still connects directly.
 - Keyless does not mean guaranteed availability or unlimited use; respect site terms,
   robots.txt and rate limits.
 

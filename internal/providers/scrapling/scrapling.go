@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,11 +24,13 @@ import (
 const maxScraplingRedirects = 5
 
 // hopOutput is the parsed result of a single subprocess fetch. Exactly one of
-// Redirect or Content is meaningful: the script emits Redirect (the resolved,
+// Redirect, Failure or Content is meaningful: the script emits Redirect (the resolved,
 // absolute Location) on a 3xx with follow-redirects disabled, otherwise Content
 // plus the FinalURL the fetcher actually landed on (a backstop for a Scrapling
 // build that ignores the no-follow request).
 type hopOutput struct {
+	Status   int               `json:"status"`
+	Failure  string            `json:"failure"`
 	Redirect string            `json:"redirect"`
 	Content  string            `json:"content"`
 	Metadata map[string]string `json:"metadata"`
@@ -86,6 +90,8 @@ var errCapExceeded = errors.New("scrapling: output exceeded size cap")
 type Provider struct {
 	python     string
 	configured bool
+	proxy      string
+	proxyErr   error
 	timeout    time.Duration
 	// hopFn overrides the real subprocess fetch for a single hop. Nil in
 	// production (execHop runs the Python subprocess); tests set it to simulate
@@ -109,7 +115,9 @@ func WithTimeout(timeout time.Duration) Option {
 func New(opts ...Option) Provider {
 	p := Provider{
 		timeout: 30 * time.Second,
+		proxy:   strings.TrimSpace(os.Getenv("NOLE_SCRAPLING_PROXY")),
 	}
+	p.proxyErr = validateProxy(p.proxy)
 	if envPython := strings.TrimSpace(os.Getenv("NOLE_SCRAPLING_PYTHON")); envPython != "" {
 		p.python = envPython
 		p.configured = true
@@ -118,6 +126,52 @@ func New(opts ...Option) Provider {
 		opt(&p)
 	}
 	return p
+}
+
+// Proxy endpoints are operator configuration and may be local/private. Only
+// syntax is checked here; extraction targets still use the public-URL preflight.
+func validateProxy(raw string) error {
+	if raw == "" {
+		return nil
+	}
+	invalid := errors.New("scrapling: invalid NOLE_SCRAPLING_PROXY")
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return invalid
+	}
+	switch u.Scheme {
+	case "http", "https", "socks4", "socks4a", "socks5", "socks5h":
+	default:
+		return invalid
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return invalid
+		}
+	} else if strings.HasSuffix(u.Host, ":") {
+		return invalid
+	}
+	return nil
+}
+
+// An explicit proxy must also override NO_PROXY: libcurl can otherwise bypass
+// proxy= and connect directly. Absence preserves the existing inherited behavior.
+// Filter only the child environment, never the process or another provider.
+func (p Provider) subprocessEnv() []string {
+	if p.proxy == "" {
+		return nil // os/exec inherits the environment
+	}
+	env := make([]string, 0, len(os.Environ()))
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		switch strings.ToLower(key) {
+		case "http_proxy", "https_proxy", "all_proxy", "no_proxy":
+			continue
+		}
+		env = append(env, entry)
+	}
+	return env
 }
 
 func (p Provider) Name() string { return "scrapling" }
@@ -131,6 +185,9 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 }
 
 func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
+	if p.proxyErr != nil {
+		return core.ExtractResponse{}, p.proxyErr
+	}
 	if strings.TrimSpace(req.URL) == "" {
 		return core.ExtractResponse{}, errors.New("scrapling: url is required")
 	}
@@ -154,7 +211,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 		// is fetched.
 		if hop > 0 {
 			if err := safenet.ValidateURLContext(ctx, current); err != nil {
-				return core.ExtractResponse{}, fmt.Errorf("scrapling: blocked URL: %w", err)
+				return core.ExtractResponse{}, errors.New("scrapling: blocked URL")
 			}
 		}
 		out, err := p.runHop(ctx, current, req.Format)
@@ -165,13 +222,16 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 			current = out.Redirect
 			continue
 		}
+		if err := responseError(out); err != nil {
+			return core.ExtractResponse{}, err
+		}
 		// Backstop: if a Scrapling build ignored the no-follow request and
 		// landed somewhere other than we asked, validate that final URL before
 		// returning any content — otherwise a redirect to a private host would
 		// still leak its body. The same-URL common case is already validated.
 		if out.FinalURL != "" && out.FinalURL != current {
 			if err := safenet.ValidateURLContext(ctx, out.FinalURL); err != nil {
-				return core.ExtractResponse{}, fmt.Errorf("scrapling: blocked redirect target: %w", err)
+				return core.ExtractResponse{}, errors.New("scrapling: blocked redirect target")
 			}
 		}
 		return core.ExtractResponse{
@@ -180,6 +240,30 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 			Content:  strings.TrimSpace(out.Content),
 			Metadata: out.Metadata,
 		}, nil
+	}
+}
+
+// responseError accepts only fixed failure codes from the subprocess. Page
+// text, headers and URLs must never become error messages or route reasons.
+func responseError(out hopOutput) error {
+	switch out.Failure {
+	case "bot_blocked":
+		return fmt.Errorf("scrapling: %w", core.ErrBotBlocked)
+	case "rate_limited", "http_error":
+		// These are target-page statuses, not provider-account responses.
+		// Keep them payload-free without providerhttp.HTTPStatusError: its
+		// HTTPStatus method would count a target 429 as provider quota drift.
+		return fmt.Errorf("scrapling: %s (HTTP %d)", out.Failure, out.Status)
+	case "runtime_unavailable":
+		return errors.New("scrapling: fetcher runtime unavailable; install scrapling[fetchers]")
+	case "unsupported_runtime":
+		return errors.New("scrapling: installed runtime does not support the requested fetch options; upgrade scrapling[fetchers]")
+	case "fetch_failed":
+		return errors.New("scrapling: fetch failed; check runtime and proxy configuration")
+	case "":
+		return nil
+	default:
+		return errors.New("scrapling: invalid failure code")
 	}
 }
 
@@ -196,12 +280,16 @@ func (p Provider) runHop(ctx context.Context, url, format string) (hopOutput, er
 // line into a hopOutput.
 func (p Provider) execHop(ctx context.Context, url, format string) (hopOutput, error) {
 	payload := map[string]string{"url": url, "format": format}
+	if p.proxy != "" {
+		payload["proxy"] = p.proxy
+	}
 	stdin, err := json.Marshal(payload)
 	if err != nil {
 		return hopOutput{}, fmt.Errorf("scrapling: marshal request: %w", err)
 	}
 
 	cmd := exec.CommandContext(ctx, p.python, "-c", extractScript)
+	cmd.Env = p.subprocessEnv()
 	cmd.Stdin = bytes.NewReader(stdin)
 	stdout := newCappedBuffer(maxStdoutBytes)
 	stderr := newCappedBuffer(maxStderrBytes)
@@ -214,27 +302,36 @@ func (p Provider) execHop(ctx context.Context, url, format string) (hopOutput, e
 		if stdout.Truncated() || stderr.Truncated() {
 			return hopOutput{}, errors.New("scrapling: output too large")
 		}
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return hopOutput{}, fmt.Errorf("scrapling: extract failed: %s", sanitizeError(msg))
+		// Runtime diagnostics can include proxy credentials, addresses, and page
+		// payloads. Never promote stderr or execution errors to public output.
+		return hopOutput{}, errors.New("scrapling: extract process failed; check runtime and proxy configuration")
 	}
 
 	var out hopOutput
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-		return hopOutput{}, fmt.Errorf("scrapling: decode response: %w", err)
+		return hopOutput{}, errors.New("scrapling: invalid runtime response")
 	}
 	return out, nil
 }
 
-func (p Provider) Status(ctx context.Context) core.ProviderStatus {
+func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
+	defer func() {
+		if p.proxy != "" {
+			status.Reason += "; proxy: configured"
+		} else {
+			status.Reason += "; proxy: not configured"
+		}
+	}()
+	if p.proxyErr != nil {
+		return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: p.proxyErr.Error()}
+	}
 	if !p.configured {
 		return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: "NOLE_SCRAPLING_PYTHON is not configured"}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, p.python, "-c", `import scrapling; from scrapling.fetchers import Fetcher; print(getattr(scrapling, "__version__", "unknown"))`)
+	cmd.Env = p.subprocessEnv()
 	stdout := newCappedBuffer(maxStdoutBytes)
 	stderr := newCappedBuffer(maxStderrBytes)
 	cmd.Stdout = stdout
@@ -246,22 +343,12 @@ func (p Provider) Status(ctx context.Context) core.ProviderStatus {
 		reason := "scrapling Python package not available"
 		if strings.Contains(stderr.String(), "ModuleNotFoundError") || strings.Contains(stderr.String(), "No module named") {
 			reason = `scrapling Python package not available; install with: pip install "scrapling[fetchers]"`
-		} else if strings.TrimSpace(stderr.String()) != "" {
-			reason = sanitizeError(stderr.String())
 		}
 		return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: reason}
 	}
-	version := strings.TrimSpace(stdout.String())
-	if version == "" {
-		version = "unknown"
-	}
-	return core.ProviderStatus{Name: p.Name(), Available: true, Capabilities: p.Capabilities(), Reason: "local Python package " + version}
-}
-
-func sanitizeError(s string) string {
-	// Python subprocess stderr can contain non-ASCII; truncate on a rune
-	// boundary so the trailing characters never become invalid UTF-8.
-	return core.TruncateRunes(strings.TrimSpace(s), 500)
+	// Even successful import stdout is runtime-controlled; do not expose it as
+	// a version string. Availability and proxy presence are sufficient here.
+	return core.ProviderStatus{Name: p.Name(), Available: true, Capabilities: p.Capabilities(), Reason: "local Python package available"}
 }
 
 const extractScript = `
@@ -271,10 +358,15 @@ from urllib.parse import urljoin
 
 req = json.load(sys.stdin)
 url = req.get('url', '')
+
+def fail(code):
+    print(json.dumps({'failure': code}))
+    raise SystemExit(0)
+
 try:
     from scrapling.fetchers import Fetcher
-except Exception as exc:
-    raise SystemExit(f'import scrapling.fetchers failed: {exc}')
+except Exception:
+    fail('runtime_unavailable')
 
 try:
     fetch = getattr(Fetcher, 'fetch', None) or getattr(Fetcher, 'get')
@@ -282,7 +374,10 @@ try:
         # Do NOT follow redirects inside the fetcher: a redirect to an internal
         # / metadata host must be re-validated by the Go SSRF preflight before
         # the next hop is fetched. The Go caller drives the redirect walk.
-        page = fetch(url, follow_redirects=False)
+        kwargs = {'follow_redirects': False}
+        if req.get('proxy'):
+            kwargs['proxy'] = req['proxy']
+        page = fetch(url, **kwargs)
     except TypeError:
         # Fail closed: a Scrapling build that does not accept follow_redirects
         # cannot guarantee a redirect target is re-validated before it is
@@ -292,9 +387,11 @@ try:
         # the request). SystemExit is a BaseException, so the outer
         # 'except Exception' below does not swallow it. Upgrade scrapling for
         # redirect-safe extract.
-        raise SystemExit('scrapling: installed build does not support follow_redirects=False; upgrade scrapling for redirect-safe extract')
-except Exception as exc:
-    raise SystemExit(f'Fetcher.fetch/get failed: {exc}')
+        # Unsupported proxy arguments also reach this branch. Never retry by
+        # dropping either the proxy or redirect restriction.
+        fail('unsupported_runtime')
+except Exception:
+    fail('fetch_failed')
 
 # On a 3xx (redirect-following disabled), surface the resolved absolute Location
 # so the Go caller can re-run the preflight on it before fetching the next hop.
@@ -344,6 +441,41 @@ def selector_text(page, selector):
         return ''
     return ''
 
+def response_failure(status, headers, title, content):
+    # Keep this helper independent of Fetcher so other fetch modes can use the
+    # same classification. Only fixed codes leave the process on failure.
+    # A 429 always stays a rate limit, even when it also has challenge signals.
+    if status == 429:
+        return 'rate_limited'
+    try:
+        header_items = list(headers.items())
+    except Exception:
+        header_items = []
+    for key, value in header_items:
+        if str(key).lower() == 'cf-mitigated' and str(value).strip().lower() == 'challenge':
+            return 'bot_blocked'
+    # Bound text inspection; never classify a truncated prefix as a complete
+    # interstitial. Isolated words and length alone are not block signals.
+    text = ' '.join(content[:8192].lower().split()).strip(' .!')
+    heading = ' '.join(title[:256].lower().split()).strip(' .!')
+    messages = {
+        'please enable javascript to continue',
+        'enable javascript and cookies to continue',
+        'you need to enable javascript to run this app',
+    }
+    if len(content) <= 8192 and text in messages:
+        return 'bot_blocked'
+    if len(title) <= 256 and heading == 'just a moment':
+        # A known challenge title plus its opening instruction, not a quote
+        # somewhere inside an ordinary article discussing challenges.
+        if text.startswith('just a moment'):
+            text = text[len('just a moment'):].lstrip(' .!')
+        if text.startswith('enable javascript and cookies to continue'):
+            return 'bot_blocked'
+    if status and not 200 <= status < 300:
+        return 'http_error'
+    return ''
+
 class TextExtractor(HTMLParser):
     skip_tags = {'script', 'style', 'noscript', 'template', 'svg'}
     block_tags = {'p', 'div', 'section', 'article', 'header', 'footer', 'main', 'br', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}
@@ -384,11 +516,17 @@ else:
     content = str(content)
 
 title = selector_text(page, 'title::text')
+# Preserve known status internally; older response objects may omit it.
+status = status if isinstance(status, int) else 0
+failure = response_failure(status, getattr(page, 'headers', None) or {}, title, content)
+if failure:
+    print(json.dumps({'status': status, 'failure': failure}))
+    raise SystemExit(0)
 metadata = {'mode': 'fetcher', 'ai_targeted': 'true'}
 if title:
     metadata['title'] = title.strip()
 # final_url is the URL the fetcher actually landed on; the Go caller validates
 # it as a backstop in case a Scrapling build ignored follow_redirects=False.
 final_url = getattr(page, 'url', url) or url
-print(json.dumps({'content': content, 'metadata': metadata, 'final_url': str(final_url)}, ensure_ascii=False))
+print(json.dumps({'status': status, 'content': content, 'metadata': metadata, 'final_url': str(final_url)}, ensure_ascii=False))
 `

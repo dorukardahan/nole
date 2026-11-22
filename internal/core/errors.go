@@ -5,6 +5,10 @@ import (
 	"fmt"
 )
 
+// ErrBotBlocked identifies a recognized extraction interstitial without
+// retaining any page payload. Providers may wrap it with their static name.
+var ErrBotBlocked = errors.New("bot_blocked")
+
 type NoFreeQuotaError struct {
 	Task     TaskType `json:"task"`
 	Provider []string `json:"providers"`
