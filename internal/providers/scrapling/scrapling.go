@@ -481,8 +481,14 @@ def response_failure(status, headers, title, content, noscript):
             'please enable javascript to continue',
             'enable javascript and cookies to continue',
             'you need to enable javascript to run this app',
+            # Akamai Bot Manager challenge pages: the whole visible text is the
+            # footer line (the logo is an image).
+            'powered and protected by',
+            'powered and protected by akamai',
         }
-        if text in messages:
+        # The HTML fallback includes the <title> text; compare the body alone too.
+        body = text[len(heading):].strip(' .!') if heading and text.startswith(heading) else text
+        if text in messages or body in messages:
             return 'bot_blocked'
         if heading == 'just a moment':
             remainder = re.sub(r'^\s*just\s+a\s+moment[\s.!]*', '', content, flags=re.IGNORECASE).strip()
@@ -554,6 +560,20 @@ failure = response_failure(status, headers, title, content, noscript)
 if failure:
     print(json.dumps({'status': status, 'failure': failure}))
     raise SystemExit(0)
+# A page whose only readable text is its title was built by JavaScript the
+# fetcher does not run. Return no content so the router tries the next reader
+# instead of accepting the title as the page.
+def title_only(title, content):
+    # Exact match after case and whitespace folding only; one- or two-word
+    # titles ("Operational", "123") are too often a page's real content.
+    if len(content) > 512:
+        return False
+    heading = ' '.join(title.lower().split())
+    body = ' '.join(re.sub(r'^[ \t]*#{1,6}[ \t]+', '', content).lower().split())
+    return len(heading.split()) >= 3 and body == heading
+
+if title_only(title, content):
+    content = ''
 metadata = {'mode': 'fetcher', 'ai_targeted': 'true'}
 if title:
     metadata['title'] = title.strip()
