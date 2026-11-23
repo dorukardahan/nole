@@ -410,8 +410,10 @@ Extraction never installs a browser automatically.
 - `stealthy` makes one local Chromium rendering attempt using Scrapling.
 - `auto` first tries Fetcher with a 30-second stage budget and one library attempt
   per redirect hop, then allows one browser attempt for `bot_blocked` (a recognized
-  challenge or JavaScript shell). Ordinary HTTP errors, 429s and short text do not
-  trigger escalation. Persistent challenges fail and allow normal router fallback.
+  challenge or JavaScript shell, including Akamai) or `empty_content` (including
+  pages reduced to their title by the existing content classifier). Ordinary
+  HTTP errors, 429s and useful short text do not trigger escalation. If the single
+  browser attempt remains empty or blocked, normal router fallback continues.
 
 **Automatic Cloudflare challenge solving is off by default in every mode.**
 `auto` never enables it implicitly. To deliberately enable the library's solver:

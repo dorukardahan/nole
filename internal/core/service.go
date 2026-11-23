@@ -823,8 +823,11 @@ func extractAttemptMode(attempt RouteAttempt, metadata map[string]string) RouteA
 	case "fetcher", "stealthy":
 		attempt.Mode = metadata["mode"]
 	}
-	if attempt.Mode == "stealthy" && metadata["escalation_reason"] == "bot_blocked" {
-		attempt.EscalationReason = "bot_blocked"
+	if attempt.Mode == "stealthy" {
+		switch metadata["escalation_reason"] {
+		case "bot_blocked", "empty_content":
+			attempt.EscalationReason = metadata["escalation_reason"]
+		}
 	}
 	return attempt
 }

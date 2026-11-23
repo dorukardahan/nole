@@ -256,9 +256,23 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (resp co
 			out, err = p.runBrowser(ctx, current, req.Format)
 		} else {
 			out, err = p.runHop(fetchCtx, current, req.Format)
-			if err == nil && out.Failure == "bot_blocked" && p.mode == "auto" {
-				mode, escalation = "stealthy", "bot_blocked"
-				out, err = p.runBrowser(ctx, current, req.Format)
+			if err == nil && out.Redirect == "" && p.mode == "auto" {
+				reason := ""
+				if out.Failure == "bot_blocked" {
+					reason = "bot_blocked"
+				} else if out.Failure == "" && (out.Status == 0 || out.Status >= 200 && out.Status < 300) && strings.TrimSpace(out.Content) == "" {
+					reason = "empty_content"
+				}
+				if reason != "" {
+					// Do not replace a failed redirect backstop with browser success.
+					if out.FinalURL != "" && out.FinalURL != current {
+						if err := safenet.ValidateURLContext(fetchCtx, out.FinalURL); err != nil {
+							return core.ExtractResponse{}, errors.New("scrapling: blocked redirect target")
+						}
+					}
+					mode, escalation = "stealthy", reason
+					out, err = p.runBrowser(ctx, current, req.Format)
+				}
 			}
 		}
 		if err != nil {
