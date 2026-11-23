@@ -486,7 +486,9 @@ def response_failure(status, headers, title, content, noscript):
             'powered and protected by',
             'powered and protected by akamai',
         }
-        if text in messages:
+        # The HTML fallback includes the <title> text; compare the body alone too.
+        body = text[len(heading):].strip(' .!') if heading and text.startswith(heading) else text
+        if text in messages or body in messages:
             return 'bot_blocked'
         if heading == 'just a moment':
             remainder = re.sub(r'^\s*just\s+a\s+moment[\s.!]*', '', content, flags=re.IGNORECASE).strip()
@@ -562,9 +564,13 @@ if failure:
 # fetcher does not run. Return no content so the router tries the next reader
 # instead of accepting the title as the page.
 def title_only(title, content):
-    heading = normalized_text(title)
-    body = normalized_text(re.sub(r'^\s*#+\s*', '', content))
-    return bool(heading) and len(content) <= 512 and body == heading
+    # Exact match after case and whitespace folding only; one- or two-word
+    # titles ("Operational", "123") are too often a page's real content.
+    if len(content) > 512:
+        return False
+    heading = ' '.join(title.lower().split())
+    body = ' '.join(re.sub(r'^[ \t]*#{1,6}[ \t]+', '', content).lower().split())
+    return len(heading.split()) >= 3 and body == heading
 
 if title_only(title, content):
     content = ''

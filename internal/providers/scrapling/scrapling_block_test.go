@@ -163,6 +163,7 @@ func TestScraplingBlockClassification(t *testing.T) {
 		{"akamai interstitial", map[string]any{"status": 200, "text": "Powered and protected by"}, "bot_blocked"},
 		{"akamai interstitial with name", map[string]any{"status": 200, "title": "Tu clothing", "text": "Powered and protected by Akamai"}, "bot_blocked"},
 		{"akamai phrase in an article", map[string]any{"status": 200, "text": "Our CDN page is powered and protected by Akamai. " + strings.Repeat("Details. ", 10)}, ""},
+		{"akamai interstitial in html with title", map[string]any{"status": 200, "title": "Tu clothing", "html_content": "<html><head><title>Tu clothing</title></head><body><p>Powered and protected by</p></body></html>"}, "bot_blocked"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -291,6 +292,9 @@ func TestScraplingTitleOnlyPageHasNoContent(t *testing.T) {
 		{"markdown heading", "Lebara SIM only deals", "# Lebara SIM only deals", true},
 		{"title plus content", "Lebara SIM only deals", "Lebara SIM only deals\nUnlimited data from 10 pounds.", false},
 		{"short page without title", "", "Hello.", false},
+		{"one-word status page", "Operational", "Operational", false},
+		{"issue number", "123", "#123", false},
+		{"punctuation differs", "Lebara SIM only deals", "Lebara SIM only deals.", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			p := syntheticScrapling(t, map[string]any{"status": 200, "title": tt.title, "text": tt.text})
