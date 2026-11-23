@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-11-23
+
+This backward-compatible PATCH release improves how the local Scrapling fallback
+recognizes pages it cannot read, so the router moves on to the next reader.
+Nólë still does not solve challenges or bypass bot protection.
+
+### Fixed
+
+- Akamai Bot Manager challenge pages, whose only visible text is "Powered and
+  protected by", now fail as `bot_blocked` instead of being returned as content.
+- A page whose only readable text is its title (built by JavaScript the fetcher
+  does not run) now returns no content, so the route records `empty_content` and
+  falls back to the next reader instead of accepting the title as the page.
+
 ## [1.12.0] - 2026-11-22
 
 This backward-compatible MINOR release hardens the optional local Scrapling
@@ -1636,7 +1650,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.12.1...HEAD
+[1.12.1]: https://github.com/dorukardahan/nole/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/dorukardahan/nole/compare/v1.11.1...v1.12.0
 [1.11.1]: https://github.com/dorukardahan/nole/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/dorukardahan/nole/compare/v1.10.0...v1.11.0

@@ -160,6 +160,9 @@ func TestScraplingBlockClassification(t *testing.T) {
 		{"article opening with challenge instruction", map[string]any{"status": 200, "title": "Just a moment", "text": "Just a moment\nEnable JavaScript and cookies to continue. " + strings.Repeat("More of the article. ", 30)}, ""},
 		{"long documentation", map[string]any{"status": 200, "text": "Please enable JavaScript to continue." + strings.Repeat(" Documentation.", 1000)}, ""},
 		{"partial success", map[string]any{"status": 206, "text": "Useful partial page."}, ""},
+		{"akamai interstitial", map[string]any{"status": 200, "text": "Powered and protected by"}, "bot_blocked"},
+		{"akamai interstitial with name", map[string]any{"status": 200, "title": "Tu clothing", "text": "Powered and protected by Akamai"}, "bot_blocked"},
+		{"akamai phrase in an article", map[string]any{"status": 200, "text": "Our CDN page is powered and protected by Akamai. " + strings.Repeat("Details. ", 10)}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -276,6 +279,53 @@ func TestScraplingTargetRateLimitFallsBackWithoutQuotaDrift(t *testing.T) {
 	}
 	if budget := service.BudgetStatus(); budget.HasDrift || len(budget.DriftSignals) != 0 {
 		t.Error("target 429 recorded provider quota drift")
+	}
+}
+
+func TestScraplingTitleOnlyPageHasNoContent(t *testing.T) {
+	for _, tt := range []struct {
+		name, title, text string
+		empty             bool
+	}{
+		{"plain title", "Lebara SIM only deals", "Lebara SIM only deals", true},
+		{"markdown heading", "Lebara SIM only deals", "# Lebara SIM only deals", true},
+		{"title plus content", "Lebara SIM only deals", "Lebara SIM only deals\nUnlimited data from 10 pounds.", false},
+		{"short page without title", "", "Hello.", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := syntheticScrapling(t, map[string]any{"status": 200, "title": tt.title, "text": tt.text})
+			resp, err := p.Extract(context.Background(), core.ExtractRequest{URL: pubA})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (resp.Content == "") != tt.empty {
+				t.Fatalf("content %q, want empty=%v", resp.Content, tt.empty)
+			}
+		})
+	}
+}
+
+func TestScraplingTitleOnlyPageFallsBack(t *testing.T) {
+	shell := &countedBlockProvider{Provider: syntheticScrapling(t, map[string]any{"status": 200, "title": "Lebara SIM only deals", "text": "Lebara SIM only deals"}), name: "scrapling"}
+	fallback := &countedBlockProvider{Provider: configuredProvider(func(context.Context, string, string) (hopOutput, error) {
+		return hopOutput{Content: "Useful article."}, nil
+	}), name: "fallback"}
+	registry := core.NewRegistry()
+	for _, p := range []*countedBlockProvider{shell, fallback} {
+		if err := registry.Register(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ledger := core.NewMemoryQuotaLedger()
+	ledger.Set(core.QuotaEntry{Provider: shell.name, CostClass: core.CostClassKeylessFree, KeylessFree: true})
+	ledger.Set(core.QuotaEntry{Provider: fallback.name, CostClass: core.CostClassKeylessFree, KeylessFree: true})
+	service := core.NewService(registry, ledger, core.RouteMatrix{core.TaskExtract: {shell.name, fallback.name}})
+	resp, err := service.Extract(context.Background(), core.ExtractRequest{URL: pubA})
+	if err != nil || resp.Provider != fallback.name || resp.Content != "Useful article." {
+		t.Fatalf("expected fallback after a title-only page, got %#v %v", resp, err)
+	}
+	if len(resp.RouteTrace) != 2 || resp.RouteTrace[0].Reason != "empty_content" {
+		t.Errorf("missing empty_content attempt: %#v", resp.RouteTrace)
 	}
 }
 
