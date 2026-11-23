@@ -7,12 +7,14 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // One browser session per Nole process, including no-navigation readiness
-// probes. Acquisition is covered by the caller's deadline, even in coalesced work.
+// probes. Acquisition is bounded by the stage/total provider deadline, including
+// shared work detached from an individual caller's cancellation.
 var browserSlot = make(chan struct{}, 1)
 
 func (p *Provider) configureBrowser() {
@@ -22,6 +24,14 @@ func (p *Provider) configureBrowser() {
 	}
 	if p.mode != "fetcher" && p.mode != "auto" && p.mode != "stealthy" {
 		p.configErr = errors.New("scrapling: invalid NOLE_SCRAPLING_MODE")
+	}
+	if value := strings.TrimSpace(os.Getenv("NOLE_SCRAPLING_SOLVE_CLOUDFLARE")); value != "" {
+		enabled, err := strconv.ParseBool(value)
+		if err != nil {
+			p.configErr = errors.New("scrapling: invalid NOLE_SCRAPLING_SOLVE_CLOUDFLARE")
+		} else {
+			p.solveCloudflare = enabled
+		}
 	}
 	p.browserTimeout = 60 * time.Second
 	if p.mode == "auto" || p.mode == "stealthy" {
@@ -99,6 +109,17 @@ func (p Provider) runBrowser(ctx context.Context, url, format string) (out hopOu
 			out, resultErr = hopOutput{}, err
 		}
 	}()
+	proxy, stopProxy, err := p.startBrowserProxy(ctx)
+	if err != nil {
+		return hopOutput{}, err
+	}
+	defer stopProxy()
+	endpoint, stopBrowser, err := p.launchBrowser(ctx, profile, proxy)
+	if err != nil {
+		return hopOutput{}, err
+	}
+	defer stopBrowser()
+	p.proxy, p.browserEndpoint = proxy, endpoint
 	return p.execMode(ctx, url, format, "stealthy", profile)
 }
 
@@ -112,7 +133,17 @@ func (p Provider) browserReadiness(ctx context.Context) (ready bool, reason stri
 			ready, reason = false, err.Error()
 		}
 	}()
-	payload, _ := json.Marshal(map[string]any{"proxy": p.proxy, "profile": profile})
+	proxy, stopProxy, err := p.startBrowserProxy(ctx)
+	if err != nil {
+		return false, "browser unavailable: unsupported proxy configuration"
+	}
+	defer stopProxy()
+	endpoint, stopBrowser, err := p.launchBrowser(ctx, profile, proxy)
+	if err != nil {
+		return false, "browser unavailable: local launch or readiness deadline"
+	}
+	defer stopBrowser()
+	payload, _ := json.Marshal(map[string]any{"proxy": proxy, "profile": profile, "cdp_url": endpoint})
 	cmd := exec.CommandContext(ctx, p.python, "-c", browserRuntimeScript+browserStatusScript)
 	cmd.Env = p.subprocessEnv()
 	cmd.Stdin = bytes.NewReader(payload)
@@ -140,10 +171,17 @@ func (p Provider) browserReadiness(ctx context.Context) (ready bool, reason stri
 const browserStatusScript = `
 req = json.load(sys.stdin)
 try:
-    check_browser(profile=req['profile'], proxy=req.get('proxy'))
+    check_browser(profile=req['profile'], proxy=req.get('proxy'), cdp_url=req['cdp_url'])
     print(json.dumps({'ready': True}))
 except BrowserProxyError:
     print(json.dumps({'ready': False, 'proxy_unsupported': True}))
 except BaseException:
     print(json.dumps({'ready': False}))
 `
+
+func (p Provider) startBrowserProxy(ctx context.Context) (string, func(), error) {
+	if p.browserProxy != nil {
+		return p.browserProxy(ctx, p.proxy)
+	}
+	return startBrowserProxy(ctx, p.proxy)
+}

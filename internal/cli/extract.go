@@ -24,7 +24,9 @@ func newExtractCommandWithService(service func() *core.Service) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := service().Extract(cmd.Context(), core.ExtractRequest{URL: args[0], Format: format})
+			svc := service()
+			defer svc.Close()
+			resp, err := svc.Extract(cmd.Context(), core.ExtractRequest{URL: args[0], Format: format})
 			resp = applyExtractInsightMode(resp, insightMode)
 			if err != nil {
 				if jsonOut {

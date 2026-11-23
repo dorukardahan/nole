@@ -1,14 +1,10 @@
 """Optional Scrapling browser support, embedded into the extraction subprocess.
 
-The Go caller owns stage/total deadlines and process cleanup. DNS checks here
-are preflight checks, not socket pinning: Chromium or a proxy can resolve later.
+The Go caller owns Chromium, deadlines, cleanup, and a mandatory local proxy
+that validates and pins destination IPs for every browser connection.
 """
-import ipaddress
 import json
-import re
-import socket
 import sys
-import tempfile
 from urllib.parse import unquote, urlsplit
 
 
@@ -34,250 +30,152 @@ class BrowserGuardError(BaseException):
         super().__init__("browser_guard_failed")
 
 
-# Match safenet's private/reserved ranges explicitly. Python's is_private also
-# includes unrelated ranges and has changed across Python releases.
-_BROWSER_BLOCKED = tuple(ipaddress.ip_network(cidr) for cidr in (
-    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7",
-    "100.64.0.0/10", "0.0.0.0/8", "192.0.0.0/24", "198.18.0.0/15",
-    "64:ff9b::/96", "2001:db8::/32",
-))
-
-
-def _browser_public_ip(raw):
-    ip = ipaddress.ip_address(raw)
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
-        return False
-    if any(ip in network for network in _BROWSER_BLOCKED):
-        return False
-    if isinstance(ip, ipaddress.IPv6Address):
-        if int(ip) >> 32 == 0:
-            return _browser_public_ip(str(ipaddress.IPv4Address(int(ip))))
-        if ip.sixtofour:
-            return _browser_public_ip(str(ip.sixtofour))
-    return True
-
-
-def browser_public_url(url):
-    """Payload-free equivalent of the existing best-effort public URL check."""
-    try:
-        parsed = urlsplit(url)
-        host = parsed.hostname
-        if parsed.scheme not in ("http", "https") or not host or "%" in host:
-            return False
-        _ = parsed.port  # Reject malformed ports without exposing the URL.
-        if host.lower().rstrip(".") in ("localhost", "localhost.localdomain"):
-            return False
-        try:
-            ipaddress.ip_address(host)
-        except ValueError:
-            if all(re.fullmatch(r"[0-9]+|0[xX][0-9a-fA-F]+", part)
-                   for part in host.rstrip(".").split(".")):
-                return False
-            answers = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
-            return bool(answers) and all(_browser_public_ip(answer[4][0]) for answer in answers)
-        return _browser_public_ip(host)
-    except Exception:
-        return False
-
-
 def browser_proxy(proxy):
-    """Translate the predecessor's validated private proxy value for Chromium.
-
-    Ambient proxy filtering belongs to the Go subprocess launcher. Do not change
-    schemes, discard credentials, or retry directly when this mode is unsupported.
-    """
-    if not proxy:
-        return None
+    """Accept only the private guard endpoint supplied by the Go owner."""
     try:
-        parsed = urlsplit(proxy)
-        if parsed.scheme not in ("http", "https", "socks4", "socks5") or not parsed.hostname:
+        parsed = urlsplit(proxy or "")
+        if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1"
+                or parsed.username != "nole" or not parsed.password or not parsed.port
+                or parsed.path not in ("", "/") or parsed.query or parsed.fragment):
             raise ValueError()
-        if parsed.scheme.startswith("socks") and parsed.username is not None:
-            raise ValueError()
-        host = parsed.hostname
-        if ":" in host:
-            host = "[" + host + "]"
-        server = parsed.scheme + "://" + host
-        if parsed.port is not None:
-            server += ":" + str(parsed.port)
-        result = {"server": server}
-        if parsed.username is not None:
-            result.update({"username": unquote(parsed.username), "password": unquote(parsed.password or "")})
-        return result
+        return {"server": "http://127.0.0.1:" + str(parsed.port),
+                "username": "nole", "password": unquote(parsed.password)}
     except Exception:
         raise BrowserProxyError() from None
 
 
 class BrowserGuard:
-    """Guard this extraction page and its iframe descendants before requests."""
-    _fetch = {"patterns": [{"urlPattern": "*", "requestStage": "Request"}]}
-    _attach = {"autoAttach": True, "waitForDebuggerOnStart": True, "flatten": False,
-               "filter": [{"type": "iframe"}, {"exclude": True}]}
+    """Navigation gate installed on the context before Scrapling can fetch.
 
-    def __init__(self, validate=None):
-        self.validate = validate or browser_public_url
+    The Go-owned proxy enforces destination IPs for all browser targets, including
+    workers and redirects. This gate ensures an ignored page_setup never navigates.
+    """
+    def __init__(self):
         self.failed = False
+        self.installed = False
+        self.context = None
         self.page = None
-        self.session = None
-        self.serial = 0
-        self.pending = {}
-        self.frames = set()
 
     def _stop(self):
-        if not self.failed:
-            self.failed = True
-            if self.page is not None:
-                try:
-                    self.page.context.close()
-                except Exception:
-                    pass
+        self.failed = True
+        if self.context is not None:
+            try:
+                self.context.close()
+            except Exception:
+                pass
         raise BrowserGuardError() from None
 
     def _callback(self, fn):
-        # Playwright inspects callback arity before dispatching route/request.
-        # Keep the one-argument contract; *args would forward both to _route.
         def call(value):
             try:
                 return fn(value)
-            except Exception:
+            except Exception as error:
+                # Cancellation is normal: a page may remove a frame/request while
+                # it is paused. Do not turn that race into a context-wide failure.
+                message = str(error)
+                if any(reason in message for reason in (
+                        "Target page, context or browser has been closed",
+                        "Invalid InterceptionId", "Invalid interceptionId",
+                        "Request is already handled", "Request was cancelled")):
+                    return
                 self._stop()
         return call
 
-    def setup(self, page):
-        self.page = page
+    def install(self, context):
+        self.context = context
         try:
-            page.context.route("**/*", self._callback(self._route))
-            # Fetch interception does not cover WebSocket redirects. Extraction
-            # does not open this unguarded channel; no connection is established.
-            page.context.route_web_socket("**/*", self._callback(lambda route: route.close()))
-            self.session = page.context.new_cdp_session(page)
-            self.session.on("Fetch.requestPaused", self._callback(lambda event: self._paused((), event)))
-            self.session.on("Target.attachedToTarget", self._callback(lambda event: self._attached((), event)))
-            self.session.on("Target.detachedFromTarget", self._callback(lambda event: self._detached((), event)))
-            self.session.on("Target.receivedMessageFromTarget", self._callback(lambda event: self._received((), event)))
-            self.session.send("Fetch.enable", self._fetch)
-            self.session.send("Target.setAutoAttach", self._attach)
+            context.route("**/*", self._callback(self._route))
+            context.route_web_socket("**/*", self._callback(lambda route: route.close()))
         except Exception:
             self._stop()
 
+    def setup(self, page):
+        if self.context is None or page.context != self.context or self.failed:
+            self._stop()
+        self.page = page
+        self.installed = True
+
     def _route(self, route):
         try:
-            owned = route.request.frame.page == self.page
+            owned = self.installed and route.request.frame.page == self.page
         except Exception:
-            owned = False
+            # Workers have no frame; their connections are guarded by the proxy.
+            owned = self.installed
         if owned:
             route.continue_()
         else:
             route.abort()
 
-    def _id(self):
-        self.serial += 1
-        return self.serial
 
-    def _send(self, path, method, params, phase=None):
-        if not path:
-            self.session.send(method, params)
-            return
-        ident = self._id()
-        if phase:
-            self.pending[(path, ident)] = phase
-        message = {"id": ident, "method": method, "params": params}
-        # Python's public CDPSession cannot address flattened child sessions.
-        # Keep this non-flat transport local to iframe guard setup and requests.
-        for sid in reversed(path):
-            message = {"id": self._id(), "method": "Target.sendMessageToTarget", "params": {
-                "sessionId": sid, "message": json.dumps(message)}}
-        self.session.send(message["method"], message["params"])
-
-    def _paused(self, path, event):
-        if self.validate(event["request"]["url"]):
-            self._send(path, "Fetch.continueRequest", {"requestId": event["requestId"]})
-        else:
-            self._send(path, "Fetch.failRequest", {"requestId": event["requestId"], "errorReason": "BlockedByClient"})
-
-    def _attached(self, parent, event):
-        if event["targetInfo"]["type"] != "iframe" or not event.get("waitingForDebugger"):
-            self._stop()
-        path = parent + (event["sessionId"],)
-        self.frames.add(path)
-        self._send(path, "Fetch.enable", self._fetch, "fetch")
-
-    def _detached(self, parent, event):
-        path = parent + (event["sessionId"],)
-        self.frames = {p for p in self.frames if p[:len(path)] != path}
-        self.pending = {key: phase for key, phase in self.pending.items() if key[0][:len(path)] != path}
-
-    def _received(self, parent, event):
-        path = parent + (event["sessionId"],)
-        if path not in self.frames:
-            return  # Late acknowledgements from a detached target cannot resume it.
-        message = json.loads(event["message"])
-        if "error" in message:
-            self._stop()
-        phase = self.pending.pop((path, message.get("id")), None)
-        if phase == "fetch":
-            self._send(path, "Target.setAutoAttach", self._attach, "autoattach")
-        elif phase == "autoattach":
-            self._send(path, "Runtime.runIfWaitingForDebugger", {})
-        method, params = message.get("method"), message.get("params", {})
-        if method == "Target.attachedToTarget":
-            self._attached(path, params)
-        elif method == "Target.detachedFromTarget":
-            self._detached(path, params)
-        elif method == "Target.receivedMessageFromTarget":
-            self._received(path, params)
-        elif method == "Fetch.requestPaused":
-            self._paused(path, params)
-
-
-def _browser_options(timeout_ms, proxy, profile, guard):
-    options = dict(headless=True, solve_cloudflare=True, retries=1, retry_delay=0,
+def _browser_options(timeout_ms, proxy, profile, guard, solve_cloudflare=False):
+    options = dict(solve_cloudflare=solve_cloudflare, retries=1, retry_delay=0,
                    timeout=timeout_ms, google_search=False, block_webrtc=True,
-                   page_setup=guard.setup, user_data_dir=profile,
+                   page_setup=guard.setup,
                    additional_args={"service_workers": "block", "ignore_https_errors": False})
     configured = browser_proxy(proxy)
-    if configured is not None:
-        options["proxy"] = configured
+    configured["bypass"] = "<-loopback>"
+    options["proxy"] = configured
+    # Scrapling's ProxyDict normalizer drops Playwright's bypass field. Pass the
+    # complete context option through the documented additional_args override.
+    options["additional_args"]["proxy"] = configured
     return options
 
 
-def fetch_browser(url, timeout_ms=60000, proxy=None, profile=None):
-    """Return a page to the existing classifier/extractor, never page.meta.
+def verify_context_policy(session, proxy):
+    """Fail closed if a runtime drops or changes the required context policy.
 
-    The caller enforces the deadline even when Scrapling raises its solver timeout
-    to 60s. It also owns the profile directory for cleanup after a killed child.
+    Scrapling's normal ProxyDict currently drops bypass. The documented context
+    override preserves it, but an incompatible runtime must not silently remove
+    loopback protection. Check before any extraction navigation is possible.
     """
-    guard = BrowserGuard()
-    options = _browser_options(timeout_ms, proxy, profile, guard)
-    if not browser_public_url(url):
+    expected = browser_proxy(proxy)
+    expected["bypass"] = "<-loopback>"
+    options = getattr(session, "_context_options", None)
+    if (not isinstance(options, dict) or options.get("proxy") != expected
+            or options.get("service_workers") != "block"
+            or options.get("ignore_https_errors") is not False):
+        raise BrowserGuardError()
+
+
+def fetch_browser(url, timeout_ms=60000, proxy=None, profile=None, cdp_url=None, solve_cloudflare=False):
+    """Attach only to Go's private, owned Chromium; never launch a fallback."""
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise BrowserFetchError()
+    guard = BrowserGuard()
+    if not cdp_url or not proxy:
+        raise BrowserGuardError()
+    options = _browser_options(timeout_ms, proxy, profile, guard, solve_cloudflare)
     try:
-        from scrapling.fetchers import StealthyFetcher
+        from scrapling.fetchers import RemoteSession
     except Exception:
         raise BrowserUnavailable() from None
     try:
-        if profile is None:
-            with tempfile.TemporaryDirectory(prefix="nole-browser-") as owned:
-                options["user_data_dir"] = owned
-                page = StealthyFetcher.fetch(url, **options)
-        else:
-            page = StealthyFetcher.fetch(url, **options)
-        if guard.failed:
-            raise BrowserGuardError()
-        return page
+        with RemoteSession(cdp_url=cdp_url, new_context=True, **options) as session:
+            # Install before calling upstream fetch, not inside its callback.
+            verify_context_policy(session, proxy)
+            guard.install(session.context)
+            page = session.fetch(url)
+            if guard.failed or not guard.installed:
+                raise BrowserGuardError()
+            return page
     except Exception:
         raise BrowserFetchError() from None
 
 
-def check_browser(profile, proxy=None):
-    """Launch, install guards, and close a fresh browser without navigation."""
+def check_browser(profile, proxy=None, cdp_url=None):
     guard = BrowserGuard()
+    if not cdp_url or not proxy:
+        raise BrowserGuardError()
     options = _browser_options(5000, proxy, profile, guard)
     try:
-        from scrapling.fetchers import StealthySession
-        with StealthySession(**options) as session:
-            guard.setup(session.context.new_page())
+        from scrapling.fetchers import RemoteSession
+        with RemoteSession(cdp_url=cdp_url, new_context=True, **options) as session:
+            verify_context_policy(session, proxy)
+            guard.install(session.context)
+            page = session.fetch("http://nole-readiness.invalid/")
+            if (guard.failed or not guard.installed or getattr(page, "status", None) != 200
+                    or "nole browser proxy ready" not in getattr(page, "text", "")):
+                raise BrowserGuardError()
     except Exception:
         raise BrowserUnavailable() from None

@@ -151,6 +151,7 @@ func runLiveBench(ctx context.Context, maxCases int) bench.Report {
 		set.Fixtures = set.Fixtures[:maxCases]
 	}
 	svc := defaultService()
+	defer svc.Close()
 	report := bench.Report{
 		SchemaVersion:  "2",
 		Mode:           bench.ModeLive,

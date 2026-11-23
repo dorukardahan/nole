@@ -390,10 +390,10 @@ Notes:
 
 ### Optional browser extraction
 
-The default `NOLE_SCRAPLING_MODE=fetcher` uses ordinary HTTP fetching and does not
-execute JavaScript. `nole setup --local-extract` verifies Fetcher imports; it does
-not install or verify a browser. To opt into local rendering, install Chromium
-using the same Python environment, then choose a mode:
+The default `NOLE_SCRAPLING_MODE=fetcher` uses ordinary HTTP fetching without
+JavaScript. `nole setup --local-extract` prepares Fetcher; it does not install a
+browser. Browser mode additionally requires Scrapling's `RemoteSession` API
+(present in Scrapling 0.5.1; the local fixture uses Patchright 1.64.4) and its Chromium:
 
 ```bash
 "$NOLE_SCRAPLING_PYTHON" -m patchright install chromium
@@ -403,64 +403,73 @@ export NOLE_SCRAPLING_TIMEOUT=90s
 nole doctor
 ```
 
-For GUI/service clients, add the settings to the env file sourced by the launcher.
-Extraction never installs a browser automatically. Browser support was exercised
-with Scrapling 0.5.1, Patchright 1.64.4 and Chromium; other versions must support
-the interception APIs or extraction fails with a fixed diagnostic.
+For GUI/service clients, put settings in the env file sourced by the launcher.
+Extraction never installs a browser automatically.
 
-- `fetcher` preserves the existing Fetcher behavior and 30-second total default.
-- `stealthy` makes one local browser attempt using StealthyFetcher. Supported
-  built-in Cloudflare challenge handling is enabled. No external CAPTCHA service
-  or interactive picture-puzzle automation is added.
-- `auto` first uses Fetcher, with a 30-second stage limit and one library attempt
-  per redirect hop, then permits at most one browser attempt for a recognized
-  challenge or JavaScript shell (`bot_blocked`). Short text, ordinary HTTP errors
-  and HTTP 429 do not trigger escalation. Persistent challenges remain failures
-  and allow normal provider fallback.
+- `fetcher` preserves the existing HTTP behavior and 30-second total default.
+- `stealthy` makes one local Chromium rendering attempt using Scrapling.
+- `auto` first tries Fetcher with a 30-second stage budget and one library attempt
+  per redirect hop, then allows one browser attempt for `bot_blocked` (a recognized
+  challenge or JavaScript shell). Ordinary HTTP errors, 429s and short text do not
+  trigger escalation. Persistent challenges fail and allow normal router fallback.
 
-The browser stage defaults to 60 seconds; the total provider budget defaults to
-90 seconds in `auto`/`stealthy`. The two timeout settings accept positive Go
-durations (for example `60s` or `2m`). The total budget always caps the browser
-stage, including waiting for the single browser slot per Nólë process. Deadlines
-also apply to detached/coalesced service work. Fresh temporary profiles isolate
-sessions from authenticated user browsers. On timeout the local driver receives
-SIGTERM to close its separately grouped Chromium process, with up to one second
-before force-killing the driver group. Profile removal retries/rechecks for up to
-about one second while retaining the browser slot. This bounded cleanup can add
-a short tail after the extraction deadline; cleanup failures are reported. Browser mode currently requires Unix
-process-group support (Linux/macOS); other platforms report it unavailable while
-plain Fetcher remains supported.
+**Automatic Cloudflare challenge solving is off by default in every mode.**
+`auto` never enables it implicitly. To deliberately enable the library's solver:
 
-Doctor and explicit provider-status commands/endpoints check Fetcher imports in
-default mode. In browser modes they also attempt
-a local browser launch and guard setup, without navigating to an external site,
-within a five-second overall status budget. Normal extraction checks only local
-configuration and imports, as do routine health checks, search setup tips and
-config dumps. Extraction launches a browser only for the actual browser
-attempt, under the extraction deadline. In explicit diagnostics, `auto` remains
-available when Fetcher works but the browser is unavailable; `stealthy` reports
-unavailable. Routine checks report import/configuration availability, with
-browser launch failures handled during extraction. This is not
-proxy connectivity or live challenge-solving verification. Extract debug traces
-include fixed `mode` and, when applicable, `escalation_reason: bot_blocked` fields.
-Recognized challenges are never accepted or cached as useful rendered content;
-rendered extracts use the same content-safety reporting as ordinary extracts.
+```bash
+export NOLE_SCRAPLING_SOLVE_CLOUDFLARE=true
+```
 
-Before browser HTTP requests continue, URL/DNS preflight checks run on main-page
-requests, redirects, subrequests and nested cross-origin frames. Browser-native
-interception is necessary because ordinary route handlers do not see every
-redirect. Frame targets are paused until their interception is installed.
-Popup requests, WebSockets, service workers and WebRTC are disabled for this
-extraction flow; pages requiring those features may not render fully. Local
-fixtures verified blocked redirects/subrequests while allowed cross-origin and
-nested-frame requests still completed. This is bounded fixture evidence, not a
-claim of universal site compatibility or Cloudflare bypass success.
+Unset or `false` leaves it disabled. Use challenge solving only where permitted;
+the user is responsible for obtaining permission and complying with applicable
+terms and law. This setting is not a guarantee of successful challenge solving.
+No external CAPTCHA service or hidden paid solver is used. Turning this setting
+off does not remove the runtime's other stealth behavior.
 
-These checks preserve Scrapling's **best-effort preflight** contract: DNS can
-change between validation and Chromium's connection, and proxy-side DNS can
-resolve differently. Connections are not pinned to validated IPs. This is not a
-complete network sandbox or httpfetch's stronger direct dial-time guarantee.
-The proxy trust and fallback limits below also apply to browser mode.
+The browser stage defaults to 60 seconds and the total budget to 90 seconds in
+`auto`/`stealthy`. Timeout settings accept positive Go durations. The total budget
+also covers waiting for the single browser slot. Each attempt uses a fresh
+profile and never borrows cookies from a user's browser.
+
+Nólë launches and owns Chromium directly; Scrapling attaches only to that local
+browser. On completion or cancellation, Nólë terminates its Chromium process group
+and Python driver, waits for exit, and removes the profile before releasing the
+slot. CLI/MCP/REST owners close shared provider work before exiting, including on
+Ctrl-C. Cleanup has a short bounded tail after the request deadline. Abrupt parent
+termination (such as a second interrupt or SIGKILL) can leave browser processes
+and profiles behind; cleanup requires graceful shutdown. Browser mode
+requires Unix process groups; Windows reports it unsupported even in routine
+status checks, while ordinary Fetcher remains supported.
+
+Browser HTTP(S) connections pass through a per-session, authenticated loopback
+proxy. It resolves a destination once, validates every returned IP with Nólë's
+public-address policy, and connects to a validated literal IP. Redirects and
+Worker/SharedWorker connections use the same browser proxy. Chromium's implicit
+loopback proxy bypass is disabled; there is no direct fallback. QUIC is disabled
+and WebRTC is restricted to proxy transport. Service workers are disabled;
+popups and page WebSockets are blocked. Worker WebSocket connections still pass
+through destination validation. Pages requiring disabled features may not render
+fully. While a browser runs, its unauthenticated loopback control port lets any
+local user or process control that browser, including access to files readable
+by the Nólë user. Use browser mode only on a single-user host you trust. Crash reporting
+is disabled for these temporary browsers. This is a browser network policy, not
+an OS sandbox against a compromised
+Chromium or a malicious locally installed runtime.
+
+Before calling Scrapling's fetch method, Nólë installs a context request gate.
+Navigation is rejected until `page_setup` runs, and a missing callback also makes
+extraction fail. The runtime's effective context options must preserve the required
+proxy bypass, service-worker and TLS policies; an incompatible runtime is refused
+before fetching. A compatible import alone is not evidence of a working browser.
+
+Doctor and explicit provider-status commands/endpoints perform a bounded local
+launch and an authenticated request through the guard to a locally generated
+readiness response. No external site is contacted. Routine health,
+configuration and extraction availability checks use imports/configuration only.
+`auto` can remain available through Fetcher when the browser is unavailable.
+Diagnostics do not verify upstream proxy connectivity or Cloudflare solving.
+Rendered content retains the normal content-safety receipt; challenge pages are
+not accepted or cached as useful content.
 
 ### Optional Scrapling proxy
 
@@ -478,16 +487,20 @@ including HTTP and SOCKS5h (`socks5h://`) authentication. `https://` describes T
 an `http://` proxy can also tunnel HTTPS targets. SOCKS4a and SOCKS5h delegate
 target hostname resolution to the proxy. Older/different runtimes may reject
 options; Nólë reports a fixed failure instead of retrying without the proxy.
-Browser mode supports the runtime's `http://`, `https://`, `socks4://` and
-`socks5://` proxy forms. HTTP(S) credentials are passed as private browser proxy
-fields. `socks4a://`, `socks5h://` and SOCKS credential authentication are rejected
-before launch because the installed browser runtime cannot honor them. Nólë does
-not silently change the scheme, remove credentials or retry directly.
+Browser mode accepts HTTP or HTTPS upstream proxies that support CONNECT to a
+literal IP, including port 80 for HTTP targets. The local guard resolves and
+validates destinations; the upstream receives the selected IP, not the target
+hostname. Target Host/TLS identity is preserved. SOCKS upstream proxies are
+unsupported in browser mode and fail without a direct retry; Fetcher support is
+unchanged. An operator-supplied proxy is still trusted to honor the CONNECT
+address and handle traffic appropriately. Proxy credentials stay in private
+runtime input and proxy headers, never target headers or diagnostics.
 
 When nonempty, the setting is passed privately through subprocess stdin as
-the selected fetcher’s `proxy=` argument (a browser proxy dictionary in browser mode). It overrides inherited `HTTP_PROXY`, `HTTPS_PROXY`,
+the selected Fetcher's `proxy=` argument, or the local browser guard's upstream connection. It overrides inherited `HTTP_PROXY`, `HTTPS_PROXY`,
 `ALL_PROXY`, and `NO_PROXY` (including lowercase forms) for the Scrapling child
-process. When unset or blank, ambient proxy and bypass settings may still apply.
+process. In Fetcher mode, when unset or blank, ambient proxy and bypass settings
+may still apply. Browser traffic always uses its local destination guard.
 Scrapling extract and status subprocesses and the OpenClaw bridge subprocess
 always exclude `NOLE_SCRAPLING_PROXY`, `FIRECRAWL_API_KEY`, `BRAVE_API_KEY`,
 `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, and `TINYFISH_API_KEY` from their
@@ -499,11 +512,11 @@ retries using the same proxy may still occur.
 
 The proxy is trusted operator configuration and may itself be local/private.
 Extraction targets remain untrusted public-web inputs: initial URLs and redirect
-targets still undergo Nólë’s public-target checks. The operator must trust the
-proxy to restrict its actual destination connections to public web addresses,
-including after DNS resolution; local DNS preflight cannot establish where the
-proxy resolves or connects. This is not equivalent to httpfetch’s direct
-connection-time destination checks and does not guarantee access to blocked sites.
+targets still undergo Nólë’s public-target checks. In Fetcher mode, the operator must trust the proxy to restrict its actual
+destination connections, including after DNS resolution: local preflight cannot
+establish where that proxy resolves or connects. Browser mode sends a validated
+literal IP through CONNECT instead, but still trusts the configured proxy to
+honor it. Neither mode guarantees access to blocked sites.
 
 This is a **Scrapling-only setting**, not mandatory proxy-only routing for Nólë.
 If Scrapling fails or is unavailable, later providers can use other egress,

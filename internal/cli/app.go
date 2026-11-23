@@ -517,5 +517,7 @@ func runSearch(ctx context.Context, query string, task core.TaskType, limit int,
 	if query == "" {
 		return core.SearchResponse{}, fmt.Errorf("query is required")
 	}
-	return defaultService().Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit, Options: options})
+	svc := defaultService()
+	defer svc.Close()
+	return svc.Search(ctx, core.SearchRequest{Query: query, Task: task, Limit: limit, Options: options})
 }

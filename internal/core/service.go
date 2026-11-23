@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -26,11 +27,16 @@ const maxSearchLimit = 20
 const maxExtractTop = 3
 
 type Service struct {
-	registry   *Registry
-	ledger     QuotaLedger
-	router     *Router
-	cache      ResponseCache
-	clientMode string
+	workMu      sync.Mutex
+	work        sync.WaitGroup
+	workClosed  bool
+	workContext context.Context
+	workCancel  context.CancelFunc
+	registry    *Registry
+	ledger      QuotaLedger
+	router      *Router
+	cache       ResponseCache
+	clientMode  string
 	// sfSearch/sfExtract collapse concurrent identical requests into a single
 	// upstream fetch and a single quota debit (cache-miss stampede guard). The
 	// zero value is ready to use; keys match the cache keys so coalescing and
@@ -161,7 +167,9 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 	//     fetch returns, so distinct/sequential queries are never coalesced.
 	key := searchCacheKey(req)
 	ch := s.sfSearch.DoChan(key, func() (any, error) {
-		return s.searchUncached(context.WithoutCancel(ctx), req, route, source)
+		shared, done := s.sharedContext(ctx)
+		defer done()
+		return s.searchUncached(shared, req, route, source)
 	})
 	select {
 	case <-ctx.Done():
@@ -361,7 +369,9 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 	// followers coalesced on the same extract.
 	key := extractCacheKey(req)
 	ch := s.sfExtract.DoChan(key, func() (any, error) {
-		return s.extractUncached(context.WithoutCancel(ctx), req, route)
+		shared, done := s.sharedContext(ctx)
+		defer done()
+		return s.extractUncached(shared, req, route)
 	})
 	select {
 	case <-ctx.Done():

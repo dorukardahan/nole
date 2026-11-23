@@ -41,6 +41,7 @@ func runMCP(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, comp
 	// redundant SIGINT/SIGTERM handler on a separate context that ignores ctx.
 	// Keep diagnostics on the command's stderr while stdout remains JSON-RPC only.
 	svc := defaultService()
+	defer svc.Close()
 	mcpSrv := mcpserver.New(svc)
 	if compact {
 		mcpSrv = mcpserver.NewCompact(svc)

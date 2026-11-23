@@ -92,14 +92,18 @@ func (c *cappedBuffer) Truncated() bool { return c.truncated }
 var errCapExceeded = errors.New("scrapling: output exceeded size cap")
 
 type Provider struct {
-	python         string
-	configured     bool
-	proxy          string
-	proxyErr       error
-	timeout        time.Duration
-	mode           string
-	browserTimeout time.Duration
-	configErr      error
+	python          string
+	configured      bool
+	proxy           string
+	proxyErr        error
+	timeout         time.Duration
+	mode            string
+	browserTimeout  time.Duration
+	solveCloudflare bool
+	browserEndpoint string
+	browserProxy    func(context.Context, string) (string, func(), error)
+	browserLaunch   func(context.Context, string, string) (string, func(), error)
+	configErr       error
 	// hopFn overrides the real subprocess fetch for a single hop. Nil in
 	// production (execHop runs the Python subprocess); tests set it to simulate
 	// redirect chains without a live Scrapling runtime.
@@ -242,7 +246,7 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (resp co
 		// redirect-based SSRF, and the target must pass the preflight before it
 		// is fetched.
 		if hop > 0 {
-			if err := safenet.ValidateURLContext(ctx, current); err != nil {
+			if err := safenet.ValidateURLContext(fetchCtx, current); err != nil {
 				return core.ExtractResponse{}, errors.New("scrapling: blocked URL")
 			}
 		}
@@ -275,7 +279,11 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (resp co
 		// returning any content — otherwise a redirect to a private host would
 		// still leak its body. The same-URL common case is already validated.
 		if out.FinalURL != "" && out.FinalURL != current {
-			if err := safenet.ValidateURLContext(ctx, out.FinalURL); err != nil {
+			validationCtx := ctx
+			if mode == "fetcher" {
+				validationCtx = fetchCtx
+			}
+			if err := safenet.ValidateURLContext(validationCtx, out.FinalURL); err != nil {
 				return core.ExtractResponse{}, errors.New("scrapling: blocked redirect target")
 			}
 		}
@@ -346,6 +354,8 @@ func (p Provider) execMode(ctx context.Context, url, format, mode, profile strin
 		script = browserRuntimeScript + "\n" + extractScript
 		payload["browser_timeout_ms"] = remainingMilliseconds(ctx, p.browserTimeout)
 		payload["profile"] = profile
+		payload["solve_cloudflare"] = p.solveCloudflare
+		payload["cdp_url"] = p.browserEndpoint
 	} else if p.mode == "auto" {
 		payload["auto"] = true
 		payload["fetch_timeout"] = float64(remainingMilliseconds(ctx, 30*time.Second)) / 1000
@@ -420,13 +430,16 @@ func (p Provider) status(ctx context.Context, probeBrowser bool) (status core.Pr
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	if p.mode == "stealthy" && !browserProcessSupported {
+		return core.ProviderStatus{Name: p.Name(), Capabilities: p.Capabilities(), Reason: "browser mode unsupported on this platform"}
+	}
 	if p.mode == "stealthy" && probeBrowser {
 		ready, reason := p.browserReadiness(ctx)
 		return core.ProviderStatus{Name: p.Name(), Available: ready, Capabilities: p.Capabilities(), Reason: reason}
 	}
-	importScript := `import scrapling; from scrapling.fetchers import Fetcher`
+	importScript := `import scrapling; from scrapling.fetchers import Fetcher; print(getattr(scrapling, '__version__', 'unknown'))`
 	if p.mode == "stealthy" {
-		importScript = `import scrapling; from scrapling.fetchers import StealthyFetcher`
+		importScript = `import scrapling; from scrapling.fetchers import RemoteSession`
 	}
 	cmd := exec.CommandContext(ctx, p.python, "-c", importScript)
 	cmd.Env = p.subprocessEnv()
@@ -479,7 +492,7 @@ def fail(code):
 mode = req.get('mode', 'fetcher')
 if mode == 'stealthy':
     try:
-        page = fetch_browser(url, timeout_ms=req['browser_timeout_ms'], proxy=req.get('proxy'), profile=req['profile'])
+        page = fetch_browser(url, timeout_ms=req['browser_timeout_ms'], proxy=req.get('proxy'), profile=req['profile'], cdp_url=req['cdp_url'], solve_cloudflare=req['solve_cloudflare'])
     except BrowserUnavailable:
         fail('browser_unavailable')
     except BrowserProxyError:

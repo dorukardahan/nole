@@ -11,11 +11,29 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dorukardahan/nole/internal/core"
 	"github.com/dorukardahan/nole/internal/providers/mock"
 	"github.com/dorukardahan/nole/internal/providers/scrapling"
 )
+
+// Resolve through launchers such as pyenv before using Python as a shebang
+// interpreter: a shim dispatches by argv[0], which becomes the fixture name.
+func browserFixturePython(t *testing.T) string {
+	t.Helper()
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, python, "-c", "import sys; print(sys.executable)").Output()
+	if err != nil || !filepath.IsAbs(strings.TrimSpace(string(out))) {
+		t.Fatal("cannot resolve Python interpreter for browser fixture")
+	}
+	return strings.TrimSpace(string(out))
+}
 
 // Exercise the real Scrapling provider and embedded readiness script. Only the
 // optional Python library/browser is replaced; provider status is never stubbed.
@@ -23,10 +41,7 @@ func TestBrowserStatusRoutineAndDiagnosticSurfaces(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("browser mode requires Unix process groups")
 	}
-	python, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("python3 required")
-	}
+	python := browserFixturePython(t)
 	dir := t.TempDir()
 	pkg := filepath.Join(dir, "scrapling")
 	if err := os.Mkdir(pkg, 0700); err != nil {
@@ -47,8 +62,11 @@ class Context:
     def new_cdp_session(self, page): return CDP()
     def route(self, pattern, callback): pass
     def route_web_socket(self, pattern, callback): pass
-class StealthySession:
-    def __init__(self, **options): self.context=Context()
+class RemoteSession:
+    def __init__(self, **options): self.context=Context();self.options=options;self._context_options=options["additional_args"]
+    def fetch(self,url):
+        self.options['page_setup'](self.context.new_page())
+        return SimpleNamespace(status=200,text='nole browser proxy ready')
     def __enter__(self):
         with open(os.environ['NOLE_TEST_READINESS_CALLS'],'a') as f: f.write('launch\n')
         return self
@@ -57,6 +75,27 @@ class StealthySession:
 	if err := os.WriteFile(filepath.Join(pkg, "fetchers.py"), []byte(module), 0600); err != nil {
 		t.Fatal(err)
 	}
+	patchright := filepath.Join(dir, "patchright")
+	if err := os.Mkdir(patchright, 0700); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(patchright, "__init__.py"), nil, 0600)
+	os.WriteFile(filepath.Join(patchright, "sync_api.py"), []byte(`import os
+from types import SimpleNamespace
+class sync_playwright:
+    def __enter__(self): return SimpleNamespace(chromium=SimpleNamespace(executable_path=os.environ['NOLE_TEST_BROWSER_EXEC']))
+    def __exit__(self,*args): pass
+`), 0600)
+	executable := filepath.Join(dir, "fixture-browser")
+	script := "#!" + python + "\n" + `import sys,time,pathlib
+profile = next(arg.split('=',1)[1] for arg in sys.argv if arg.startswith('--user-data-dir='))
+pathlib.Path(profile,'DevToolsActivePort').write_text('12345\n/devtools/browser/fixture\n')
+while True: time.sleep(1)
+`
+	if err := os.WriteFile(executable, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NOLE_TEST_BROWSER_EXEC", executable)
 	calls := filepath.Join(dir, "calls")
 	t.Setenv("PYTHONPATH", dir)
 	t.Setenv("PYTHONDONTWRITEBYTECODE", "1")
