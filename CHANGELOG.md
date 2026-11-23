@@ -16,10 +16,12 @@ Nólë still does not solve challenges or bypass bot protection.
 ### Fixed
 
 - Akamai Bot Manager challenge pages, whose only visible text is "Powered and
-  protected by", now fail as `bot_blocked` instead of being returned as content.
-- A page whose only readable text is its title (built by JavaScript the fetcher
-  does not run) now returns no content, so the route records `empty_content` and
-  falls back to the next reader instead of accepting the title as the page.
+  protected by" (with or without the page title before it), now fail as
+  `bot_blocked` instead of being returned as content.
+- A page whose only readable text is exactly its title (a title of three or more
+  words, typically a page built by JavaScript the fetcher does not run) now
+  returns no content, so the route records `empty_content` and falls back to the
+  next reader instead of accepting the title as the page.
 
 ## [1.12.0] - 2026-11-22
 
