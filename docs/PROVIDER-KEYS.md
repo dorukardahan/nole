@@ -395,8 +395,12 @@ JavaScript. `nole setup --local-extract` prepares Fetcher; it does not install a
 browser. Browser mode additionally requires Scrapling's `RemoteSession` API
 (present in Scrapling 0.5.1; the local fixture uses Patchright 1.64.4) and its Chromium:
 
+`nole setup --local-extract` writes the Python path to `~/.config/nole/.env`
+rather than your shell, so the command below falls back to that setup's default
+venv. Replace the path if you used `--local-extract-venv`:
+
 ```bash
-"$NOLE_SCRAPLING_PYTHON" -m patchright install chromium
+"${NOLE_SCRAPLING_PYTHON:-$HOME/.local/share/nole/scrapling-venv/bin/python}" -m patchright install chromium
 export NOLE_SCRAPLING_MODE=auto
 export NOLE_SCRAPLING_BROWSER_TIMEOUT=60s
 export NOLE_SCRAPLING_TIMEOUT=90s

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Optional local browser extraction for the Scrapling fallback, set with
+  `NOLE_SCRAPLING_MODE=fetcher|stealthy|auto`. The default stays `fetcher`, so
+  nothing changes unless you opt in. `stealthy` renders the page in a local
+  Chromium, and `auto` tries the ordinary fetcher first and escalates to the
+  browser at most once for a challenge page, a JavaScript shell or an empty
+  result. The browser stage defaults to 60 seconds within a 90-second total
+  budget, runs one browser at a time with a fresh profile, and is cleaned up on
+  completion or Ctrl-C. All browser traffic goes through a per-session loopback
+  proxy that pins each destination to a validated public IP. Route traces gain
+  `mode` and `escalation_reason`. Browser mode is unavailable on Windows, and
+  Nólë never installs a browser itself. (#133, #137, thanks @ibrahimover)
+- `NOLE_SCRAPLING_SOLVE_CLOUDFLARE=true` enables Scrapling's built-in
+  Cloudflare challenge handling in browser mode. It is off by default in every
+  mode, and `auto` never enables it. If you turn it on, you are responsible for
+  having permission to do so and for complying with the site's terms and the
+  law. No external CAPTCHA service is used, and success is not guaranteed.
+
 ### Changed
 
 - The release workflow now fails before building or publishing when the pushed
