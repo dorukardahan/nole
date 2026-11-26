@@ -50,7 +50,9 @@ Jobs:
 
 `.github/workflows/release.yml` runs on approved semantic version tags and
 manual dispatch for existing tags with write permission limited to repository
-contents. It reuses `scripts/audit.sh --ci`, runs `scripts/secret-scan.sh`,
+contents. It first runs `scripts/check-release-changelog.sh` so a tag without a
+matching dated `CHANGELOG.md` section fails before any build, then reuses
+`scripts/audit.sh --ci`, runs `scripts/secret-scan.sh`,
 builds the same artifact matrix, and publishes the GitHub Release with
 `SHA256SUMS`.
 

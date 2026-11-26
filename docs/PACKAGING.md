@@ -148,13 +148,16 @@ The workflow:
 
 1. verifies the tag looks like `vMAJOR.MINOR.PATCH` or a prerelease variant;
 2. checks out the exact tag;
-3. runs `scripts/audit.sh --ci`;
-4. runs `scripts/secret-scan.sh`;
-5. builds the Linux, macOS and Windows binary matrix with
+3. runs `scripts/check-release-changelog.sh`, which fails unless `CHANGELOG.md`
+   at that tag has exactly one dated, non-empty `## [X.Y.Z] - YYYY-MM-DD`
+   section and a compare link for the tag (prerelease tags are skipped);
+4. runs `scripts/audit.sh --ci`;
+5. runs `scripts/secret-scan.sh`;
+6. builds the Linux, macOS and Windows binary matrix with
    `scripts/check-release-builds.sh`;
-6. generates build-provenance attestations for the binaries and `SHA256SUMS`
+7. generates build-provenance attestations for the binaries and `SHA256SUMS`
    (keyless OIDC via `actions/attest-build-provenance`; no repo Secret added);
-7. creates a GitHub Release with the assets, `SHA256SUMS`, the standard release
+8. creates a GitHub Release with the assets, `SHA256SUMS`, the standard release
    preamble and GitHub-generated release notes.
 
 It uses only GitHub-hosted runner tooling, official checkout/setup-go/attest

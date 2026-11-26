@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The release workflow now fails before building or publishing when the pushed
+  tag has no matching dated, non-empty `CHANGELOG.md` section and compare link,
+  for example when the notes are still under `[Unreleased]` or the tag has a
+  typo. Prerelease tags are not checked. (#141)
+
 ## [1.12.1] - 2026-11-23
 
 This backward-compatible PATCH release improves how the local Scrapling fallback
