@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for example when the notes are still under `[Unreleased]` or the tag has a
   typo. Prerelease tags are not checked. (#141)
 
+### Security
+
+- The local URL guard now also blocks the RFC 8215 local-use NAT64 prefix
+  `64:ff9b:1::/48`, like the well-known `64:ff9b::/96` prefix. This address
+  range is never globally reachable, and on a network whose NAT64 translator
+  uses it, a literal such as `64:ff9b:1::a9fe:a9fe` could otherwise reach a
+  private or cloud-metadata IPv4 address. Other operator-chosen NAT64 prefixes
+  remain best-effort.
+
 ## [1.12.1] - 2026-11-23
 
 This backward-compatible PATCH release improves how the local Scrapling fallback
