@@ -84,6 +84,13 @@ jobs:
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
 
+      # Fail before anything is built or published when the tag's changelog
+      # section is missing, undated, empty or still under [Unreleased].
+      - name: Verify changelog entry for tag
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: ./scripts/check-release-changelog.sh "$TAG"
+
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
