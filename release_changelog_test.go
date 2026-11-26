@@ -122,6 +122,12 @@ func TestReleaseChangelogCheckRejectsInconsistentTags(t *testing.T) {
 			want:      "section for 1.4.0 is empty",
 		},
 		{
+			name:      "only empty subsection headings",
+			tag:       "v1.4.0",
+			changelog: strings.ReplaceAll(releaseChangelogFixture, "### Fixed\n\n- A released fix.\n", "### Added\n\n### Fixed\n\n"),
+			want:      "section for 1.4.0 is empty",
+		},
+		{
 			name:      "duplicate section",
 			tag:       "v1.4.0",
 			changelog: strings.ReplaceAll(releaseChangelogFixture, "## [1.3.0] - 2026-04-01", "## [1.4.0] - 2026-04-01"),

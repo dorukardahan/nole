@@ -61,7 +61,9 @@ read -r headings dated body links < <(
       }
       next
     }
-    in_section && /[^[:space:]]/ { body = 1 }
+    # Only real notes count as body text: subsection headings such as an empty
+    # "### Fixed" and link reference definitions do not.
+    in_section && /[^[:space:]]/ && !/^[[:space:]]*#/ && !/^[[:space:]]*\[[^]]+\]:/ { body = 1 }
     index($0, link_prefix) == 1 {
       url = substr($0, length(link_prefix) + 1)
       sub(/[[:space:]]+$/, "", url)
