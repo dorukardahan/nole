@@ -23,12 +23,13 @@ var lookupIP = func(ctx context.Context, host string) ([]net.IP, error) {
 // They are checked alongside the existing net.IP classifiers in validateIP.
 var extraBlockedPrefixes = func() []netip.Prefix {
 	cidrs := []string{
-		"100.64.0.0/10", // RFC 6598 shared address space (CGNAT)
-		"0.0.0.0/8",     // RFC 1122 "this network"
-		"192.0.0.0/24",  // RFC 6890 IETF protocol assignments
-		"198.18.0.0/15", // RFC 2544 benchmarking
-		"64:ff9b::/96",  // RFC 6052 NAT64 well-known prefix
-		"2001:db8::/32", // RFC 3849 documentation
+		"100.64.0.0/10",  // RFC 6598 shared address space (CGNAT)
+		"0.0.0.0/8",      // RFC 1122 "this network"
+		"192.0.0.0/24",   // RFC 6890 IETF protocol assignments
+		"198.18.0.0/15",  // RFC 2544 benchmarking
+		"64:ff9b::/96",   // RFC 6052 NAT64 well-known prefix
+		"64:ff9b:1::/48", // RFC 8215 local-use NAT64 prefix (not globally reachable)
+		"2001:db8::/32",  // RFC 3849 documentation
 	}
 	prefixes := make([]netip.Prefix, 0, len(cidrs))
 	for _, c := range cidrs {
@@ -147,8 +148,8 @@ func validateIP(ip net.IP) error {
 		// re-validate it so a v6 wrapper around 169.254.169.254 / 10.0.0.1 / etc.
 		// is blocked too. v4-mapped (::ffff:a.b.c.d) is already collapsed by
 		// Unmap/net.ParseIP, so Is6() skips it here. (NAT64 is handled by the
-		// 64:ff9b::/96 prefix entry above — see embeddedV4Candidates for why NSP
-		// forms are intentionally left to best-effort.)
+		// 64:ff9b::/96 and 64:ff9b:1::/48 prefix entries above — see
+		// embeddedV4Candidates for why other NSP forms are left to best-effort.)
 		if addr.Is6() {
 			for _, v4 := range embeddedV4Candidates(addr) {
 				if err := validateIP(v4); err != nil {
@@ -166,8 +167,9 @@ func validateIP(ip net.IP) error {
 // pattern and yields an empty slice, so genuine v6 hosts are never affected. The
 // branches are disjoint by leading bytes.
 //
-// NAT64 is deliberately NOT decoded here. The well-known prefix 64:ff9b::/96 is
-// already blocked wholesale by extraBlockedPrefixes. For network-specific-prefix
+// NAT64 is deliberately NOT decoded here. The well-known prefix 64:ff9b::/96 and
+// the RFC 8215 local-use prefix 64:ff9b:1::/48 are already blocked wholesale by
+// extraBlockedPrefixes. For other operator-chosen network-specific-prefix
 // forms the embedded-v4 byte position depends on the prefix length, which is not
 // knowable from the literal: decoding any fixed layout (e.g. the low 32 bits)
 // would reject legitimate PUBLIC NAT64 translations where those bytes belong to

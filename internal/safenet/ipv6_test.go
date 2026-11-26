@@ -58,9 +58,15 @@ func TestValidateURLBlocksEmbeddedV4(t *testing.T) {
 		{"6to4 metadata", "http://[2002:a9fe:a9fe::]/"},
 		{"6to4 private 10.0.0.1", "http://[2002:0a00:0001::]/"},
 		// NAT64 well-known prefix metadata: blocked wholesale by the
-		// 64:ff9b::/96 prefix table entry (NSP forms are intentionally not
-		// decoded — see TestValidateURLAllowsEmbeddedV4Public).
+		// 64:ff9b::/96 prefix table entry.
 		{"nat64 well-known metadata", "http://[64:ff9b::a9fe:a9fe]/"},
+		// RFC 8215 local-use translation prefix 64:ff9b:1::/48 is not globally
+		// reachable, so it is blocked wholesale too, whatever prefix length
+		// the local translator uses to embed the IPv4 address.
+		{"nat64 local-use /96 metadata", "http://[64:ff9b:1::a9fe:a9fe]/"},
+		{"nat64 local-use /48 metadata", "http://[64:ff9b:1:a9fe:a9:fe00::]/"},
+		{"nat64 local-use /96 private", "http://[64:ff9b:1::a00:1]/"},
+		{"nat64 local-use public-looking", "http://[64:ff9b:1::808:808]/"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -85,13 +91,11 @@ func TestValidateURLAllowsEmbeddedV4Public(t *testing.T) {
 		{"6to4 of public 93.184.216.34", "http://[2002:5db8:d822::]/"},
 		{"ipv4-compatible of public 93.184.216.34", "http://[::5db8:d822]/"},
 		{"generic public v6 (no embedded v4)", "http://[2001:4860:4860::8888]/"},
-		// NAT64 network-specific-prefix literals must NOT be rejected — the
-		// embedded-v4 position is unknowable from the literal, so decoding any
-		// fixed layout would over-block legitimate public translations (Codex P2).
-		// These are left to best-effort; both a public-looking and a /48-encoded
-		// form must pass the local guard.
-		{"nat64 nsp form (low-32 public)", "http://[64:ff9b:1::808:808]/"},
-		{"nat64 nsp /48-encoded public 8.8.8.8", "http://[64:ff9b:1:808:8:800::]/"},
+		// Operator-chosen NAT64 network-specific prefixes outside the reserved
+		// ranges are not decoded: the embedded-v4 position is unknowable from
+		// the literal, so decoding any fixed layout would over-block legitimate
+		// public addresses. Just outside 64:ff9b:1::/48 must still pass.
+		{"outside local-use nat64 prefix", "http://[64:ff9b:2::808:808]/"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -109,7 +113,7 @@ func TestEmbeddedV4CandidatesUnit(t *testing.T) {
 	}{
 		{"::169.254.169.254", "169.254.169.254"},
 		{"2002:a9fe:a9fe::", "169.254.169.254"},
-		{"64:ff9b:1::a9fe:a9fe", ""}, // NAT64 NSP not decoded (WKP handled by the prefix table)
+		{"64:ff9b:1::a9fe:a9fe", ""}, // NAT64 not decoded (64:ff9b::/96 and 64:ff9b:1::/48 handled by the prefix table)
 		{"2001:4860:4860::8888", ""}, // public v6: no candidate, proves no over-block
 	}
 	for _, tc := range cases {
