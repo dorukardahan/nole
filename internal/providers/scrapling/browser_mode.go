@@ -138,6 +138,9 @@ func (p Provider) browserReadiness(ctx context.Context) (ready bool, reason stri
 		return false, "browser unavailable: unsupported proxy configuration"
 	}
 	defer stopProxy()
+	// Like runBrowser: the driver uses the owned proxy, so ambient proxy
+	// variables are stripped from its environment.
+	p.proxy = proxy
 	endpoint, stopBrowser, err := p.launchBrowser(ctx, profile, proxy)
 	if err != nil {
 		return false, "browser unavailable: local launch or readiness deadline"

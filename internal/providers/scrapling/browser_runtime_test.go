@@ -12,7 +12,16 @@ import (
 func TestBrowserRuntimeContracts(t *testing.T) {
 	var python string
 	for _, candidate := range []string{"python3.13", "python3.12", "python3.11", "python3", "python"} {
-		if path, err := exec.LookPath(candidate); err == nil {
+		path, err := exec.LookPath(candidate)
+		if err != nil {
+			continue
+		}
+		// A version shim (for example from pyenv) can exist without being
+		// runnable, so only accept a candidate that actually starts.
+		probe, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = exec.CommandContext(probe, path, "-c", "pass").Run()
+		cancel()
+		if err == nil {
 			python = path
 			break
 		}

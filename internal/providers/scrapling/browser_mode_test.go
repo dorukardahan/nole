@@ -275,6 +275,10 @@ func TestBrowserReadinessExecutesCombinedScript(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("NOLE_SCRAPLING_MODE", mode)
 			t.Setenv("NOLE_TEST_BROWSER_READY", "1")
+			// Ambient proxy settings must be stripped for readiness exactly as
+			// for extraction, because all browser traffic uses the owned proxy.
+			t.Setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+			t.Setenv("NO_PROXY", "example.invalid")
 			p := browserFixture(t, map[string]any{})
 			status := p.Status(context.Background())
 			if !status.Available || !strings.Contains(status.Reason, "browser ready (local launch verified)") {
