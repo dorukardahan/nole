@@ -298,7 +298,7 @@ func RegisterTools(s *server.MCPServer, svc *core.Service) {
 	)
 	s.AddTool(statusTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		liveUsage := req.GetBool("live_usage", false)
-		status := svc.ProviderStatusWithOptions(ctx, core.ProviderStatusOptions{LiveUsage: liveUsage, SyncLedger: liveUsage})
+		status := svc.ProviderStatusWithOptions(ctx, core.ProviderStatusOptions{LiveUsage: liveUsage, SyncLedger: liveUsage, DeepProbe: true})
 		b, err := json.MarshalIndent(providerStatusToolResponse{
 			ServerVersion:          version.Version,
 			ProviderStatusResponse: status,

@@ -15,7 +15,7 @@ func newProvidersCommand() *cobra.Command {
 		Use:   "providers",
 		Short: "Show provider status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := defaultService().ProviderStatusWithOptions(cmd.Context(), core.ProviderStatusOptions{LiveUsage: liveUsage, SyncLedger: liveUsage})
+			resp := defaultService().ProviderStatusWithOptions(cmd.Context(), core.ProviderStatusOptions{LiveUsage: liveUsage, SyncLedger: liveUsage, DeepProbe: true})
 			if jsonOut {
 				return writeJSONTo(cmd.OutOrStdout(), resp)
 			}

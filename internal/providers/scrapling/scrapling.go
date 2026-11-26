@@ -92,11 +92,18 @@ func (c *cappedBuffer) Truncated() bool { return c.truncated }
 var errCapExceeded = errors.New("scrapling: output exceeded size cap")
 
 type Provider struct {
-	python     string
-	configured bool
-	proxy      string
-	proxyErr   error
-	timeout    time.Duration
+	python          string
+	configured      bool
+	proxy           string
+	proxyErr        error
+	timeout         time.Duration
+	mode            string
+	browserTimeout  time.Duration
+	solveCloudflare bool
+	browserEndpoint string
+	browserProxy    func(context.Context, string) (string, func(), error)
+	browserLaunch   func(context.Context, string, string) (string, func(), error)
+	configErr       error
 	// hopFn overrides the real subprocess fetch for a single hop. Nil in
 	// production (execHop runs the Python subprocess); tests set it to simulate
 	// redirect chains without a live Scrapling runtime.
@@ -122,6 +129,7 @@ func New(opts ...Option) Provider {
 		proxy:   strings.TrimSpace(os.Getenv("NOLE_SCRAPLING_PROXY")),
 	}
 	p.proxyErr = validateProxy(p.proxy)
+	p.configureBrowser()
 	if envPython := strings.TrimSpace(os.Getenv("NOLE_SCRAPLING_PYTHON")); envPython != "" {
 		p.python = envPython
 		p.configured = true
@@ -191,7 +199,10 @@ func (p Provider) Search(ctx context.Context, req core.SearchRequest) (core.Sear
 	return core.SearchResponse{}, errors.New("scrapling: search is not supported; use extract with a public URL")
 }
 
-func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
+func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (resp core.ExtractResponse, resultErr error) {
+	if p.configErr != nil {
+		return core.ExtractResponse{}, p.configErr
+	}
 	if p.proxyErr != nil {
 		return core.ExtractResponse{}, p.proxyErr
 	}
@@ -205,6 +216,24 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 	// cannot extend total runtime beyond the provider timeout.
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
+	mode, escalation := "fetcher", ""
+	if p.mode == "stealthy" {
+		mode = "stealthy"
+	}
+	defer func() {
+		if resultErr != nil && (mode == "stealthy" || p.mode == "auto") {
+			resp.Metadata = map[string]string{"mode": mode}
+			if escalation != "" {
+				resp.Metadata["escalation_reason"] = escalation
+			}
+		}
+	}()
+	fetchCtx := ctx
+	if p.mode == "auto" {
+		var fetchCancel context.CancelFunc
+		fetchCtx, fetchCancel = context.WithTimeout(ctx, 30*time.Second)
+		defer fetchCancel()
+	}
 
 	current := strings.TrimSpace(req.URL)
 	for hop := 0; ; hop++ {
@@ -217,15 +246,42 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 		// redirect-based SSRF, and the target must pass the preflight before it
 		// is fetched.
 		if hop > 0 {
-			if err := safenet.ValidateURLContext(ctx, current); err != nil {
+			if err := safenet.ValidateURLContext(fetchCtx, current); err != nil {
 				return core.ExtractResponse{}, errors.New("scrapling: blocked URL")
 			}
 		}
-		out, err := p.runHop(ctx, current, req.Format)
+		var out hopOutput
+		var err error
+		if mode == "stealthy" {
+			out, err = p.runBrowser(ctx, current, req.Format)
+		} else {
+			out, err = p.runHop(fetchCtx, current, req.Format)
+			if err == nil && out.Redirect == "" && p.mode == "auto" {
+				reason := ""
+				if out.Failure == "bot_blocked" {
+					reason = "bot_blocked"
+				} else if out.Failure == "" && (out.Status == 0 || out.Status >= 200 && out.Status < 300) && strings.TrimSpace(out.Content) == "" {
+					reason = "empty_content"
+				}
+				if reason != "" {
+					// Do not replace a failed redirect backstop with browser success.
+					if out.FinalURL != "" && out.FinalURL != current {
+						if err := safenet.ValidateURLContext(fetchCtx, out.FinalURL); err != nil {
+							return core.ExtractResponse{}, errors.New("scrapling: blocked redirect target")
+						}
+					}
+					mode, escalation = "stealthy", reason
+					out, err = p.runBrowser(ctx, current, req.Format)
+				}
+			}
+		}
 		if err != nil {
 			return core.ExtractResponse{}, err
 		}
 		if out.Redirect != "" {
+			if mode == "stealthy" {
+				return core.ExtractResponse{}, errors.New("scrapling: invalid browser redirect response")
+			}
 			current = out.Redirect
 			continue
 		}
@@ -237,9 +293,20 @@ func (p Provider) Extract(ctx context.Context, req core.ExtractRequest) (core.Ex
 		// returning any content — otherwise a redirect to a private host would
 		// still leak its body. The same-URL common case is already validated.
 		if out.FinalURL != "" && out.FinalURL != current {
-			if err := safenet.ValidateURLContext(ctx, out.FinalURL); err != nil {
+			validationCtx := ctx
+			if mode == "fetcher" {
+				validationCtx = fetchCtx
+			}
+			if err := safenet.ValidateURLContext(validationCtx, out.FinalURL); err != nil {
 				return core.ExtractResponse{}, errors.New("scrapling: blocked redirect target")
 			}
+		}
+		if out.Metadata == nil {
+			out.Metadata = make(map[string]string)
+		}
+		out.Metadata["mode"] = mode
+		if escalation != "" {
+			out.Metadata["escalation_reason"] = escalation
 		}
 		return core.ExtractResponse{
 			URL:      req.URL,
@@ -266,6 +333,12 @@ func responseError(out hopOutput) error {
 		return errors.New("scrapling: installed runtime does not support the requested fetch options; upgrade scrapling[fetchers]")
 	case "fetch_failed":
 		return errors.New("scrapling: fetch failed; check runtime and proxy configuration")
+	case "browser_unavailable":
+		return errors.New("scrapling: browser runtime unavailable; install optional Scrapling browser components")
+	case "browser_proxy_unsupported":
+		return errors.New("scrapling: configured proxy is unsupported by browser mode")
+	case "browser_guard_failed", "browser_fetch_failed":
+		return errors.New("scrapling: browser extraction failed; check optional browser installation and runtime")
 	case "":
 		return nil
 	default:
@@ -285,7 +358,22 @@ func (p Provider) runHop(ctx context.Context, url, format string) (hopOutput, er
 // execHop runs the Python subprocess for one fetch and parses its single JSON
 // line into a hopOutput.
 func (p Provider) execHop(ctx context.Context, url, format string) (hopOutput, error) {
-	payload := map[string]string{"url": url, "format": format}
+	return p.execMode(ctx, url, format, "fetcher", "")
+}
+
+func (p Provider) execMode(ctx context.Context, url, format, mode, profile string) (hopOutput, error) {
+	payload := map[string]any{"url": url, "format": format, "mode": mode}
+	script := extractScript
+	if mode == "stealthy" {
+		script = browserRuntimeScript + "\n" + extractScript
+		payload["browser_timeout_ms"] = remainingMilliseconds(ctx, p.browserTimeout)
+		payload["profile"] = profile
+		payload["solve_cloudflare"] = p.solveCloudflare
+		payload["cdp_url"] = p.browserEndpoint
+	} else if p.mode == "auto" {
+		payload["auto"] = true
+		payload["fetch_timeout"] = float64(remainingMilliseconds(ctx, 30*time.Second)) / 1000
+	}
 	if p.proxy != "" {
 		payload["proxy"] = p.proxy
 	}
@@ -294,7 +382,7 @@ func (p Provider) execHop(ctx context.Context, url, format string) (hopOutput, e
 		return hopOutput{}, fmt.Errorf("scrapling: marshal request: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, p.python, "-c", extractScript)
+	cmd := exec.CommandContext(ctx, p.python, "-c", script)
 	cmd.Env = p.subprocessEnv()
 	cmd.WaitDelay = subprocessWaitDelay
 	cmd.Stdin = bytes.NewReader(stdin)
@@ -302,9 +390,15 @@ func (p Provider) execHop(ctx context.Context, url, format string) (hopOutput, e
 	stderr := newCappedBuffer(maxStderrBytes)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	if err := cmd.Run(); err != nil {
+	var runErr error
+	if mode == "stealthy" {
+		runErr = runBrowserCommand(cmd)
+	} else {
+		runErr = cmd.Run()
+	}
+	if runErr != nil {
 		if ctx.Err() != nil {
-			return hopOutput{}, fmt.Errorf("scrapling: extract timed out after %s", p.timeout)
+			return hopOutput{}, errors.New("scrapling: extraction deadline exceeded")
 		}
 		if stdout.Truncated() || stderr.Truncated() {
 			return hopOutput{}, errors.New("scrapling: output too large")
@@ -323,14 +417,25 @@ func (p Provider) execHop(ctx context.Context, url, format string) (hopOutput, e
 
 var scraplingVersionPattern = regexp.MustCompile(`^[0-9]{1,4}(\.[0-9]{1,4}){1,2}([.+-]?[A-Za-z][0-9A-Za-z]{0,15})?$`)
 
-func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
-	// Report proxy presence only when one is set, so status and route-trace text
-	// for users who configure nothing stays exactly as in earlier releases.
+func (p Provider) Status(ctx context.Context) core.ProviderStatus {
+	return p.status(ctx, true)
+}
+
+// ExtractionStatus checks configuration/imports only. Doctor/provider_status
+// retain the deep Status probe; Extract owns its one actual browser attempt.
+func (p Provider) ExtractionStatus(ctx context.Context) core.ProviderStatus {
+	return p.status(ctx, false)
+}
+
+func (p Provider) status(ctx context.Context, probeBrowser bool) (status core.ProviderStatus) {
 	defer func() {
 		if p.proxy != "" {
 			status.Reason += "; proxy: configured"
 		}
 	}()
+	if p.configErr != nil {
+		return core.ProviderStatus{Name: p.Name(), Capabilities: p.Capabilities(), Reason: p.configErr.Error()}
+	}
 	if p.proxyErr != nil {
 		return core.ProviderStatus{Name: p.Name(), Available: false, Capabilities: p.Capabilities(), Reason: p.proxyErr.Error()}
 	}
@@ -339,7 +444,18 @@ func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, p.python, "-c", `import scrapling; from scrapling.fetchers import Fetcher; print(getattr(scrapling, "__version__", "unknown"))`)
+	if p.mode == "stealthy" && !browserProcessSupported {
+		return core.ProviderStatus{Name: p.Name(), Capabilities: p.Capabilities(), Reason: "browser mode unsupported on this platform"}
+	}
+	if p.mode == "stealthy" && probeBrowser {
+		ready, reason := p.browserReadiness(ctx)
+		return core.ProviderStatus{Name: p.Name(), Available: ready, Capabilities: p.Capabilities(), Reason: reason}
+	}
+	importScript := `import scrapling; from scrapling.fetchers import Fetcher; print(getattr(scrapling, '__version__', 'unknown'))`
+	if p.mode == "stealthy" {
+		importScript = `import scrapling; from scrapling.fetchers import RemoteSession`
+	}
+	cmd := exec.CommandContext(ctx, p.python, "-c", importScript)
 	cmd.Env = p.subprocessEnv()
 	cmd.WaitDelay = subprocessWaitDelay
 	stdout := newCappedBuffer(maxStdoutBytes)
@@ -362,7 +478,17 @@ func (p Provider) Status(ctx context.Context) (status core.ProviderStatus) {
 	if !scraplingVersionPattern.MatchString(version) {
 		version = "unknown"
 	}
-	return core.ProviderStatus{Name: p.Name(), Available: true, Capabilities: p.Capabilities(), Reason: "local Python package " + version}
+	reason := "local Python package " + version
+	if p.mode == "stealthy" {
+		reason = "browser package available; launch checked during extraction"
+	} else if p.mode == "auto" {
+		reason += "; mode: auto; browser not checked"
+		if probeBrowser {
+			_, browserReason := p.browserReadiness(ctx)
+			reason += "; " + browserReason
+		}
+	}
+	return core.ProviderStatus{Name: p.Name(), Available: true, Capabilities: p.Capabilities(), Reason: reason}
 }
 
 const extractScript = `
@@ -377,35 +503,50 @@ def fail(code):
     print(json.dumps({'failure': code}))
     raise SystemExit(0)
 
-try:
-    from scrapling.fetchers import Fetcher
-except Exception:
-    fail('runtime_unavailable')
-
-try:
-    fetch = getattr(Fetcher, 'fetch', None) or getattr(Fetcher, 'get')
+mode = req.get('mode', 'fetcher')
+if mode == 'stealthy':
     try:
-        # Do NOT follow redirects inside the fetcher: a redirect to an internal
-        # / metadata host must be re-validated by the Go SSRF preflight before
-        # the next hop is fetched. The Go caller drives the redirect walk.
-        kwargs = {'follow_redirects': False}
-        if req.get('proxy'):
-            kwargs['proxy'] = req['proxy']
-        page = fetch(url, **kwargs)
-    except TypeError:
-        # Fail closed: a Scrapling build that does not accept follow_redirects
-        # cannot guarantee a redirect target is re-validated before it is
-        # fetched. Refuse rather than retry with redirects enabled, which would
-        # let a public->internal 302 perform the SSRF request before Go can
-        # inspect it (the final_url backstop only blocks returning the body, not
-        # the request). SystemExit is a BaseException, so the outer
-        # 'except Exception' below does not swallow it. Upgrade scrapling for
-        # redirect-safe extract.
-        # Unsupported proxy arguments also reach this branch. Never retry by
-        # dropping either the proxy or redirect restriction.
-        fail('unsupported_runtime')
-except Exception:
-    fail('fetch_failed')
+        page = fetch_browser(url, timeout_ms=req['browser_timeout_ms'], proxy=req.get('proxy'), profile=req['profile'], cdp_url=req['cdp_url'], solve_cloudflare=req['solve_cloudflare'])
+    except BrowserUnavailable:
+        fail('browser_unavailable')
+    except BrowserProxyError:
+        fail('browser_proxy_unsupported')
+    except BrowserGuardError:
+        fail('browser_guard_failed')
+    except Exception:
+        fail('browser_fetch_failed')
+else:
+    try:
+        from scrapling.fetchers import Fetcher
+    except Exception:
+        fail('runtime_unavailable')
+
+    try:
+        fetch = getattr(Fetcher, 'fetch', None) or getattr(Fetcher, 'get')
+        try:
+            # Do NOT follow redirects inside the fetcher: a redirect to an internal
+            # / metadata host must be re-validated by the Go SSRF preflight before
+            # the next hop is fetched. The Go caller drives the redirect walk.
+            kwargs = {'follow_redirects': False}
+            if req.get('auto'):
+                kwargs.update(retries=1, timeout=req.get('fetch_timeout', 30))
+            if req.get('proxy'):
+                kwargs['proxy'] = req['proxy']
+            page = fetch(url, **kwargs)
+        except TypeError:
+            # Fail closed: a Scrapling build that does not accept follow_redirects
+            # cannot guarantee a redirect target is re-validated before it is
+            # fetched. Refuse rather than retry with redirects enabled, which would
+            # let a public->internal 302 perform the SSRF request before Go can
+            # inspect it (the final_url backstop only blocks returning the body, not
+            # the request). SystemExit is a BaseException, so the outer
+            # 'except Exception' below does not swallow it. Upgrade scrapling for
+            # redirect-safe extract.
+            # Unsupported proxy arguments also reach this branch. Never retry by
+            # dropping either the proxy or redirect restriction.
+            fail('unsupported_runtime')
+    except Exception:
+        fail('fetch_failed')
 
 def has_challenge_header(headers):
     return any(str(key).lower() == 'cf-mitigated' and str(value).strip().lower() == 'challenge'
@@ -420,7 +561,7 @@ except Exception:
 status = getattr(page, 'status', None)
 status = status if isinstance(status, int) else 0
 # Surface the resolved Location so Go can re-run the preflight before fetching.
-if status in (301, 302, 303, 307, 308):
+if mode == 'fetcher' and status in (301, 302, 303, 307, 308):
     location = next((value for key, value in headers if str(key).lower() == 'location'), None)
     if location:
         if has_challenge_header(headers):
@@ -574,7 +715,7 @@ def title_only(title, content):
 
 if title_only(title, content):
     content = ''
-metadata = {'mode': 'fetcher', 'ai_targeted': 'true'}
+metadata = {'mode': mode, 'ai_targeted': 'true'}
 if title:
     metadata['title'] = title.strip()
 # final_url is the URL the fetcher actually landed on; the Go caller validates

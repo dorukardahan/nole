@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -26,11 +27,16 @@ const maxSearchLimit = 20
 const maxExtractTop = 3
 
 type Service struct {
-	registry   *Registry
-	ledger     QuotaLedger
-	router     *Router
-	cache      ResponseCache
-	clientMode string
+	workMu      sync.Mutex
+	work        sync.WaitGroup
+	workClosed  bool
+	workContext context.Context
+	workCancel  context.CancelFunc
+	registry    *Registry
+	ledger      QuotaLedger
+	router      *Router
+	cache       ResponseCache
+	clientMode  string
 	// sfSearch/sfExtract collapse concurrent identical requests into a single
 	// upstream fetch and a single quota debit (cache-miss stampede guard). The
 	// zero value is ready to use; keys match the cache keys so coalescing and
@@ -49,6 +55,9 @@ type ServiceOption func(*Service)
 type ProviderStatusOptions struct {
 	LiveUsage  bool
 	SyncLedger bool
+	// DeepProbe is for explicit diagnostics; routine status must not launch
+	// optional local runtimes just to build a health response or setup tip.
+	DeepProbe bool
 }
 
 const (
@@ -158,7 +167,9 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 	//     fetch returns, so distinct/sequential queries are never coalesced.
 	key := searchCacheKey(req)
 	ch := s.sfSearch.DoChan(key, func() (any, error) {
-		return s.searchUncached(context.WithoutCancel(ctx), req, route, source)
+		shared, done := s.sharedContext(ctx)
+		defer done()
+		return s.searchUncached(shared, req, route, source)
 	})
 	select {
 	case <-ctx.Done():
@@ -358,7 +369,9 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractRespo
 	// followers coalesced on the same extract.
 	key := extractCacheKey(req)
 	ch := s.sfExtract.DoChan(key, func() (any, error) {
-		return s.extractUncached(context.WithoutCancel(ctx), req, route)
+		shared, done := s.sharedContext(ctx)
+		defer done()
+		return s.extractUncached(shared, req, route)
 	})
 	select {
 	case <-ctx.Done():
@@ -464,7 +477,7 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 		}
 		provider := candidate.Provider
 		decision := candidate.Decision
-		if status := provider.Status(ctx); !status.Available {
+		if status := providerAvailability(ctx, provider); !status.Available {
 			reason := status.Reason
 			if reason == "" {
 				reason = "provider_unavailable"
@@ -487,7 +500,7 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 			case errors.Is(err, ErrTargetRateLimited):
 				reason = "rate_limited"
 			}
-			trace = append(trace, attemptWithDecision(name, "failed", reason, decision, latency, 0))
+			trace = append(trace, extractAttemptMode(attemptWithDecision(name, "failed", reason, decision, latency, 0), resp.Metadata))
 			continue
 		}
 		resp.URL = req.URL
@@ -496,7 +509,7 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 		if strings.TrimSpace(resp.Content) == "" {
 			resultCount := contentResultCount(resp.Content)
 			lastErr = fmt.Errorf("extract provider %s returned empty content", name)
-			trace = append(trace, attemptWithDecision(name, "failed", "empty_content", decision, latency, resultCount))
+			trace = append(trace, extractAttemptMode(attemptWithDecision(name, "failed", "empty_content", decision, latency, resultCount), resp.Metadata))
 			continue
 		}
 		cleaned, central := ProtectUntrustedText(resp.Content)
@@ -516,7 +529,7 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 			}
 			traceReason = "success_" + suffix
 		}
-		trace = append(trace, attemptWithDecision(name, "success", traceReason, decision, latency, resultCount))
+		trace = append(trace, extractAttemptMode(attemptWithDecision(name, "success", traceReason, decision, latency, resultCount), resp.Metadata))
 		resp.RouteTrace = trace
 		resp.RoutingInsight = BuildExtractRoutingInsight(resp)
 		if s.cache != nil {
@@ -532,6 +545,17 @@ func (s *Service) extractUncached(ctx context.Context, req ExtractRequest, route
 	resp := ExtractResponse{URL: req.URL, Route: append([]string(nil), route...), RouteTrace: trace}
 	resp.RoutingInsight = BuildErrorRoutingInsight("extract", resp.Route, resp.RouteTrace)
 	return resp, NoFreeQuotaError{Task: TaskExtract, Provider: route}
+}
+
+// Optional local runtime diagnostics can be expensive. Reuse their cheap
+// extraction availability for routine status, health and setup suggestions.
+func providerAvailability(ctx context.Context, provider Provider) ProviderStatus {
+	if local, ok := provider.(interface {
+		ExtractionStatus(context.Context) ProviderStatus
+	}); ok {
+		return local.ExtractionStatus(ctx)
+	}
+	return provider.Status(ctx)
 }
 
 func (s *Service) ProviderStatus(ctx context.Context) ProviderStatusResponse {
@@ -562,7 +586,12 @@ func (s *Service) ProviderStatusWithOptions(ctx context.Context, opts ProviderSt
 	// pitched as a disabled-feature unlock (false) or a fidelity upgrade (true).
 	extractAvailable := false
 	for _, provider := range providers {
-		status := provider.Status(ctx) // called once per provider
+		var status ProviderStatus
+		if opts.DeepProbe {
+			status = provider.Status(ctx)
+		} else {
+			status = providerAvailability(ctx, provider)
+		}
 		decision := s.ledger.Decide(provider.Name())
 		strategy, reason, canQueryUsage := providerUsageStrategy(provider, decision)
 		status.RemoteUsageStrategy = strategy
@@ -782,4 +811,23 @@ func contentResultCount(content string) int {
 		return 0
 	}
 	return 1
+}
+
+// Only fixed local adapter facts enter debug traces; never copy arbitrary
+// provider metadata (which can contain page text or runtime secrets).
+func extractAttemptMode(attempt RouteAttempt, metadata map[string]string) RouteAttempt {
+	if attempt.Provider != "scrapling" {
+		return attempt
+	}
+	switch metadata["mode"] {
+	case "fetcher", "stealthy":
+		attempt.Mode = metadata["mode"]
+	}
+	if attempt.Mode == "stealthy" {
+		switch metadata["escalation_reason"] {
+		case "bot_blocked", "empty_content":
+			attempt.EscalationReason = metadata["escalation_reason"]
+		}
+	}
+	return attempt
 }

@@ -203,6 +203,9 @@ func (p *countedBlockProvider) Name() string { return p.name }
 func (p *countedBlockProvider) Status(context.Context) core.ProviderStatus {
 	return core.ProviderStatus{Name: p.name, Available: true, Capabilities: p.Capabilities()}
 }
+func (p *countedBlockProvider) ExtractionStatus(ctx context.Context) core.ProviderStatus {
+	return p.Status(ctx)
+}
 func (p *countedBlockProvider) Extract(ctx context.Context, req core.ExtractRequest) (core.ExtractResponse, error) {
 	p.calls++
 	return p.Provider.Extract(ctx, req)

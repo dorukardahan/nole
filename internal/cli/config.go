@@ -141,6 +141,7 @@ func newConfigDumpCommand() *cobra.Command {
 // running `config dump` is side-effect free on the user's quota.
 func buildConfigDump(ctx context.Context) configDump {
 	svc := defaultService()
+	defer svc.Close()
 	budget := svc.BudgetStatus()
 	providerResp := svc.ProviderStatus(ctx)
 

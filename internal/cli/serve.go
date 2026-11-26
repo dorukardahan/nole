@@ -62,6 +62,7 @@ your keys. The default loopback bind needs no token (only local processes reach 
 			// NOLE_LOG / provider keys set only there are honored. Always os.Stderr —
 			// stdout stays MCP/REST.
 			svc := defaultService()
+			defer svc.Close()
 			logger := nolelog.FromEnv(os.Stderr)
 
 			handler, err := newHTTPHandler(svc, logger, token)

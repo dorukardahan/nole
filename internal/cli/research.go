@@ -28,6 +28,7 @@ Defaults to free-first/no-hidden-paid-spend routing. Explicit cost policy settin
 		RunE: func(cmd *cobra.Command, args []string) error {
 			question := strings.Join(args, " ")
 			svc := defaultService()
+			defer svc.Close()
 
 			report, err := svc.ResearchWithOptions(cmd.Context(), core.ResearchRequest{Question: question, MaxSteps: maxSteps, Options: options})
 			if err != nil {
