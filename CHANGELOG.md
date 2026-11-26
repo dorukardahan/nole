@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-11-27
+
+This backward-compatible MINOR release adds optional local browser extraction to
+the Scrapling fallback. The default remains the ordinary HTTP fetcher, so nothing
+changes unless you set `NOLE_SCRAPLING_MODE`. CLI/MCP output contracts,
+free-first/BYOK policy and default provider ordering are unchanged. Route traces
+gain two additive fields, `mode` and `escalation_reason`. The release also
+tightens the URL guard and checks that a release tag matches `CHANGELOG.md`.
+
 ### Added
 
 - Optional local browser extraction for the Scrapling fallback, set with
@@ -1687,7 +1696,8 @@ Initial v0.1 release-prep readiness. See
   quantitative phrasing in `docs/BENCHMARKS.md` and
   `docs/ROUTE-EVIDENCE.md`.
 
-[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.12.1...HEAD
+[Unreleased]: https://github.com/dorukardahan/nole/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/dorukardahan/nole/compare/v1.12.1...v1.13.0
 [1.12.1]: https://github.com/dorukardahan/nole/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/dorukardahan/nole/compare/v1.11.1...v1.12.0
 [1.11.1]: https://github.com/dorukardahan/nole/compare/v1.11.0...v1.11.1
