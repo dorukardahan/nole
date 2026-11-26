@@ -21,6 +21,9 @@ import (
 
 var errBrowserNetwork = errors.New("scrapling: browser connection blocked or unavailable")
 
+// browserTunnelHandshakeTimeout bounds TLS and CONNECT with an upstream proxy.
+var browserTunnelHandshakeTimeout = 15 * time.Second
+
 // browserDialer resolves once, validates every answer, and connects only to a
 // validated literal. An upstream proxy receives that literal too, never the
 // target hostname. Chromium retains the original hostname for Host and TLS.
@@ -89,9 +92,13 @@ func (d browserDialer) tunnel(ctx context.Context, pinned string) (net.Conn, err
 	raw := c
 	stop := context.AfterFunc(ctx, func() { raw.Close() })
 	defer stop()
-	if deadline, exists := ctx.Deadline(); exists {
-		c.SetDeadline(deadline)
+	// Never wait on an unresponsive upstream longer than the handshake bound,
+	// even when the caller's context carries no deadline.
+	deadline := time.Now().Add(browserTunnelHandshakeTimeout)
+	if ctxDeadline, exists := ctx.Deadline(); exists && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
 	}
+	c.SetDeadline(deadline)
 	if u.Scheme == "https" {
 		t := tls.Client(c, &tls.Config{ServerName: u.Hostname(), MinVersion: tls.VersionTLS12})
 		if t.HandshakeContext(ctx) != nil {
@@ -147,7 +154,17 @@ func listenBrowserProxy(ctx context.Context, d browserDialer) (string, func(), e
 	}
 	token := rand.Text()
 	auth := "Basic " + base64.StdEncoding.EncodeToString([]byte("nole:"+token))
-	transport := &http.Transport{Proxy: nil, DialContext: d.connect, ForceAttemptHTTP2: false, DisableKeepAlives: true, ResponseHeaderTimeout: 15 * time.Second}
+	// http.Transport detaches dial contexts from the request, so bind every
+	// dial (and any pending upstream handshake) to this proxy's lifetime too.
+	proxyCtx, cancelProxy := context.WithCancel(ctx)
+	dial := func(dialCtx context.Context, network, address string) (net.Conn, error) {
+		dialCtx, cancel := context.WithCancel(dialCtx)
+		defer cancel()
+		stop := context.AfterFunc(proxyCtx, cancel)
+		defer stop()
+		return d.connect(dialCtx, network, address)
+	}
+	transport := &http.Transport{Proxy: nil, DialContext: dial, ForceAttemptHTTP2: false, DisableKeepAlives: true, ResponseHeaderTimeout: 15 * time.Second}
 	var mu sync.Mutex
 	connections := make(map[net.Conn]bool)
 	closed := false
@@ -159,7 +176,7 @@ func listenBrowserProxy(ctx context.Context, d browserDialer) (string, func(), e
 			return
 		}
 		if r.Method == http.MethodConnect {
-			upstream, err := d.connect(r.Context(), "tcp", r.Host)
+			upstream, err := dial(r.Context(), "tcp", r.Host)
 			if err != nil {
 				http.Error(w, "connection blocked or unavailable", 403)
 				return
@@ -223,6 +240,7 @@ func listenBrowserProxy(ctx context.Context, d browserDialer) (string, func(), e
 	var once sync.Once
 	cleanup := func() {
 		once.Do(func() {
+			cancelProxy()
 			mu.Lock()
 			closed = true
 			for c := range connections {

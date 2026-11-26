@@ -306,3 +306,53 @@ func TestBrowserProxyStopClosesHijackedTunnel(t *testing.T) {
 		t.Fatal("proxy shutdown left upstream connection open")
 	}
 }
+
+// An upstream proxy that accepts the connection but never answers CONNECT must
+// not outlive the browser session: http.Transport detaches dial contexts from
+// the request, so the proxy has to bind its own dials to the session.
+func TestBrowserProxyStopAbortsPendingUpstreamHandshake(t *testing.T) {
+	silent, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer silent.Close()
+	accepted := make(chan struct{})
+	upstreamClosed := make(chan struct{})
+	go func() {
+		c, err := silent.Accept()
+		if err != nil {
+			return
+		}
+		close(accepted)
+		io.Copy(io.Discard, c)
+		c.Close()
+		close(upstreamClosed)
+	}()
+	u, _ := url.Parse("http://" + silent.Addr().String())
+	d := browserDialer{upstream: u, lookup: func(context.Context, string) ([]net.IP, error) { return []net.IP{net.ParseIP("8.8.8.8")}, nil }, dial: (&net.Dialer{}).DialContext}
+	raw, stop, err := listenBrowserProxy(context.Background(), d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	proxyURL, _ := url.Parse(raw)
+	tr := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+	defer tr.CloseIdleConnections()
+	go func() {
+		client := http.Client{Transport: tr}
+		if r, err := client.Get("http://public.example/"); err == nil {
+			r.Body.Close()
+		}
+	}()
+	select {
+	case <-accepted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("request never reached the upstream proxy")
+	}
+	stop()
+	select {
+	case <-upstreamClosed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("proxy shutdown left a pending upstream CONNECT handshake open")
+	}
+}
